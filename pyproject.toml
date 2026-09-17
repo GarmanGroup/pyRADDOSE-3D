@@ -32,21 +32,27 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-# add your package dependencies here
+# The default install is deliberately NumPy-sized. RADDOSE-3D is intended for
+# inclusion in CCP4, whose maintainers already describe space as a pressure
+# (Agirre et al. 2023, doi:10.1107/S2059798323003595), and the torch stack
+# measures ~570 MB installed against ~31 MB for everything below -- more on
+# Linux, where it pulls CUDA toolkit, cuDNN, NCCL and Triton.
+#
+# See src/pyraddose_3d/backend/_array.py: the numerical core is written
+# against the array-API subset NumPy and torch agree on, so both backends run
+# the same code and the same conformance corpus.
 dependencies = [
-    "torch",
-    # torch warns at import if numpy is absent, and filterwarnings = ["error"]
-    # turns that into a collection error. It is also wanted for file I/O.
     "numpy",
     "pydantic",
     "pyyaml",
+    "scipy",  # erf only -- the one array-API divergence on the MX path
     "types-PyYAML",
 ]
 
 # https://peps.python.org/pep-0621/#dependencies-optional-dependencies
-# add dependencies for "extra" features here.  Not dev dependencies.
-# [project.optional-dependencies]
-# name = ["dependency"]
+[project.optional-dependencies]
+# Gradients. Required for strategy optimisation, not for computing dose.
+torch = ["torch"]
 
 [project.urls]
 homepage = "https://github.com/jdickerson95/pyRADDOSE-3D"
@@ -64,7 +70,9 @@ repository = "https://github.com/jdickerson95/pyRADDOSE-3D"
 # https://peps.python.org/pep-0735/
 # setup with `uv sync` or `pip install -e . --group dev`
 [dependency-groups]
-test = ["pytest", "pytest-cov"]
+# torch is in the test group, not in `dependencies`: CI must exercise both
+# backends against the same conformance corpus, or they will drift.
+test = ["pytest", "pytest-cov", "torch"]
 dev = [
     { include-group = "test" },
     "ipython",
