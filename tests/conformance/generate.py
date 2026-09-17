@@ -272,12 +272,15 @@ def main() -> None:
                 "excluded": {
                     "AbsCoefCalc RDV2": "shells out to an unshipped binary",
                     "ContainerElemental/Mixture": "scrape NIST at runtime",
+                },
+                "caveats": {
                     "AbsCoefCalc EXPSM (CIF)": (
-                        "needs a small-molecule CIF containing "
-                        "_chemical_formula_sum. A protein mmCIF (dotted tags "
-                        "such as _cell.length_a) is the wrong kind of file for "
-                        "this code path and is rejected with 'The CIF file must "
-                        "contain the chemical sum'."
+                        "Covered by case 034, but note CoefCalcFromCIF crashes "
+                        "when the last token of _chemical_formula_sum is a bare "
+                        "single-letter symbol (urea's 'C H4 N2 O' fails). COD "
+                        "1008123 was chosen because its formula ends in 'Sb2'. "
+                        "A protein mmCIF will not work at all: this is the "
+                        "small-molecule route and needs _chemical_formula_sum."
                     ),
                 },
                 "keyword_notes": {

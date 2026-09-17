@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from pyraddose_3d.models.beam import GaussianBeam, TophatBeam
 from pyraddose_3d.models.composition import (
     AverageComposition,
+    CifComposition,
     PdbComposition,
     SaxsComposition,
     SequenceComposition,
@@ -48,6 +49,8 @@ _ABSCOEFCALC = {
     "sequence": "Sequence",
     # The token named PDB matches the literal "EXP"; see PdbComposition.
     "pdb": "EXP",
+    # Likewise the token named CIF matches "EXPSM".
+    "cif": "EXPSM",
 }
 
 _DECAY_MODEL = {
@@ -75,6 +78,14 @@ def _composition_lines(composition: Composition) -> list[str]:
     lines = [f"AbsCoefCalc {_ABSCOEFCALC[composition.method]}"]
 
     if isinstance(composition, AverageComposition):
+        return lines
+
+    if isinstance(composition, CifComposition):
+        lines.append(f"CIF {composition.cif}")
+        if composition.solvent_heavy_conc:
+            lines.append(
+                f"SolventHeavyConc {_elements(composition.solvent_heavy_conc)}"
+            )
         return lines
 
     if isinstance(composition, PdbComposition):

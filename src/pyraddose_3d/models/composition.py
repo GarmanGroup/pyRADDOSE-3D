@@ -16,6 +16,7 @@ from pyraddose_3d.models._base import RD3DModel
 
 __all__ = [
     "AverageComposition",
+    "CifComposition",
     "Composition",
     "PdbComposition",
     "SaxsComposition",
@@ -155,10 +156,32 @@ class PdbComposition(RD3DModel):
     solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
 
 
+class CifComposition(RD3DModel):
+    """Composition read from a small-molecule CIF (``AbsCoefCalc EXPSM``).
+
+    Note the keyword is ``EXPSM``, not ``CIF``: the grammar's token *named*
+    CIF matches the literal "EXPSM".
+
+    This is the *small-molecule* route. It needs ``_chemical_formula_sum`` and
+    ``_cell_volume``, so a protein mmCIF (with dotted tags such as
+    ``_cell.length_a``) will not work.
+
+    Attributes
+    ----------
+    cif : str
+        Path to the CIF file.
+    """
+
+    method: Literal["cif"] = "cif"
+    cif: str
+    solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
+
+
 Composition = Annotated[
     AverageComposition
     | UnitCellComposition
     | PdbComposition
+    | CifComposition
     | SmallMoleculeComposition
     | SaxsComposition
     | SequenceComposition,

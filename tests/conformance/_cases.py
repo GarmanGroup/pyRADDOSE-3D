@@ -258,6 +258,23 @@ _CASES: list[Case] = [
             }
         },
     ),
+    # COD 1008123, bis(urea) antimony tetrafluoride oxide, public domain.
+    # Chosen because its formula ends in "Sb2": CoefCalcFromCIF crashes when
+    # the last element token is a bare single-letter symbol, which rules out
+    # most organics. See the Java repo's TEST-TRIAGE.md.
+    Case(
+        "034-composition-cif",
+        "A",
+        "small-molecule composition from a CIF",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "cif",
+                    "cif": "tests/data/COD-1008123.cif",
+                }
+            }
+        },
+    ),
     # --- decay models -------------------------------------------------------
     Case(
         "040-ddm-linear",
