@@ -259,9 +259,9 @@ _CASES: list[Case] = [
         },
     ),
     # COD 1008123, bis(urea) antimony tetrafluoride oxide, public domain.
-    # Chosen because its formula ends in "Sb2": CoefCalcFromCIF crashes when
-    # the last element token is a bare single-letter symbol, which rules out
-    # most organics. See the Java repo's TEST-TRIAGE.md.
+    # Heavy atoms (Sb), so absorption differs sharply from the organic
+    # baseline. Case 035 covers the single-letter-tail formula that used to
+    # crash the reference implementation's CIF parser.
     Case(
         "034-composition-cif",
         "A",
@@ -271,6 +271,23 @@ _CASES: list[Case] = [
                 "composition": {
                     "method": "cif",
                     "cif": "tests/data/COD-1008123.cif",
+                }
+            }
+        },
+    ),
+    # COD 1008775, urea, 'C H4 N2 O'. Specifically a formula ending in a bare
+    # single-letter symbol: that crashed CoefCalcFromCIF until 2026-09-17, and
+    # the crash was masked by a System.exit(0) that made the build look green.
+    # Keeping it in the corpus means the Python port cannot inherit the bug.
+    Case(
+        "035-composition-cif-single-letter-tail",
+        "A",
+        "CIF whose formula ends in a bare single-letter symbol (urea)",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "cif",
+                    "cif": "tests/data/COD-1008775-urea.cif",
                 }
             }
         },

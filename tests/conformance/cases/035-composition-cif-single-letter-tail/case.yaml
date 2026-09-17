@@ -1,0 +1,5 @@
+case_id: 035-composition-cif-single-letter-tail
+tier: A
+exercises: CIF whose formula ends in a bare single-letter symbol (urea)
+seed: 20260917
+reference_version: 5.0.1090
