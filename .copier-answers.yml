@@ -1,0 +1,11 @@
+# Do not edit - changes here will be overwritten by Copier
+_commit: v1
+_src_path: gh:pydev-guide/pyrepo-copier
+author_email: jdickerson@berkeley.edu
+author_name: Josh Dickerson
+github_username: jdickerson95
+mode: tooling
+module_name: pyraddose_3d
+project_name: pyRADDOSE-3D
+project_short_description: pyTorch port of RADDOSE-3D
+
