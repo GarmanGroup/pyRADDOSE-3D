@@ -1,0 +1,5 @@
+case_id: 042-ddm-bfactor
+tier: A
+exercises: B-factor diffraction decay model
+seed: 20260917
+reference_version: 5.0.1090

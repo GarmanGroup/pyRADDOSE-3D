@@ -1,0 +1,16 @@
+reference_version: 5.0.1090
+jvm: openjdk version "25" 2025-09-16
+seed: 20260917
+case_count: 26
+tolerances:
+  tier_A_relative: 1.0e-05
+  tier_A_ratio_quantities_relative: 0.0001
+  tier_B_relative: 0.05
+notes: Reference values are produced by the Java implementation on the JVM named above.
+  The same Java code varies by ~1e-6 between JVMs, so regenerate deliberately and
+  review the diff.
+excluded:
+  AbsCoefCalc PDB: downloads from RCSB at runtime
+  AbsCoefCalc RDV2: shells out to an unshipped binary
+  ContainerElemental/Mixture: scrape NIST at runtime
+  AbsCoefCalc EXPSM (CIF): needs a .cif the project does not ship

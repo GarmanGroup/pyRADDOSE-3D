@@ -1,0 +1,5 @@
+case_id: 061-wedge-translation
+tier: A
+exercises: crystal translated during rotation
+seed: 20260917
+reference_version: 5.0.1090

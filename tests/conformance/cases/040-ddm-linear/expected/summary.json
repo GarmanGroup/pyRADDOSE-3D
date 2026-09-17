@@ -1,0 +1,20 @@
+[
+  {
+    "wedge_number": 1.0,
+    "average_dwd": 9.446475,
+    "last_dwd": 18.895006,
+    "elastic_yield": 2649638000.0,
+    "diffraction_efficiency": 280489600.0,
+    "ad_wc": 18.898446,
+    "ad_exp_region": 18.898446,
+    "max_dose": 25.155946,
+    "dose_threshold": 13.492963,
+    "abs_en_threshold": 95.0,
+    "tad": 19.453028,
+    "dose_contrast": 1.293164,
+    "used_volume": 100.0,
+    "wedge_absorbed_energy": 8.095007e-05,
+    "dose_inefficiency": 310758802.64783,
+    "dose_inefficiency_pe": 317438814.656836
+  }
+]
