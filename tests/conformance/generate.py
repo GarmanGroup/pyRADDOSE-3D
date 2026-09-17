@@ -122,6 +122,27 @@ def run_reference(root: Path, input_text: str, out_dir: Path) -> None:
             )
 
 
+#: Directives whose argument is a path relative to this repository.
+PATH_DIRECTIVES = ("PDB ", "CIF ", "SeqFile ", "ModelFile ")
+
+REPO_ROOT = HERE.parent.parent
+
+
+def resolve_paths(input_text: str) -> str:
+    """Make repository-relative file paths absolute for the reference run."""
+    out = []
+    for line in input_text.splitlines():
+        for directive in PATH_DIRECTIVES:
+            if line.startswith(directive):
+                keyword, _, value = line.partition(" ")
+                candidate = REPO_ROOT / value.strip()
+                if candidate.is_file():
+                    line = f"{keyword} {candidate}"
+                break
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
 def parse_summary(path: Path) -> list[dict[str, float]]:
     """Parse out-Summary.csv into one dict per wedge."""
     rows = []
@@ -176,9 +197,14 @@ def generate_case(case: Case, root: Path, version: str) -> None:
     experiment = Experiment(**config_for(case))
     experiment.to_yaml(case_dir / "config.yaml")
 
+    # Paths in a config are relative to this repository, but the reference is
+    # run with its own tree as the working directory. Absolutise for the run
+    # only -- the committed config stays portable.
+    input_text = resolve_paths(experiment.to_raddose_txt())
+
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp) / "out"
-        run_reference(root, experiment.to_raddose_txt(), out_dir)
+        run_reference(root, input_text, out_dir)
 
         summary = parse_summary(out_dir / "out-Summary.csv")
         (expected / "summary.json").write_text(
@@ -244,10 +270,26 @@ def main() -> None:
                     "between JVMs, so regenerate deliberately and review the diff."
                 ),
                 "excluded": {
-                    "AbsCoefCalc PDB": "downloads from RCSB at runtime",
                     "AbsCoefCalc RDV2": "shells out to an unshipped binary",
                     "ContainerElemental/Mixture": "scrape NIST at runtime",
-                    "AbsCoefCalc EXPSM (CIF)": "needs a .cif the project does not ship",
+                    "AbsCoefCalc EXPSM (CIF)": (
+                        "needs a small-molecule CIF containing "
+                        "_chemical_formula_sum. A protein mmCIF (dotted tags "
+                        "such as _cell.length_a) is the wrong kind of file for "
+                        "this code path and is rejected with 'The CIF file must "
+                        "contain the chemical sum'."
+                    ),
+                },
+                "keyword_notes": {
+                    "AbsCoefCalc EXP": (
+                        "PDB-based composition. The grammar token *named* PDB "
+                        "matches the literal 'EXP', so 'AbsCoefCalc PDB' can "
+                        "never parse."
+                    ),
+                    "AbsCoefCalc EXPSM": (
+                        "CIF-based composition. The token named CIF matches "
+                        "the literal 'EXPSM'."
+                    ),
                 },
             },
             sort_keys=False,

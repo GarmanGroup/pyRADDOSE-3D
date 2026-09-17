@@ -1,0 +1,13 @@
+# Spell-check configuration.
+#
+# Scientific data files are not prose: a PDB file is full of three-letter
+# residue codes (THR, SER, ...) that look like misspellings. Exclude the test
+# data and the generated corpus rather than allowlisting each one.
+[files]
+extend-exclude = ["tests/data/*", "tests/conformance/cases/*"]
+
+[default.extend-words]
+# Deliberately misspelled in tests/models/test_experiment.py, which checks
+# that a mistyped YAML key is rejected rather than silently ignored.
+dimenions = "dimenions"
+fhwm = "fhwm"

@@ -17,6 +17,7 @@ from pyraddose_3d.models._base import RD3DModel
 __all__ = [
     "AverageComposition",
     "Composition",
+    "PdbComposition",
     "SaxsComposition",
     "SequenceComposition",
     "SmallMoleculeComposition",
@@ -132,9 +133,32 @@ class SequenceComposition(_CellMixin):
     solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
 
 
+class PdbComposition(RD3DModel):
+    """Composition read from a PDB entry (``AbsCoefCalc EXP``).
+
+    Note the keyword is ``EXP``, not ``PDB``: the grammar's token *named* PDB
+    matches the literal "EXP", exactly as the token named CIF matches "EXPSM".
+
+    The unit cell, symmetry and solvent fraction all come from the file, so
+    none of the usual cell parameters apply here.
+
+    Attributes
+    ----------
+    pdb : str
+        Either a path ending in ``.pdb``, read locally, or a four-character
+        PDB code, which the reference implementation downloads from RCSB.
+        Prefer a local path: a downloading test is not reproducible.
+    """
+
+    method: Literal["pdb"] = "pdb"
+    pdb: str
+    solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
+
+
 Composition = Annotated[
     AverageComposition
     | UnitCellComposition
+    | PdbComposition
     | SmallMoleculeComposition
     | SaxsComposition
     | SequenceComposition,

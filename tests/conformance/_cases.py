@@ -244,6 +244,20 @@ _CASES: list[Case] = [
             }
         },
     ),
+    Case(
+        "033-composition-pdb",
+        "A",
+        "composition read from a local PDB file",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "pdb",
+                    "pdb": "tests/data/3I40.pdb",
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            }
+        },
+    ),
     # --- decay models -------------------------------------------------------
     Case(
         "040-ddm-linear",
