@@ -19,7 +19,7 @@ name = "pyRADDOSE-3D"
 dynamic = ["version"]
 description = "pyTorch port of RADDOSE-3D"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }
 authors = [{ name = "Josh Dickerson", email = "jdickerson@berkeley.edu" }]
 # https://pypi.org/classifiers/
@@ -27,15 +27,21 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
 # add your package dependencies here
-dependencies = []
+dependencies = [
+    "torch",
+    # torch warns at import if numpy is absent, and filterwarnings = ["error"]
+    # turns that into a collection error. It is also wanted for file I/O.
+    "numpy",
+    "pydantic",
+    "pyyaml",
+    "types-PyYAML",
+]
 
 # https://peps.python.org/pep-0621/#dependencies-optional-dependencies
 # add dependencies for "extra" features here.  Not dev dependencies.
@@ -75,7 +81,7 @@ pyRADDOSE-3D = { workspace = true }
 # https://docs.astral.sh/ruff
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 src = ["src"]
 fix = true
 # unsafe-fixes = true
@@ -113,19 +119,25 @@ skip-magic-trailing-comma = false  # default is false
 # https://docs.pytest.org/
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = ["--color=yes"]
+addopts = ["--color=yes", "-m", "not slow"]
 testpaths = ["tests"]
+markers = [
+    "slow: long-running test, deselected by default (run with -m slow)",
+    "conformance: compares against reference output from the Java implementation",
+]
+# Warnings are errors. Add narrowly-scoped, commented exceptions here rather
+# than relaxing this -- see Leopard-EM's pyproject.toml for the pattern.
 filterwarnings = ["error"]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
 [tool.mypy]
-files = "src/**/"
+files = ["src"]
 strict = true
 disallow_any_generics = false
 disallow_subclassing_any = false
 show_error_codes = true
 pretty = true
-# plugins = ["pydantic.mypy"]
+plugins = ["pydantic.mypy"]
 
 # # module specific overrides
 # [[tool.mypy.overrides]]

@@ -1,4 +1,4 @@
-"""pyTorch port of RADDOSE-3D"""
+"""A differentiable PyTorch port of RADDOSE-3D."""
 
 from importlib.metadata import PackageNotFoundError, version
 
