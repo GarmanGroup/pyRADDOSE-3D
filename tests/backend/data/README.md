@@ -89,3 +89,45 @@ javac -d /tmp/beam -sourcepath src \
 java -cp /tmp/beam:lib/commons-math3-3.6.1/commons-math3-3.6.1.jar:. \
      se.raddo.raddose3D.DumpBeam > beams.tsv
 ```
+
+
+---
+
+# CoefCalc front-end reference
+
+`coefficients_frontends.tsv` is the output of `DumpCoef2.java`, covering the
+`AbsCoefCalc` routes that `coefficients.tsv` does not: `SmallMole`, `SAXS`
+and `Sequence`. Same tags as that file, plus:
+
+| tag | contents |
+|---|---|
+| `MONOMERS` | monomer count SAXS derived from the concentration |
+| `RESIDUES` | amino acids, RNA and DNA counted from the sequence file |
+
+`sequences/` holds the FASTA files the sequence cases were built from. They
+are inputs to both the Java generator and the Python test.
+
+Two cases exist to pin defects rather than to check arithmetic:
+
+- `smallmole-solv` is `smallmole` plus 500 mM sodium, and contains no sodium.
+  `CoefCalcSmallMolecules` guards `calculateSolventWater` behind a hardcoded
+  `boolean fillRestWithWater = false`, so `SolventHeavyConc` is accepted and
+  discarded.
+- `saxs-rna` and `saxs-dna` use equal counts of each nucleic acid and give
+  *different* monomer counts, because `calculateNumMonomers` is declared
+  `(residues, DNA, RNA)` and called `(residues, RNA, DNA)`.
+
+## Residue table
+
+`residues.tsv` (vendored into the package, not here) is `DumpResidues.java`
+run against `ResidueDatabase.createResidueMap()`, plus the single-letter to
+three-character key conversion for each sequence type. Dumped rather than
+transcribed: the Java source is 815 lines of hand-written constants.
+
+Regenerate as for the other dumpers. `DumpCoef2` takes the two FASTA paths as
+arguments:
+
+```
+java -cp /tmp/coef2:. se.raddo.raddose3D.DumpCoef2 \
+     seq_test.fasta seq_dna.fasta > coefficients_frontends.tsv
+```

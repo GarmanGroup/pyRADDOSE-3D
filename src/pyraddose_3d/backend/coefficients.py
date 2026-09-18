@@ -46,6 +46,8 @@ if TYPE_CHECKING:
     from pyraddose_3d.backend.composition import Composition
 
 __all__ = [
+    "AVERAGE_COEFFICIENTS",
+    "AVERAGE_DENSITY",
     "MaterialCoefficients",
     "density",
     "material_coefficients",
@@ -231,3 +233,26 @@ def density(composition: Composition) -> Array:
     )
     mass = xp.sum(composition.counts * weights)
     return mass * _MASS_TO_CELL_VOLUME / (composition.cell_volume * _PER_MM_TO_PER_UM)
+
+
+#: Density in g/cm^3 that goes with :data:`AVERAGE_COEFFICIENTS`.
+AVERAGE_DENSITY = 1.2
+
+AVERAGE_COEFFICIENTS = MaterialCoefficients(
+    absorption=0.000237,
+    attenuation=0.000281,
+    elastic=0.00001799,
+    inelastic=0.0,
+)
+"""Fixed coefficients for a nominal protein crystal, in inverse micrometres.
+
+Ports ``CoefCalcAverage``, which RADDOSE-3D selects for ``AbsCoefCalc Dummy``
+or ``Average``. There is no composition and no unit cell: these are constants,
+and in particular they do **not** depend on photon energy, so a dose
+calculated this way is the same at 6 keV as at 20 keV. That is a property of
+the model, not an oversight, but it makes these the wrong coefficients for
+anything but a rough first look.
+
+``inelastic`` is zero because the Java returns zero for it, rather than
+because Compton scattering is absent: the constant was never fitted.
+"""

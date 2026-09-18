@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from pyraddose_3d.backend._array import array_namespace, promote
 from pyraddose_3d.backend.elements import ATOMIC_MASS_UNIT, element_database
+from pyraddose_3d.backend.residues import ResidueType, residue_database
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -41,6 +42,10 @@ __all__ = [
     "Composition",
     "Macromolecule",
     "estimate_solvent_fraction",
+    "saxs_monomer_count",
+    "sequence_composition",
+    "sequence_residue_counts",
+    "small_molecule_composition",
     "unit_cell_composition",
 ]
 
@@ -85,6 +90,20 @@ _PER_AMINO_ACID = {"C": 5.0, "N": 1.35, "O": 1.5, "H": 8.0}
 _PER_RNA_NUCLEOTIDE = {"C": 9.5, "N": 3.75, "O": 7.0, "H": 11.25, "P": 1.0}
 _PER_DNA_NUCLEOTIDE = {"C": 9.75, "N": 4.0, "O": 6.0, "H": 11.75, "P": 1.0}
 _PER_CARBOHYDRATE = {"C": 6.0, "O": 5.0, "H": 11.0}
+
+#: Average residue masses used only by the SAXS monomer-count calculation.
+#: They differ from the ones above -- 339.5 and 327.0 rather than 321.0 and
+#: 312.0 -- because CoefCalcSAXS carries its own copies.
+_SAXS_AMINO_ACID_MASS = 110.0
+_SAXS_RNA_MASS = 339.5
+_SAXS_DNA_MASS = 327.0
+_SAXS_CARBOHYDRATE_MASS = 180.0
+
+#: Default edge length for a SAXS "unit cell", which is a box of solution
+#: rather than a crystallographic cell.
+SAXS_DEFAULT_CELL_LENGTH = 1000.0
+
+_ANGSTROM_CUBED_TO_LITRE = 1e-27
 
 
 @dataclass(frozen=True)
@@ -202,6 +221,53 @@ def estimate_solvent_fraction(
     return 1 - protein - rna - dna - hetatm - carbohydrate
 
 
+def _add_solvent(
+    add: Any,
+    cell_volume: Array,
+    solvent_fraction: Array,
+    solvent_concentrations: Mapping[str, Array] | None,
+) -> None:
+    """Add solute and water atoms to a cell being assembled.
+
+    Ports ``calculateSolventWater``. Solutes are counted first, because they
+    displace water rather than adding to it.
+
+    Parameters
+    ----------
+    add : Any
+        Callback taking a chemical symbol and an amount.
+    cell_volume : Array
+        Cubic Angstroms.
+    solvent_fraction : Array
+        Fraction of the cell that is solvent.
+    solvent_concentrations : Mapping[str, Array] | None
+        Solute concentrations in millimoles per litre.
+    """
+    non_water_atoms: Array = 0.0
+    for symbol, concentration in (solvent_concentrations or {}).items():
+        atom_count = (
+            concentration * AVOGADRO * cell_volume * solvent_fraction * 1e-3 * 1e-27
+        )
+        add(symbol, atom_count)
+        non_water_atoms = non_water_atoms + atom_count
+
+    xp = array_namespace(cell_volume, solvent_fraction, non_water_atoms)
+    water_molecules = (
+        WATER_CONCENTRATION
+        * AVOGADRO
+        / _UNITS_PER_MILLI
+        * cell_volume
+        * (1 / _MASS_TO_CELL_VOLUME)
+        * solvent_fraction
+        - non_water_atoms
+    )
+    # More solute than the solvent can hold. The Java clamps rather than
+    # letting a negative water count subtract atoms from the cell.
+    water_molecules = xp.where(water_molecules < 0, 0.0, water_molecules)
+    add("H", water_molecules * 2)
+    add("O", water_molecules)
+
+
 def unit_cell_composition(
     cell_volume: Array,
     macromolecule: Macromolecule,
@@ -261,30 +327,7 @@ def unit_cell_composition(
     for symbol, amount in (hetero_atoms or {}).items():
         add(symbol, amount)
 
-    # Solutes first: they displace water, so the water count depends on them.
-    non_water_atoms: Array = 0.0
-    for symbol, concentration in (solvent_concentrations or {}).items():
-        atom_count = (
-            concentration * AVOGADRO * cell_volume * solvent_fraction * 1e-3 * 1e-27
-        )
-        add(symbol, atom_count)
-        non_water_atoms = non_water_atoms + atom_count
-
-    xp = array_namespace(cell_volume, solvent_fraction, non_water_atoms)
-    water_molecules = (
-        WATER_CONCENTRATION
-        * AVOGADRO
-        / _UNITS_PER_MILLI
-        * cell_volume
-        * (1 / _MASS_TO_CELL_VOLUME)
-        * solvent_fraction
-        - non_water_atoms
-    )
-    # More solute than the solvent can hold. The Java clamps rather than
-    # letting a negative water count subtract atoms from the cell.
-    water_molecules = xp.where(water_molecules < 0, 0.0, water_molecules)
-    add("H", water_molecules * 2)
-    add("O", water_molecules)
+    _add_solvent(add, cell_volume, solvent_fraction, solvent_concentrations)
 
     residues = (
         (_PER_AMINO_ACID, macromolecule.amino_acids),
@@ -309,3 +352,273 @@ def unit_cell_composition(
         cell_volume=cell_volume,
         solvent_fraction=solvent_fraction,
     )
+
+
+def small_molecule_composition(
+    cell_volume: Array,
+    atoms: Mapping[str, Array],
+    monomers: int = 1,
+) -> Composition:
+    """Assemble a small-molecule unit cell from explicit atom counts.
+
+    Ports ``CoefCalcSmallMolecules``. There is no residue model and no
+    solvent: a small-molecule crystal is its atoms and nothing else.
+
+    Parameters
+    ----------
+    cell_volume : Array
+        Unit cell volume in cubic Angstroms.
+    atoms : Mapping[str, Array]
+        Atoms per monomer, keyed by chemical symbol.
+    monomers : int, optional
+        Copies per unit cell. Zero is treated as one, as the Java does.
+
+    Returns
+    -------
+    Composition
+        Elements and counts per unit cell.
+
+    Notes
+    -----
+    RADDOSE-3D accepts ``SolventHeavyConc`` alongside ``AbsCoefCalc
+    SmallMole`` and then **silently ignores it**. The concentrations are
+    collected into ``solventConcentration``, but the only thing that reads
+    that map is ``calculateSolventWater``, which ``CoefCalcSmallMolecules``
+    guards behind a local ``boolean fillRestWithWater = false`` -- a constant,
+    with the comment "There are vacuums in small molecule crystals". So no
+    solvent atom ever reaches the cell. This port therefore takes no solvent
+    argument at all, rather than accepting one and discarding it.
+    """
+    database = element_database()
+    if monomers == 0:
+        monomers = 1
+
+    counts: dict[str, Array] = {}
+    for symbol, per_monomer in atoms.items():
+        name = database.by_symbol(symbol).name
+        counts[name] = counts.get(name, 0.0) + per_monomer * monomers
+
+    elements = sorted(
+        (database.by_symbol(s) for s in counts), key=lambda e: e.atomic_number
+    )
+    xp, values = promote(*(counts[e.name] for e in elements))
+    return Composition(
+        elements=tuple(elements),
+        counts=xp.stack(values) if values else xp.asarray([]),
+        cell_volume=cell_volume,
+    )
+
+
+def saxs_monomer_count(
+    cell_volume: Array,
+    protein_concentration: Array,
+    macromolecule: Macromolecule,
+) -> int:
+    """How many monomers a SAXS sample volume contains.
+
+    A SAXS "unit cell" is a box of solution rather than a crystallographic
+    cell, so the number of molecules in it follows from the concentration.
+
+    Parameters
+    ----------
+    cell_volume : Array
+        Volume of the box in cubic Angstroms.
+    protein_concentration : Array
+        Concentration in grams per litre.
+    macromolecule : Macromolecule
+        Residue counts for one monomer, used to get its molecular weight.
+
+    Returns
+    -------
+    int
+        Monomers in the box, never fewer than one.
+
+    Raises
+    ------
+    ValueError
+        If the residue counts give a non-positive molecular weight.
+
+    Notes
+    -----
+    **Reproduces a defect.** ``CoefCalcSAXS`` calls its own
+    ``calculateNumMonomers(numResidues, numRNA, numDNA, ...)`` against a
+    signature declared ``(numberOfResidues, numberOfDNAResidues,
+    numberOfRNAResidues, ...)``. The RNA count therefore lands in the DNA
+    parameter and vice versa, and each is multiplied by the other's average
+    mass -- 327.0 for RNA and 339.5 for DNA, when the constants say the
+    opposite.
+
+    It is reproduced because it changes the computed monomer count, and so
+    the dose, for any SAXS sample containing nucleic acid: not reproducing it
+    would make the port disagree with RADDOSE-3D on those cases and make a
+    port error indistinguishable from this fix. Worth about 3.8% of the
+    nucleic-acid contribution to molecular weight. Fix in both at once.
+    """
+    swapped_rna = macromolecule.dna_nucleotides
+    swapped_dna = macromolecule.rna_nucleotides
+    molecular_weight = (
+        _SAXS_AMINO_ACID_MASS * macromolecule.amino_acids
+        + _SAXS_DNA_MASS * swapped_dna
+        + _SAXS_RNA_MASS * swapped_rna
+        + _SAXS_CARBOHYDRATE_MASS * macromolecule.carbohydrate_residues
+    )
+    if molecular_weight <= 0:
+        raise ValueError(
+            "SAXS requires a positive monomer molecular weight. Set at least "
+            "one of amino_acids, rna_nucleotides, dna_nucleotides or "
+            "carbohydrate_residues to a non-zero value."
+        )
+
+    molarity = protein_concentration / molecular_weight
+    volume_litres = _ANGSTROM_CUBED_TO_LITRE * cell_volume
+    count = round(float(molarity * volume_litres * AVOGADRO))
+    return max(count, 1)
+
+
+def sequence_residue_counts(
+    sequence: str, residue_type: ResidueType = ResidueType.PROTEIN
+) -> dict[str, float]:
+    """Atom counts for one copy of a sequence.
+
+    Ports the sequence-parsing half of ``CoefCalcFromSequence``: rather than
+    approximating every residue as an average one, look each up and add its
+    real composition.
+
+    Parameters
+    ----------
+    sequence : str
+        Single-letter residue codes. Whitespace is ignored.
+    residue_type : ResidueType, optional
+        Whether the sequence is protein, RNA or DNA. The same letter means
+        different residues in each.
+
+    Returns
+    -------
+    dict[str, float]
+        Atoms per copy, keyed by chemical symbol.
+
+    Raises
+    ------
+    KeyError
+        If a character does not name a residue of that type.
+    """
+    database = residue_database()
+    counts: dict[str, float] = {}
+    for character in sequence:
+        if character.isspace():
+            continue
+        for symbol, number in database.by_letter(character, residue_type).atoms.items():
+            counts[symbol] = counts.get(symbol, 0.0) + number
+    return counts
+
+
+def sequence_composition(
+    cell_volume: Array,
+    sequence: str,
+    *,
+    residue_type: ResidueType = ResidueType.PROTEIN,
+    monomers: int = 1,
+    heavy_protein_atoms: Mapping[str, Array] | None = None,
+    solvent_concentrations: Mapping[str, Array] | None = None,
+    solvent_fraction: Array | None = None,
+    carbohydrate_residues: int = 0,
+) -> Composition:
+    """Assemble a unit cell from an actual sequence.
+
+    Ports ``CoefCalcFromSequence``. Where :func:`unit_cell_composition`
+    approximates every residue as an average one, this looks each up and adds
+    its real atoms, so a cysteine-rich protein gets its sulphur.
+
+    Parameters
+    ----------
+    cell_volume : Array
+        Unit cell volume in cubic Angstroms.
+    sequence : str
+        Single-letter residue codes. Whitespace is ignored.
+    residue_type : ResidueType, optional
+        Whether the sequence is protein, RNA or DNA.
+    monomers : int, optional
+        Copies per unit cell.
+    heavy_protein_atoms : Mapping[str, Array], optional
+        Extra atoms bound to the macromolecule, per monomer.
+    solvent_concentrations : Mapping[str, Array], optional
+        Solute concentrations in millimoles per litre.
+    solvent_fraction : Array, optional
+        Estimated from the residue counts when not given.
+    carbohydrate_residues : int, optional
+        Sugar residues per monomer, added as average compositions since a
+        sequence file cannot express them.
+
+    Returns
+    -------
+    Composition
+        Elements and counts per unit cell, ordered by atomic number.
+
+    Notes
+    -----
+    Order matters and follows the Java. Solvent water is computed *before*
+    the macromolecular atoms are multiplied up by ``monomers``, and the
+    multiplication applies only to the macromolecule -- so solvent is counted
+    once per cell while protein is counted once per copy.
+
+    ``carbohydrate_residues`` contributes atoms but, as in the Java, is not
+    passed to the solvent-fraction estimate: ``CoefCalcFromSequence`` never
+    calls ``setNumCarb``, so ``calculateSolventFractionFromNums`` sees zero
+    carbohydrate however many are specified.
+    """
+    database = element_database()
+    residue_counts = sequence_residue_counts(sequence, residue_type)
+
+    per_monomer: dict[str, Array] = {}
+
+    def add_macromolecular(symbol: str, amount: Array) -> None:
+        name = database.by_symbol(symbol).name
+        per_monomer[name] = per_monomer.get(name, 0.0) + amount
+
+    for symbol, amount in (heavy_protein_atoms or {}).items():
+        add_macromolecular(symbol, amount)
+    for symbol, amount in residue_counts.items():
+        add_macromolecular(symbol, amount)
+    for symbol, per_one in _PER_CARBOHYDRATE.items():
+        if carbohydrate_residues:
+            add_macromolecular(symbol, per_one * carbohydrate_residues)
+
+    residues = _residue_totals(sequence, residue_type, monomers)
+    if solvent_fraction is None:
+        solvent_fraction = estimate_solvent_fraction(cell_volume, residues)
+
+    counts: dict[str, Array] = {}
+
+    def add(symbol: str, amount: Array) -> None:
+        name = database.by_symbol(symbol).name
+        counts[name] = counts.get(name, 0.0) + amount
+
+    _add_solvent(add, cell_volume, solvent_fraction, solvent_concentrations)
+
+    # Only the macromolecule scales with the number of copies; the solvent
+    # fills one cell however many copies are in it.
+    for name, amount in per_monomer.items():
+        add(name, amount * monomers)
+
+    elements = sorted(
+        (database.by_symbol(s) for s in counts), key=lambda e: e.atomic_number
+    )
+    xp, values = promote(*(counts[e.name] for e in elements))
+    return Composition(
+        elements=tuple(elements),
+        counts=xp.stack(values),
+        cell_volume=cell_volume,
+        solvent_fraction=solvent_fraction,
+    )
+
+
+def _residue_totals(
+    sequence: str, residue_type: ResidueType, monomers: int
+) -> Macromolecule:
+    """Count residues in a sequence, as a :class:`Macromolecule`."""
+    length = sum(1 for c in sequence if not c.isspace())
+    if residue_type is ResidueType.PROTEIN:
+        return Macromolecule(monomers=monomers, amino_acids=length)
+    if residue_type is ResidueType.RNA:
+        return Macromolecule(monomers=monomers, rna_nucleotides=length)
+    return Macromolecule(monomers=monomers, dna_nucleotides=length)

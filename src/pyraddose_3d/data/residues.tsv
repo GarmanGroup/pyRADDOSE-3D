@@ -1,0 +1,212 @@
+# RES key identifier type C H O N S Se P molecular_weight
+RES	  A	  A	2	10	12	6	5	0	0	1	347.20000000000000
+RES	  C	  C	2	9	12	7	3	0	0	1	323.20000000000000
+RES	  G	  G	2	10	12	7	5	0	0	1	363.20000000000000
+RES	  U	  U	2	9	11	8	2	0	0	1	324.20000000000000
+RES	 DA	 DA	3	10	12	5	5	0	0	1	331.20000000000000
+RES	 DC	 DC	3	9	12	6	3	0	0	1	307.20000000000000
+RES	 DG	 DG	3	10	12	6	5	0	0	1	347.20000000000000
+RES	 DT	 DT	3	10	11	7	2	0	0	1	322.20000000000000
+RES	ALA	ALA	1	3	7	2	1	0	0	0	89.090000000000000
+RES	ARG	ARG	1	6	15	1	4	0	0	0	174.20000000000000
+RES	ASN	ASN	1	4	8	2	2	0	0	0	132.12000000000000
+RES	ASP	ASP	1	4	5	3	1	0	0	0	133.10000000000000
+RES	CYS	CYS	1	3	5	1	1	1	0	0	121.16000000000000
+RES	GLN	GLN	1	5	8	2	2	0	0	0	146.15000000000000
+RES	GLU	GLU	1	5	7	3	1	0	0	0	147.13000000000000
+RES	GLY	GLY	1	2	3	1	1	0	0	0	75.070000000000000
+RES	HIS	HIS	1	6	7	1	3	0	0	0	155.16000000000000
+RES	ILE	ILE	1	6	11	1	1	0	0	0	131.17000000000000
+RES	LEU	LEU	1	6	11	1	1	0	0	0	131.17000000000000
+RES	LYS	LYS	1	6	12	1	2	0	0	0	146.19000000000000
+RES	MET	MET	1	5	9	1	1	1	0	0	149.21000000000000
+RES	MSE	MSE	1	5	9	1	1	0	1	0	196.11000000000000
+RES	PHE	PHE	1	9	9	1	1	0	0	0	165.19000000000000
+RES	PRO	PRO	1	5	7	1	1	0	0	0	115.13000000000000
+RES	SER	SER	1	3	5	2	1	0	0	0	105.09000000000000
+RES	THR	THR	1	4	7	2	1	0	0	0	119.12000000000000
+RES	TRP	TRP	1	11	10	1	2	0	0	0	204.23000000000000
+RES	TYR	TYR	1	9	9	2	1	0	0	0	181.19000000000000
+RES	VAL	VAL	1	5	9	1	1	0	0	0	117.15000000000000
+LETTER	1	A	ALA	OK
+LETTER	1	B	ASN	OK
+LETTER	1	C	CYS	OK
+LETTER	1	D	ASP	OK
+LETTER	1	E	GLU	OK
+LETTER	1	F	PHE	OK
+LETTER	1	G	GLY	OK
+LETTER	1	H	HIS	OK
+LETTER	1	I	ILE	OK
+LETTER	1	J	LEU	OK
+LETTER	1	K	LYS	OK
+LETTER	1	L	LEU	OK
+LETTER	1	M	MET	OK
+LETTER	1	N	ASN	OK
+**************WARNING**************
+Amino acid residue id: "O" unrecognised!
+If you are hoping this will be interpreted as PyrrolysinePlease contact us:
+E-mail: elspeth.garman@bioch.ox.ac.uk
+**************WARNING**************
+Amino acid residue id: "O" unrecognised!
+If you are hoping this will be interpreted as PyrrolysinePlease contact us:
+E-mail: elspeth.garman@bioch.ox.ac.uk
+LETTER	1	O		UNKNOWN
+LETTER	1	P	PRO	OK
+LETTER	1	Q	GLN	OK
+LETTER	1	R	ARG	OK
+LETTER	1	S	SER	OK
+LETTER	1	T	THR	OK
+**************WARNING**************
+Amino acid residue id: "U" unrecognised!
+If you are hoping this will be interpreted as SelenocysteinePlease contact us:
+E-mail: elspeth.garman@bioch.ox.ac.uk
+**************WARNING**************
+Amino acid residue id: "U" unrecognised!
+If you are hoping this will be interpreted as SelenocysteinePlease contact us:
+E-mail: elspeth.garman@bioch.ox.ac.uk
+LETTER	1	U		UNKNOWN
+LETTER	1	V	VAL	OK
+LETTER	1	W	TRP	OK
+LETTER	1	X	ALA	OK
+LETTER	1	Y	TYR	OK
+LETTER	1	Z	GLU	OK
+LETTER	2	A	  A	OK
+LETTER	2	B	  U	OK
+LETTER	2	C	  C	OK
+LETTER	2	D	  G	OK
+**************WARNING**************
+Nucleic acid residue id: "E" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "E" unrecognised!
+LETTER	2	E		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "F" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "F" unrecognised!
+LETTER	2	F		UNKNOWN
+LETTER	2	G	  G	OK
+LETTER	2	H	  U	OK
+**************WARNING**************
+Nucleic acid residue id: "I" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "I" unrecognised!
+LETTER	2	I		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "J" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "J" unrecognised!
+LETTER	2	J		UNKNOWN
+LETTER	2	K	  G	OK
+**************WARNING**************
+Nucleic acid residue id: "L" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "L" unrecognised!
+LETTER	2	L		UNKNOWN
+LETTER	2	M	  A	OK
+LETTER	2	N	  C	OK
+**************WARNING**************
+Nucleic acid residue id: "O" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "O" unrecognised!
+LETTER	2	O		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "P" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "P" unrecognised!
+LETTER	2	P		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "Q" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "Q" unrecognised!
+LETTER	2	Q		UNKNOWN
+LETTER	2	R	  G	OK
+LETTER	2	S	  C	OK
+**************WARNING**************
+RNA residue id: "T" Does not exist
+**************WARNING**************
+RNA residue id: "T" Does not exist
+LETTER	2	T		UNKNOWN
+LETTER	2	U	  U	OK
+LETTER	2	V	  A	OK
+LETTER	2	W	  U	OK
+**************WARNING**************
+RNA residue id: "X" Does not exist
+**************WARNING**************
+RNA residue id: "X" Does not exist
+LETTER	2	X		UNKNOWN
+LETTER	2	Y	  C	OK
+**************WARNING**************
+RNA residue id: "Z" Does not exist
+**************WARNING**************
+RNA residue id: "Z" Does not exist
+LETTER	2	Z		UNKNOWN
+LETTER	3	A	 DA	OK
+LETTER	3	B	 DT	OK
+LETTER	3	C	 DC	OK
+LETTER	3	D	 DG	OK
+**************WARNING**************
+Nucleic acid residue id: "E" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "E" unrecognised!
+LETTER	3	E		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "F" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "F" unrecognised!
+LETTER	3	F		UNKNOWN
+LETTER	3	G	 DG	OK
+LETTER	3	H	 DT	OK
+**************WARNING**************
+Nucleic acid residue id: "I" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "I" unrecognised!
+LETTER	3	I		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "J" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "J" unrecognised!
+LETTER	3	J		UNKNOWN
+LETTER	3	K	 DG	OK
+**************WARNING**************
+Nucleic acid residue id: "L" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "L" unrecognised!
+LETTER	3	L		UNKNOWN
+LETTER	3	M	 DA	OK
+LETTER	3	N	 DC	OK
+**************WARNING**************
+Nucleic acid residue id: "O" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "O" unrecognised!
+LETTER	3	O		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "P" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "P" unrecognised!
+LETTER	3	P		UNKNOWN
+**************WARNING**************
+Nucleic acid residue id: "Q" unrecognised!
+**************WARNING**************
+Nucleic acid residue id: "Q" unrecognised!
+LETTER	3	Q		UNKNOWN
+LETTER	3	R	 DG	OK
+LETTER	3	S	 DC	OK
+LETTER	3	T	 DT	OK
+**************WARNING**************
+DNA residue id: "U" Does not exist
+**************WARNING**************
+DNA residue id: "U" Does not exist
+LETTER	3	U		UNKNOWN
+LETTER	3	V	 DA	OK
+LETTER	3	W	 DT	OK
+**************WARNING**************
+RNA residue id: "X" Does not exist
+**************WARNING**************
+RNA residue id: "X" Does not exist
+LETTER	3	X		UNKNOWN
+LETTER	3	Y	 DC	OK
+**************WARNING**************
+RNA residue id: "Z" Does not exist
+**************WARNING**************
+RNA residue id: "Z" Does not exist
+LETTER	3	Z		UNKNOWN

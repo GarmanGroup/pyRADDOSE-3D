@@ -171,11 +171,16 @@ class GaussianBeam:
         )
         return xp.sum(strip) * width
 
-    def _inside_aperture(self, x: Array, y: Array) -> Array:
-        """Whether a point passes the aperture. Only called when there is one."""
-        xp, (x, y, half_x, half_y) = promote(
-            x, y, self.collimation_x / 2, self.collimation_y / 2
-        )
+    def _inside_aperture(
+        self, x: Array, y: Array, half_x: Array, half_y: Array
+    ) -> Array:
+        """Whether a point passes the aperture.
+
+        Takes the aperture half-widths rather than reading them from the
+        beam, because it is only meaningful when there is an aperture and
+        the caller has already established that.
+        """
+        xp, (x, y, half_x, half_y) = promote(x, y, half_x, half_y)
         if self.circular:
             return (x / half_x) ** 2 + (y / half_y) ** 2 <= 1
         return (xp.abs(x) <= half_x) & (xp.abs(y) <= half_y)
@@ -208,7 +213,10 @@ class GaussianBeam:
         profile = _normal_pdf(shifted, sigma_x) * _normal_pdf(y, sigma_y)
         if self.collimation_x is None or self.collimation_y is None:
             return profile * scale
-        return xp.where(self._inside_aperture(shifted, y), profile * scale, 0.0)
+        inside = self._inside_aperture(
+            shifted, y, self.collimation_x / 2, self.collimation_y / 2
+        )
+        return xp.where(inside, profile * scale, 0.0)
 
     @property
     def minimum_dimension(self) -> Array:
