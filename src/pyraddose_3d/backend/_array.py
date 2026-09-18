@@ -33,7 +33,7 @@ import numpy as np
 if TYPE_CHECKING:
     from types import ModuleType
 
-__all__ = ["array_namespace", "erf", "is_torch"]
+__all__ = ["array_namespace", "erf", "is_torch", "promote"]
 
 
 def is_torch(x: Any) -> bool:
@@ -104,3 +104,38 @@ def erf(x: Any) -> Any:
     from scipy.special import erf as _erf
 
     return _erf(x)
+
+
+def promote(*values: Any) -> tuple[ModuleType, tuple[Any, ...]]:
+    """Return the namespace for ``values``, and ``values`` within it.
+
+    NumPy functions accept Python floats wherever they accept arrays; torch
+    functions do not, so ``torch.cos(90.0)`` raises where ``numpy.cos(90.0)``
+    is fine. Any function that mixes traced arrays with plain-float defaults
+    -- an angle defaulting to 90 degrees, say -- needs its arguments brought
+    into one type first.
+
+    Scalars take the dtype of the first tensor among ``values``, so a float32
+    calculation is not silently widened.
+
+    Parameters
+    ----------
+    *values : Any
+        Arrays, tensors and scalars destined for the same expression.
+
+    Returns
+    -------
+    tuple[ModuleType, tuple[Any, ...]]
+        The namespace, and the values converted where needed. Under NumPy
+        the values are returned untouched.
+    """
+    xp = array_namespace(*values)
+    if xp is np:
+        return xp, values
+
+    import torch
+
+    dtype = next((v.dtype for v in values if is_torch(v)), None)
+    return xp, tuple(
+        v if is_torch(v) else torch.as_tensor(v, dtype=dtype) for v in values
+    )

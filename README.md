@@ -6,7 +6,34 @@
 [![CI](https://github.com/jdickerson95/pyRADDOSE-3D/actions/workflows/ci.yml/badge.svg)](https://github.com/jdickerson95/pyRADDOSE-3D/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/jdickerson95/pyRADDOSE-3D/branch/main/graph/badge.svg)](https://codecov.io/gh/jdickerson95/pyRADDOSE-3D)
 
-pyTorch port of RADDOSE-3D
+A Python port of [RADDOSE-3D](https://github.com/GarmanGroup/RADDOSE-3D), which
+models radiation dose in macromolecular crystallography.
+
+NumPy by default, so it installs at ~100 MB. Install `pyRADDOSE-3D[torch]` and
+the same code runs on PyTorch, making the deterministic dose calculation
+differentiable -- so a data-collection strategy can be optimised by gradient
+descent rather than by scanning.
+
+Conformance with the Java is a tested property, not a claim: each module is
+checked against reference values generated from RADDOSE-3D itself, and the
+achieved agreement is recorded rather than merely asserted.
+
+## Attribution
+
+This is a derivative work of RADDOSE-3D, by the Garman Group at the University
+of Oxford and contributors. If you use it, cite the original:
+
+> Zeldin, O. B., Gerstel, M. and Garman, E. F. (2013). *RADDOSE-3D: time- and
+> space-resolved modelling of dose in macromolecular crystallography*.
+> J. Appl. Cryst. **46**, 1225-1230. doi:10.1107/S0021889813011461
+
+`src/pyraddose_3d/data/MuCalcConstants.txt` is taken unmodified from
+RADDOSE-3D. It holds Pathikrit Bandyopadhyay's parameterisation of the
+McMaster tables of X-ray cross-sections.
+
+Numerical behaviour is deliberately reproduced as-is, including several known
+quirks, each marked in the source. Where the port and the Java disagree, the
+Java is the specification until a change is made to both.
 
 ## Development
 

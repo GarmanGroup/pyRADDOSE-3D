@@ -3,11 +3,24 @@
 # Scientific data files are not prose: a PDB file is full of three-letter
 # residue codes (THR, SER, ...) that look like misspellings. Exclude the test
 # data and the generated corpus rather than allowlisting each one.
+# MuCalcConstants.txt and the Java reference sweeps are tables of element
+# symbols: BA (barium), ND (neodymium), IN, NO and friends all read as
+# misspellings.
 [files]
-extend-exclude = ["tests/data/*", "tests/conformance/cases/*"]
+extend-exclude = [
+    "tests/data/*",
+    "tests/conformance/cases/*",
+    "tests/backend/data/*",
+    "src/pyraddose_3d/data/*",
+]
 
 [default.extend-words]
 # Deliberately misspelled in tests/models/test_experiment.py, which checks
 # that a mistyped YAML key is rejected rather than silently ignored.
 dimenions = "dimenions"
 fhwm = "fhwm"
+
+# csrri.iit.edu, the source of the published cross-section values.
+iit = "iit"
+# "mis-selected", in a docstring about branch selection.
+mis = "mis"

@@ -32,3 +32,30 @@ Run from the RADDOSE-3D root, so that `constants/MuCalcConstants.txt` resolves.
 
 Regenerating must be a reviewable diff. A change here is a claim that the
 Java's behaviour changed on purpose.
+
+
+---
+
+# CoefCalc reference
+
+`coefficients.tsv` is the output of `DumpCoef.java`: six compositions built
+through `CoefCalcFromParams`, each dumped as
+
+| tag | contents |
+|---|---|
+| `CASE` | cell edges and angles |
+| `CELLVOL` | unit cell volume, cubic Angstroms |
+| `DENSITY` | g/cm^3 |
+| `SOLFRAC` | solvent fraction |
+| `ATOMS` | one row per element: Z, symbol, atoms per unit cell |
+| `COEF` | energy, then absorption / attenuation / elastic / inelastic, 1/um |
+
+Committed uncompressed: it is small, and a reference whose diffs are meant to
+be reviewed should be readable in one.
+
+The `ATOMS` rows are an input to the Python test, not an expectation --
+building a composition from residue counts is a later module. Given the same
+atoms, the test checks that the same coefficients come out. `SOLFRAC` is
+recorded for when that module lands and is not yet asserted.
+
+Regenerate as for the element sweep, substituting `DumpCoef`.

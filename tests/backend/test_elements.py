@@ -206,7 +206,10 @@ def test_matches_java_across_every_element_and_energy(db: ElementDatabase) -> No
                 continue
             rel = abs(value - want) / abs(want) if want else abs(value)
             if rel > worst:
-                worst, worst_at = rel, f"{name} for {row['name']} at {row['energy']} keV"
+                worst, worst_at = (
+                    rel,
+                    f"{name} for {row['name']} at {row['energy']} keV",
+                )
 
     assert worst < 1e-9, f"worst relative deviation {worst:.3e} at {worst_at}"
 

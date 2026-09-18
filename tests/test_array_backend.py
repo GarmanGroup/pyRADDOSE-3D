@@ -11,7 +11,7 @@ import math
 import numpy as np
 import pytest
 
-from pyraddose_3d.backend._array import array_namespace, erf, is_torch
+from pyraddose_3d.backend._array import array_namespace, erf, is_torch, promote
 
 torch = pytest.importorskip("torch", reason="torch is an optional extra")
 
@@ -104,3 +104,33 @@ def test_widening_the_aperture_admits_more_beam() -> None:
     ).backward()
     assert coll_x.grad.item() > 0, "opening the slits must admit more beam"
     assert fwhm_x.grad.item() < 0, "a broader beam must lose more to the slits"
+
+
+def test_promote_leaves_numpy_untouched() -> None:
+    xp, values = promote(1.0, np.float64(2.0))
+    assert xp is np
+    assert values == (1.0, np.float64(2.0))
+
+
+def test_promote_converts_scalars_for_torch() -> None:
+    """The bug this exists for: torch.cos rejects a Python float, so a
+    function with a float default such as `angle=90.0` breaks the moment one
+    of its other arguments is a tensor.
+    """
+    xp, (_tensor, scalar) = promote(torch.tensor(1.0, dtype=torch.float64), 90.0)
+    assert xp is torch
+    assert is_torch(scalar)
+    assert torch.cos(scalar).item() == pytest.approx(math.cos(90.0))
+
+
+def test_promote_keeps_the_tensor_dtype() -> None:
+    """A float32 calculation must not be silently widened to float64."""
+    _, (_tensor, scalar) = promote(torch.tensor(1.0, dtype=torch.float32), 2.0)
+    assert scalar.dtype == torch.float32
+
+
+def test_promote_does_not_detach_gradients() -> None:
+    leaf = torch.tensor(3.0, dtype=torch.float64, requires_grad=True)
+    _, (promoted, _) = promote(leaf, 1.0)
+    assert promoted is leaf
+    assert promoted.requires_grad

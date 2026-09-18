@@ -334,9 +334,7 @@ class ElementDatabase:
     """
 
     def __init__(self) -> None:
-        text = (
-            resources.files(_DATA_PACKAGE).joinpath(_DATA_FILE).read_text("ascii")
-        )
+        text = resources.files(_DATA_PACKAGE).joinpath(_DATA_FILE).read_text("ascii")
         self._by_number: dict[int, Element] = {}
         self._by_symbol: dict[str, Element] = {}
         for line in text.splitlines():
