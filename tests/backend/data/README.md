@@ -146,11 +146,13 @@ Database small-molecule entries. Same tags as the other CoefCalc fixtures.
 
 Two cases exist to pin defects:
 
-- Both CIF cases state a crystal density, and RADDOSE-3D's is low by exactly
-  a factor of `_cell_formula_units_Z`, which `CoefCalcFromCIF` never reads:
-  urea 0.683 against a published 1.367 with Z=2, COD 1008123 0.364 against
-  2.9 with Z=8. Absorption coefficients and doses through `AbsCoefCalc EXPSM`
-  carry the same factor.
+- Both CIF cases state a crystal density, which RADDOSE-3D does not read, so
+  they check the calculation against something external rather than against
+  itself. `CoefCalcFromCIF` used to ignore `_cell_formula_units_Z` and fill
+  the cell with a single formula unit, making both low by exactly Z: urea
+  0.683 against 1.367 with Z=2, COD 1008123 0.364 against 2.9 with Z=8. This
+  fixture was regenerated from the fixed Java, so it now records 1.367 and
+  2.913.
 - The PDB case has 24 crystallographic symmetry operators and no
   non-crystallographic ones, so the monomer count comes out at 24. The Z on
   the CRYST1 line is ignored deliberately -- the Java's comment says it is

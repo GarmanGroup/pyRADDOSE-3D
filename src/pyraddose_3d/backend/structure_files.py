@@ -9,14 +9,8 @@ Neither parser is a general structure-file reader. The PDB one wants six
 record types and ignores the rest; the CIF one wants two data items. They are
 ported at exactly that scope, because widening them would change results.
 
-Known defects, both reproduced
-------------------------------
-**The CIF path ignores Z.** ``_cell_formula_units_Z`` is never read, so the
-cell is filled with a single formula unit however many it actually contains.
-Density, and therefore every absorption coefficient and every dose, comes out
-low by a factor of Z -- typically 2 to 8. See
-:func:`composition_from_cif`.
-
+Known defect
+------------
 **The PDB path aborts on a short line.** ``readPDBFile`` catches
 ``IndexOutOfBoundsException`` *outside* its read loop, so the first line too
 short for a fixed-column slice stops parsing of the whole remaining file, and
@@ -265,6 +259,7 @@ def composition_from_pdb(path: str | Path) -> Composition:
 
 _CIF_FORMULA_KEY = "_chemical_formula_sum"
 _CIF_VOLUME_KEY = "_cell_volume"
+_CIF_FORMULA_UNITS_KEY = "_cell_formula_units_Z"
 #: A CIF numeric value may carry a parenthesised standard uncertainty.
 _CIF_NUMBER = re.compile(r"[0-9]")
 
@@ -294,27 +289,29 @@ def composition_from_cif(path: str | Path) -> Composition:
 
     Notes
     -----
-    **Reproduces a defect with a large effect.** ``_cell_formula_units_Z`` is
-    never read, so the whole unit cell is filled with a *single* formula unit
-    however many it holds. Every quantity that scales with the cell contents
-    is then low by a factor of Z:
+    ``_chemical_formula_sum`` gives the contents of one formula unit, so every
+    count from it is multiplied by ``_cell_formula_units_Z``. RADDOSE-3D read
+    the formula and never Z, filling the whole cell with a single formula unit
+    and understating the density -- and every absorption coefficient and dose
+    that follows from it -- by exactly that factor:
 
-    ======================  ===  ==================  =========
-    structure               Z    RADDOSE-3D density  published
-    ======================  ===  ==================  =========
-    urea (COD 1008775)      2    0.683 g/cm^3        1.367
-    COD 1008123             8    0.364 g/cm^3        2.9
-    ======================  ===  ==================  =========
+    ======================  ===  ======  ======  ====================
+    structure               Z    before  after   stated in the CIF
+    ======================  ===  ======  ======  ====================
+    urea (COD 1008775)      2    0.683   1.367   1.367
+    COD 1008123             8    0.364   2.913   2.9
+    ======================  ===  ======  ======  ====================
 
-    The ratio is exactly Z in both cases. Absorption coefficients and doses
-    computed through this route are wrong by the same factor. Reproduced
-    rather than fixed, so that the port and RADDOSE-3D agree and the fix can
-    be made in both at once with a test that changes.
+    Found during this port and fixed in both, so the two still agree. A file
+    that states no Z keeps the reading of one formula unit, which is correct
+    when the item is genuinely absent. See RADDOSE-3D ``TEST-TRIAGE.md``
+    item 10 and ``CoefCalcCifFormulaUnitsTest``.
     """
     text = Path(path).read_text("utf-8", errors="replace")
 
     formula: str | None = None
     cell_volume: Any = None
+    formula_units = 1
 
     for line in text.splitlines():
         space = line.find(" ")
@@ -327,6 +324,8 @@ def composition_from_cif(path: str | Path) -> Composition:
             last = line.rfind("'")
             if first >= 0 and last > first:
                 formula = line[first + 1 : last]
+        elif directive == _CIF_FORMULA_UNITS_KEY:
+            formula_units = _parse_formula_units(line[space:].strip())
         elif directive == _CIF_VOLUME_KEY:
             digit = _CIF_NUMBER.search(line)
             if digit is None:
@@ -349,8 +348,38 @@ def composition_from_cif(path: str | Path) -> Composition:
             f"RADDOSE-3D reads a CIF for"
         )
 
-    counts = _parse_chemical_formula(formula)
+    # Applied here rather than while parsing the formula: CIF items may
+    # appear in any order, and Z is commonly written above the formula.
+    counts = {
+        symbol: amount * formula_units
+        for symbol, amount in _parse_chemical_formula(formula).items()
+    }
     return _assemble(cell_volume, counts, None, None)
+
+
+def _parse_formula_units(value: str) -> int:
+    """Parse ``_cell_formula_units_Z``, falling back to one formula unit.
+
+    Parameters
+    ----------
+    value : str
+        The item's value as written in the file.
+
+    Returns
+    -------
+    int
+        Formula units per cell. One if the value is not a positive whole
+        number, which is safer than silently scaling a cell by a fraction.
+    """
+    try:
+        parsed = float(value)
+    except ValueError:
+        return 1
+    # Defined as an integer in the CIF dictionary, but parsed leniently so
+    # that "4.0" is accepted and "4.5" is not.
+    if parsed >= 1 and parsed == int(parsed):
+        return int(parsed)
+    return 1
 
 
 def _parse_chemical_formula(formula: str) -> dict[str, float]:

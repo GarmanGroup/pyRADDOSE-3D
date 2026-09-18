@@ -2,7 +2,9 @@
 
 These complete the ``AbsCoefCalc`` routes: ``EXP`` reads a PDB, ``EXPSM``
 reads a CIF. Both are fixed-scope parsers rather than general structure-file
-readers, and both carry defects that are reproduced here rather than fixed.
+readers. The PDB one carries a latent defect, reproduced only in the safe
+direction; the CIF one carried a large defect that has now been fixed in both
+codebases.
 """
 
 import csv
@@ -204,46 +206,106 @@ def test_waters_are_left_to_the_solvent_model(tmp_path: pathlib.Path) -> None:
 # --- CIF ----------------------------------------------------------------
 
 
-def test_cif_ignores_the_formula_units_per_cell() -> None:
-    """Pins a reproduced defect with a large effect.
+def test_cif_density_matches_the_value_in_the_file() -> None:
+    """The strongest check available here, and the one that found the bug.
 
-    ``CoefCalcFromCIF`` never reads ``_cell_formula_units_Z``, so it fills the
-    unit cell with a single formula unit however many it holds. Density -- and
-    with it every absorption coefficient and every dose computed through
-    ``AbsCoefCalc EXPSM`` -- is low by exactly a factor of Z.
+    Each CIF states a measured or calculated crystal density, which
+    RADDOSE-3D does not read. Agreeing with it is evidence that the
+    calculation is right rather than merely self-consistent.
 
-    Both test structures state a density, so the size of the error is
-    measurable rather than inferred:
+    ``_chemical_formula_sum`` gives the contents of *one formula unit*, and
+    ``_cell_formula_units_Z`` says how many the cell holds. RADDOSE-3D read
+    the first and never the second, so every quantity that scales with cell
+    contents was low by exactly a factor of Z:
 
-    ======================  ===  ==================  =========
-    structure               Z    RADDOSE-3D density  published
-    ======================  ===  ==================  =========
-    urea (COD 1008775)      2    0.683 g/cm^3        1.367
-    COD 1008123             8    0.364 g/cm^3        2.9
-    ======================  ===  ==================  =========
+    ======================  ===  ======  ======  ==================
+    structure               Z    before  after   stated in the CIF
+    ======================  ===  ======  ======  ==================
+    urea (COD 1008775)      2    0.683   1.367   1.367
+    COD 1008123             8    0.364   2.913   2.9
+    ======================  ===  ======  ======  ==================
 
-    Reproduced so that the port and RADDOSE-3D agree, and so that fixing it
-    in both changes this test rather than passing unnoticed.
+    Fixed in both codebases; guarded in RADDOSE-3D by
+    ``CoefCalcCifFormulaUnitsTest``.
     """
-    for path, z_value, published in (
-        (CIF_UREA, 2, 1.367),
-        (CIF_ANTIMONY, 8, 2.9),
-    ):
+    for path, published in ((CIF_UREA, 1.367), (CIF_ANTIMONY, 2.9)):
         got = float(density(composition_from_cif(path)))
-        assert got * z_value == pytest.approx(published, rel=0.01), (
-            f"{path.name}: {got} x Z={z_value} should recover the published "
-            f"density {published}"
+        assert got == pytest.approx(published, rel=0.02), (
+            f"{path.name}: computed {got} against the density stated in the "
+            f"file, {published}"
         )
 
 
-def test_cif_counts_are_one_formula_unit() -> None:
-    """Urea is C H4 N2 O, and that is exactly what comes back."""
+def test_cif_counts_are_scaled_by_the_formula_units() -> None:
+    """Urea is C H4 N2 O with Z = 2, so the cell holds two of everything."""
     assert _counts(composition_from_cif(CIF_UREA)) == {
-        "C": 1.0,
-        "H": 4.0,
-        "N": 2.0,
-        "O": 1.0,
+        "C": 2.0,
+        "H": 8.0,
+        "N": 4.0,
+        "O": 2.0,
     }
+
+
+def test_cif_without_formula_units_assumes_one(tmp_path: pathlib.Path) -> None:
+    """Correct when the item is genuinely absent, and the previous behaviour.
+
+    RADDOSE-3D warns that the density will be understated if the omission was
+    an oversight.
+    """
+    cif = tmp_path / "no_z.cif"
+    cif.write_text(
+        "_chemical_formula_sum            'C H4 N2 O'\n"
+        "_cell_volume                     145.9\n",
+        encoding="ascii",
+    )
+    assert _counts(composition_from_cif(cif))["C"] == 1.0
+
+
+def test_cif_formula_units_may_precede_the_formula(
+    tmp_path: pathlib.Path,
+) -> None:
+    """CIF items may appear in any order, and Z is commonly written above the
+    formula. Applying it as each token is parsed would make the result depend
+    on that order.
+    """
+    cif = tmp_path / "z_first.cif"
+    cif.write_text(
+        "_cell_formula_units_Z            4\n"
+        "_chemical_formula_sum            'C H4 N2 O'\n"
+        "_cell_volume                     145.9\n",
+        encoding="ascii",
+    )
+    assert _counts(composition_from_cif(cif))["C"] == 4.0
+
+
+@pytest.mark.parametrize("value", ["0", "-2", "4.5", "many", ""])
+def test_nonsensical_formula_units_fall_back_to_one(
+    tmp_path: pathlib.Path, value: str
+) -> None:
+    """Z is defined as an integer. Scaling a cell by a fraction, or by zero,
+    would be worse than ignoring a malformed value.
+    """
+    cif = tmp_path / f"bad_{abs(hash(value))}.cif"
+    cif.write_text(
+        "_chemical_formula_sum            'C H4 N2 O'\n"
+        "_cell_volume                     145.9\n"
+        f"_cell_formula_units_Z            {value}\n",
+        encoding="ascii",
+    )
+    assert _counts(composition_from_cif(cif))["C"] == 1.0
+
+
+def test_formula_units_may_be_written_with_a_decimal_point(
+    tmp_path: pathlib.Path,
+) -> None:
+    cif = tmp_path / "z_decimal.cif"
+    cif.write_text(
+        "_chemical_formula_sum            'C H4 N2 O'\n"
+        "_cell_volume                     145.9\n"
+        "_cell_formula_units_Z            4.0\n",
+        encoding="ascii",
+    )
+    assert _counts(composition_from_cif(cif))["C"] == 4.0
 
 
 def test_cif_reads_two_letter_symbols(tmp_path: pathlib.Path) -> None:
@@ -252,8 +314,9 @@ def test_cif_reads_two_letter_symbols(tmp_path: pathlib.Path) -> None:
     This is the case the ``elementLetterLength`` guard exists for; getting it
     wrong was the defect fixed in RADDOSE-3D by PR #31.
     """
+    # Z = 8 for this structure, so two antimony per formula unit is sixteen.
     counts = _counts(composition_from_cif(CIF_ANTIMONY))
-    assert counts["SB"] == 2.0
+    assert counts["SB"] == 16.0
     assert "S" not in counts
     assert "B" not in counts
 
@@ -269,6 +332,7 @@ def test_cif_bare_symbol_means_one_atom(tmp_path: pathlib.Path) -> None:
         "_cell_volume                     145.9\n",
         encoding="ascii",
     )
+    # No Z stated, so one formula unit.
     counts = _counts(composition_from_cif(cif))
     assert counts["C"] == 1.0
     assert counts["O"] == 1.0
