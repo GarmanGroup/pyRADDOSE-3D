@@ -19,6 +19,14 @@ from pyraddose_3d.backend.composition import (
 )
 
 
+def _counts(composition: object) -> dict[str, float]:
+    """Atom counts keyed by the database's symbol spelling."""
+    return {
+        e.name: float(n)
+        for e, n in zip(composition.elements, composition.counts, strict=False)
+    }
+
+
 def _build(case: Case) -> object:
     return unit_cell_composition(
         case.cell_volume,
@@ -44,15 +52,18 @@ def test_atom_counts_match_java(case_id: str) -> None:
     case = CASES[case_id]
     composition = _build(case)
 
-    got = {e.name: float(n) for e, n in zip(composition.elements, composition.counts)}
-    want = dict(zip(case.symbols, case.counts))
+    got = {
+        e.name: float(n)
+        for e, n in zip(composition.elements, composition.counts, strict=False)
+    }
+    want = dict(zip(case.symbols, case.counts, strict=False))
 
     # The Java records an element once it appears in any occurrence map, even
     # at zero (phosphorus in a protein-only cell). Compare on the union.
     for symbol in set(got) | set(want):
-        assert got.get(symbol, 0.0) == pytest.approx(want.get(symbol, 0.0), rel=1e-12), (
-            f"{symbol} count"
-        )
+        assert got.get(symbol, 0.0) == pytest.approx(
+            want.get(symbol, 0.0), rel=1e-12
+        ), f"{symbol} count"
 
 
 @pytest.mark.conformance
@@ -158,10 +169,11 @@ def test_overfull_cell_gives_a_negative_solvent_fraction() -> None:
 
 def test_solvent_is_water_in_the_right_proportion() -> None:
     """Two hydrogens per oxygen, for a cell with no other source of either."""
-    composition = unit_cell_composition(
-        100000.0, Macromolecule(), solvent_fraction=1.0
-    )
-    counts = {e.name: float(n) for e, n in zip(composition.elements, composition.counts)}
+    composition = unit_cell_composition(100000.0, Macromolecule(), solvent_fraction=1.0)
+    counts = {
+        e.name: float(n)
+        for e, n in zip(composition.elements, composition.counts, strict=False)
+    }
     assert counts["H"] == pytest.approx(2 * counts["O"])
 
 
@@ -173,8 +185,12 @@ def test_solutes_displace_water_rather_than_adding_to_it() -> None:
         solvent_concentrations={"Na": 500.0},
         solvent_fraction=1.0,
     )
-    water_plain = dict(zip([e.name for e in plain.elements], plain.counts))["O"]
-    water_salty = dict(zip([e.name for e in salty.elements], salty.counts))["O"]
+    water_plain = dict(
+        zip([e.name for e in plain.elements], plain.counts, strict=False)
+    )["O"]
+    water_salty = dict(
+        zip([e.name for e in salty.elements], salty.counts, strict=False)
+    )["O"]
     assert float(water_salty) < float(water_plain)
 
 
@@ -188,7 +204,10 @@ def test_water_count_is_clamped_at_zero() -> None:
         solvent_concentrations={"Na": 1e9},
         solvent_fraction=1.0,
     )
-    counts = {e.name: float(n) for e, n in zip(composition.elements, composition.counts)}
+    counts = {
+        e.name: float(n)
+        for e, n in zip(composition.elements, composition.counts, strict=False)
+    }
     assert counts["O"] == 0.0
 
 
@@ -203,15 +222,22 @@ def test_heavy_atoms_are_given_per_monomer() -> None:
     )
     # The database spells two-letter symbols in upper case, so "Fe" in goes
     # in as written and comes back out as "FE".
-    counts = {e.name: float(n) for e, n in zip(composition.elements, composition.counts)}
+    counts = {
+        e.name: float(n)
+        for e, n in zip(composition.elements, composition.counts, strict=False)
+    }
     assert counts["FE"] == pytest.approx(8.0)
 
 
 def test_residue_atoms_scale_with_monomers() -> None:
     one = unit_cell_composition(479497.0, Macromolecule(1, 129), solvent_fraction=0.0)
     two = unit_cell_composition(479497.0, Macromolecule(2, 129), solvent_fraction=0.0)
-    carbon_one = dict(zip([e.name for e in one.elements], one.counts))["C"]
-    carbon_two = dict(zip([e.name for e in two.elements], two.counts))["C"]
+    carbon_one = dict(zip([e.name for e in one.elements], one.counts, strict=False))[
+        "C"
+    ]
+    carbon_two = dict(zip([e.name for e in two.elements], two.counts, strict=False))[
+        "C"
+    ]
     assert float(carbon_two) == pytest.approx(2 * float(carbon_one))
 
 
@@ -219,8 +245,10 @@ def test_nucleic_acids_bring_phosphorus() -> None:
     """One phosphate per nucleotide, and none from protein."""
     protein = unit_cell_composition(479497.0, Macromolecule(1, 129))
     rna = unit_cell_composition(479497.0, Macromolecule(1, 0, rna_nucleotides=40))
-    protein_p = dict(zip([e.name for e in protein.elements], protein.counts)).get("P")
-    rna_p = dict(zip([e.name for e in rna.elements], rna.counts))["P"]
+    protein_p = dict(
+        zip([e.name for e in protein.elements], protein.counts, strict=False)
+    ).get("P")
+    rna_p = dict(zip([e.name for e in rna.elements], rna.counts, strict=False))["P"]
     assert protein_p is None or float(protein_p) == 0.0
     assert float(rna_p) == pytest.approx(40.0)
 

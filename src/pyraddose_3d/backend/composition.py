@@ -184,12 +184,8 @@ def estimate_solvent_fraction(
     protein = occupied(
         _AMINO_ACID_AVERAGE_MASS, macromolecule.amino_acids, _PROTEIN_DENSITY
     )
-    rna = occupied(
-        _RNA_NUCLEOTIDE_MASS, macromolecule.rna_nucleotides, _RNA_DENSITY
-    )
-    dna = occupied(
-        _DNA_NUCLEOTIDE_MASS, macromolecule.dna_nucleotides, _DNA_DENSITY
-    )
+    rna = occupied(_RNA_NUCLEOTIDE_MASS, macromolecule.rna_nucleotides, _RNA_DENSITY)
+    dna = occupied(_DNA_NUCLEOTIDE_MASS, macromolecule.dna_nucleotides, _DNA_DENSITY)
     carbohydrate = occupied(
         _CARBOHYDRATE_AVERAGE_MASS,
         macromolecule.carbohydrate_residues,

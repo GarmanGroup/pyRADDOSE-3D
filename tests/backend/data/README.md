@@ -59,3 +59,33 @@ atoms, the test checks that the same coefficients come out. `SOLFRAC` is
 recorded for when that module lands and is not yet asserted.
 
 Regenerate as for the element sweep, substituting `DumpCoef`.
+
+
+---
+
+# Beam reference
+
+`beams.tsv` is the output of `DumpBeam.java`: four Gaussian beams and two
+tophats, probed at points chosen to sit either side of every edge in the
+model -- just inside and just outside a rectangular aperture, on and off the
+axis of an elliptical one, and well outside both.
+
+| tag | contents |
+|---|---|
+| `PARAMS` | the flux and energy every beam was built with |
+| `I` | beam id, x, y, off-axis displacement, intensity (J/s/um^2) |
+| `MINDIM` | smallest length scale in the beam, um |
+
+90 intensity points. 64 come out bit-identical in Python; the rest differ by
+at most 1.3e-15, all in the elliptical aperture, where a 1000-step midpoint
+quadrature is summed in a different order.
+
+Regenerating needs commons-math3 on the classpath, since `BeamGaussian` uses
+its `Gaussian` and `NormalDistribution`:
+
+```
+javac -d /tmp/beam -sourcepath src \
+      -cp lib/commons-math3-3.6.1/commons-math3-3.6.1.jar DumpBeam.java
+java -cp /tmp/beam:lib/commons-math3-3.6.1/commons-math3-3.6.1.jar:. \
+     se.raddo.raddose3D.DumpBeam > beams.tsv
+```
