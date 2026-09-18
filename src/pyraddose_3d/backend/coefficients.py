@@ -43,10 +43,9 @@ import numpy as np
 from pyraddose_3d.backend._array import array_namespace, promote
 
 if TYPE_CHECKING:
-    from pyraddose_3d.backend.elements import Element
+    from pyraddose_3d.backend.composition import Composition
 
 __all__ = [
-    "Composition",
     "MaterialCoefficients",
     "density",
     "material_coefficients",
@@ -66,26 +65,6 @@ _PER_MM_TO_PER_UM = 1000.0
 #: Grams per cubic Angstrom to grams per cubic centimetre, as the Java
 #: factors it: MASS_TO_CELL_VOLUME (1e27) over UNITSPERMILLIUNIT (1000).
 _MASS_TO_CELL_VOLUME = 1e27
-
-
-@dataclass(frozen=True)
-class Composition:
-    """What is in one unit cell.
-
-    Attributes
-    ----------
-    elements : tuple[Element, ...]
-        The elements present, in a fixed order.
-    counts : Array
-        Atoms of each element per unit cell, aligned with ``elements``.
-        Fractional counts are normal: they are averages over the cell.
-    cell_volume : Array
-        Unit cell volume in cubic Angstroms.
-    """
-
-    elements: tuple[Element, ...]
-    counts: Array
-    cell_volume: Array
 
 
 @dataclass(frozen=True)
@@ -199,12 +178,17 @@ def material_coefficients(
     MaterialCoefficients
         Coefficients in inverse micrometres.
     """
-    xp = array_namespace(energy, composition.counts, composition.cell_volume)
+    # Promote together: a plain-float energy would otherwise send the
+    # cross-section calculation down the NumPy path while the counts stayed
+    # tensors, and multiplying the two mixes libraries mid-expression.
+    xp, (energy, counts, cell_volume) = promote(
+        energy, composition.counts, composition.cell_volume
+    )
 
     totals = {"photoelectric": None, "coherent": None, "compton": None, "total": None}
     for index, element in enumerate(composition.elements):
         cross_sections = element.absorption_coefficients(energy)
-        count = composition.counts[index]
+        count = counts[index]
         for key, value in (
             ("photoelectric", cross_sections.photoelectric),
             ("coherent", cross_sections.coherent),
@@ -213,7 +197,7 @@ def material_coefficients(
         ):
             # Divided per element, then the sum divided again, matching the
             # order the Java performs these in.
-            term = count * value / composition.cell_volume / _PER_CM_TO_PER_MM
+            term = count * value / cell_volume / _PER_CM_TO_PER_MM
             totals[key] = term if totals[key] is None else totals[key] + term
 
     if totals["total"] is None:

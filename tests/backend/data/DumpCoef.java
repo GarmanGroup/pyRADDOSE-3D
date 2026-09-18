@@ -28,6 +28,16 @@ public final class DumpCoef {
       .append("\t").append(a).append("\t").append(b).append("\t").append(c)
       .append("\t").append(al).append("\t").append(be).append("\t").append(ga);
     System.out.println(sb);
+    // Inputs, so the fixture describes the calculation it came from.
+    System.out.printf("INPUT\t%s\t%d\t%d\t%d\t%d\t%s%n", id, monomers,
+        residues, rna, dna,
+        solventFraction == null ? "auto" : String.format("%.17g", solventFraction));
+    for (int i = 0; i < haNames.size(); i++) {
+      System.out.printf("HAPROT\t%s\t%s\t%.17g%n", id, haNames.get(i), haNums.get(i));
+    }
+    for (int i = 0; i < solNames.size(); i++) {
+      System.out.printf("HASOLV\t%s\t%s\t%.17g%n", id, solNames.get(i), solNums.get(i));
+    }
     System.out.printf("CELLVOL\t%s\t%.17g%n", id, cc.cellVolume(a, b, c, al, be, ga));
     System.out.printf("DENSITY\t%s\t%.17g%n", id, cc.getDensity());
     System.out.printf("SOLFRAC\t%s\t%.17g%n", id, cc.getSolventFraction());

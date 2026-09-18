@@ -6,66 +6,32 @@ residue counts and a solvent fraction is a later module; keeping the seam here
 means a failure points at the arithmetic rather than at the composition model.
 """
 
-import csv
-import pathlib
-
 import numpy as np
 import pytest
+from _cases import CASE_IDS, CASES, Case
 
 from pyraddose_3d.backend.coefficients import (
-    Composition,
     density,
     material_coefficients,
     unit_cell_volume,
 )
+from pyraddose_3d.backend.composition import Composition
 from pyraddose_3d.backend.elements import element_database
 
-REFERENCE = pathlib.Path(__file__).parent / "data" / "coefficients.tsv"
 
+def _composition(case: Case) -> Composition:
+    """The reference's own atom counts, taken as given.
 
-class Case:
-    """One reference composition and everything the Java computed from it."""
-
-    def __init__(self, case_id: str) -> None:
-        self.id = case_id
-        self.cell: tuple[float, ...] = ()
-        self.cell_volume = 0.0
-        self.density = 0.0
-        self.symbols: list[str] = []
-        self.counts: list[float] = []
-        self.coefficients: list[tuple[float, ...]] = []
-
-    def composition(self) -> Composition:
-        db = element_database()
-        return Composition(
-            elements=tuple(db.by_symbol(s) for s in self.symbols),
-            counts=np.array(self.counts),
-            cell_volume=self.cell_volume,
-        )
-
-
-def _load_cases() -> dict[str, Case]:
-    ordered: dict[str, Case] = {}
-    with REFERENCE.open(encoding="ascii") as handle:
-        for row in csv.reader(handle, delimiter="\t"):
-            tag, case_id = row[0], row[1]
-            case = ordered.setdefault(case_id, Case(case_id))
-            if tag == "CASE":
-                case.cell = tuple(float(v) for v in row[2:8])
-            elif tag == "CELLVOL":
-                case.cell_volume = float(row[2])
-            elif tag == "DENSITY":
-                case.density = float(row[2])
-            elif tag == "ATOMS":
-                case.symbols.append(row[3])
-                case.counts.append(float(row[4]))
-            elif tag == "COEF":
-                case.coefficients.append(tuple(float(v) for v in row[2:7]))
-    return ordered
-
-
-CASES = _load_cases()
-CASE_IDS = sorted(CASES)
+    Deliberately not built with `unit_cell_composition`: that is tested in
+    test_composition.py, and keeping it out here means a failure below is
+    about the coefficient arithmetic and nothing else.
+    """
+    db = element_database()
+    return Composition(
+        elements=tuple(db.by_symbol(s) for s in case.symbols),
+        counts=np.array(case.counts),
+        cell_volume=case.cell_volume,
+    )
 
 
 def test_reference_is_complete() -> None:
@@ -91,7 +57,7 @@ def test_cell_volume_matches_java(case_id: str) -> None:
 @pytest.mark.parametrize("case_id", CASE_IDS)
 def test_density_matches_java(case_id: str) -> None:
     case = CASES[case_id]
-    got = density(case.composition())
+    got = density(_composition(case))
     assert float(got) == pytest.approx(case.density, rel=1e-12)
 
 
@@ -102,7 +68,7 @@ def test_coefficients_match_java(case_id: str) -> None:
     real scope to diverge, so anything looser would be measuring nothing.
     """
     case = CASES[case_id]
-    composition = case.composition()
+    composition = _composition(case)
     for energy, absorption, attenuation, elastic, inelastic in case.coefficients:
         got = material_coefficients(composition, energy)
         for name, value, want in (
@@ -174,7 +140,7 @@ def test_attenuation_is_the_sum_of_the_channels() -> None:
     restatement.
     """
     case = CASES["baseline"]
-    got = material_coefficients(case.composition(), 12.1)
+    got = material_coefficients(_composition(case), 12.1)
     assert float(got.attenuation) == pytest.approx(
         float(got.absorption) + float(got.elastic) + float(got.inelastic), rel=1e-12
     )
@@ -183,7 +149,7 @@ def test_attenuation_is_the_sum_of_the_channels() -> None:
 def test_doubling_the_cell_contents_doubles_the_coefficients() -> None:
     """Linear in atom count at fixed volume."""
     case = CASES["baseline"]
-    single = case.composition()
+    single = _composition(case)
     double = Composition(single.elements, single.counts * 2, single.cell_volume)
     assert float(material_coefficients(double, 12.1).absorption) == pytest.approx(
         2 * float(material_coefficients(single, 12.1).absorption), rel=1e-12
@@ -192,7 +158,7 @@ def test_doubling_the_cell_contents_doubles_the_coefficients() -> None:
 
 def test_coefficients_are_vectorised_over_energy() -> None:
     case = CASES["baseline"]
-    composition = case.composition()
+    composition = _composition(case)
     energies = np.array([e for e, *_ in case.coefficients])
     expected = np.array([a for _, a, *_ in case.coefficients])
     got = material_coefficients(composition, energies).absorption
@@ -205,10 +171,10 @@ def test_heavy_atoms_increase_absorption() -> None:
     anyone runs this calculation.
     """
     plain = float(
-        material_coefficients(CASES["baseline"].composition(), 12.1).absorption
+        material_coefficients(_composition(CASES["baseline"]), 12.1).absorption
     )
     with_iron = float(
-        material_coefficients(CASES["heavy-protein"].composition(), 12.1).absorption
+        material_coefficients(_composition(CASES["heavy-protein"]), 12.1).absorption
     )
     assert with_iron > plain
 
@@ -227,9 +193,7 @@ def test_gradient_flows_to_energy_and_cell() -> None:
     counts = torch.tensor(case.counts, dtype=torch.float64, requires_grad=True)
 
     volume = unit_cell_volume(edge, edge, edge)
-    coefficients = material_coefficients(
-        Composition(elements, counts, volume), energy
-    )
+    coefficients = material_coefficients(Composition(elements, counts, volume), energy)
     coefficients.absorption.backward()
 
     for name, tensor in (("edge", edge), ("energy", energy), ("counts", counts)):
