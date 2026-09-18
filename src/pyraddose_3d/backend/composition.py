@@ -440,26 +440,19 @@ def saxs_monomer_count(
 
     Notes
     -----
-    **Reproduces a defect.** ``CoefCalcSAXS`` calls its own
-    ``calculateNumMonomers(numResidues, numRNA, numDNA, ...)`` against a
-    signature declared ``(numberOfResidues, numberOfDNAResidues,
-    numberOfRNAResidues, ...)``. The RNA count therefore lands in the DNA
-    parameter and vice versa, and each is multiplied by the other's average
-    mass -- 327.0 for RNA and 339.5 for DNA, when the constants say the
-    opposite.
+    ``CoefCalcSAXS`` used to weigh each nucleic acid with the other's average
+    mass: ``calculateNumMonomers`` was declared ``(residues, DNA, RNA)`` and
+    called ``(residues, RNA, DNA)``. The visible symptom was that equal counts
+    of RNA and DNA gave different monomer numbers, with RNA -- the heavier
+    residue -- giving *more* molecules per gram rather than fewer.
 
-    It is reproduced because it changes the computed monomer count, and so
-    the dose, for any SAXS sample containing nucleic acid: not reproducing it
-    would make the port disagree with RADDOSE-3D on those cases and make a
-    port error indistinguishable from this fix. Worth about 3.8% of the
-    nucleic-acid contribution to molecular weight. Fix in both at once.
+    Found during this port and fixed in both, so the two still agree. See
+    RADDOSE-3D ``TEST-TRIAGE.md`` item 9 and ``CoefCalcSaxsMonomerTest``.
     """
-    swapped_rna = macromolecule.dna_nucleotides
-    swapped_dna = macromolecule.rna_nucleotides
     molecular_weight = (
         _SAXS_AMINO_ACID_MASS * macromolecule.amino_acids
-        + _SAXS_DNA_MASS * swapped_dna
-        + _SAXS_RNA_MASS * swapped_rna
+        + _SAXS_RNA_MASS * macromolecule.rna_nucleotides
+        + _SAXS_DNA_MASS * macromolecule.dna_nucleotides
         + _SAXS_CARBOHYDRATE_MASS * macromolecule.carbohydrate_residues
     )
     if molecular_weight <= 0:

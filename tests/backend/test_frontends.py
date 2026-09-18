@@ -102,11 +102,11 @@ def _build(case_id: str) -> Composition:
         )
     if case_id == "saxs-rna":
         return unit_cell_composition(
-            SAXS_CELL_VOLUME, Macromolecule(monomers=307, rna_nucleotides=60)
+            SAXS_CELL_VOLUME, Macromolecule(monomers=296, rna_nucleotides=60)
         )
     if case_id == "saxs-dna":
         return unit_cell_composition(
-            SAXS_CELL_VOLUME, Macromolecule(monomers=296, dna_nucleotides=60)
+            SAXS_CELL_VOLUME, Macromolecule(monomers=307, dna_nucleotides=60)
         )
     if case_id == "sequence":
         return sequence_composition(
@@ -258,26 +258,60 @@ def test_saxs_monomer_count_matches_java(
     )
 
 
-def test_saxs_swaps_the_rna_and_dna_masses() -> None:
-    """Pins a reproduced defect.
+def test_the_heavier_residue_gives_fewer_monomers() -> None:
+    """Guards a fix made in both codebases.
 
-    ``CoefCalcSAXS.calculateNumMonomers`` is declared ``(residues, DNA, RNA)``
-    and called ``(residues, RNA, DNA)``, so each nucleic acid is weighed with
-    the other's average mass -- 327.0 for RNA, 339.5 for DNA. Equal counts of
-    RNA and DNA therefore give *different* monomer counts, which is the
-    observable symptom, and the heavier one is the wrong one.
+    ``CoefCalcSAXS.calculateNumMonomers`` was declared ``(residues, DNA,
+    RNA)`` and called ``(residues, RNA, DNA)``, so each nucleic acid was
+    weighed with the other's average mass -- 327.0 for RNA, 339.5 for DNA.
+    The symptom was this inequality running backwards.
 
-    Reproduced because it changes computed dose for any SAXS sample with
-    nucleic acid, so not reproducing it would make the port disagree with
-    RADDOSE-3D and hide the difference inside a tolerance. Fix in both at
-    once; this test then fails and says so.
+    Stated without reference to either constant, so it holds whatever the
+    masses are revised to: RNA carries an extra hydroxyl, so the same mass of
+    it contains fewer molecules than DNA. Found during this port; fixed in
+    RADDOSE-3D as well, guarded there by ``CoefCalcSaxsMonomerTest``.
     """
     rna = saxs_monomer_count(SAXS_CELL_VOLUME, 10.0, Macromolecule(rna_nucleotides=60))
     dna = saxs_monomer_count(SAXS_CELL_VOLUME, 10.0, Macromolecule(dna_nucleotides=60))
-    assert rna != dna
-    # RNA is the heavier residue (339.5 vs 327.0), so it should give FEWER
-    # monomers per gram. It gives more, because it is weighed as DNA.
-    assert rna > dna
+    assert rna < dna, (
+        f"RNA is the heavier residue, so the same mass of it must contain "
+        f"fewer molecules -- got {rna} RNA against {dna} DNA"
+    )
+
+
+def test_each_nucleic_acid_uses_its_own_mass() -> None:
+    """The same check as above, against independently computed expectations,
+    so a failure says which mass went where rather than only that the order
+    is wrong.
+    """
+    avogadro = 6.022e23
+    concentration = 10.0
+    residues = 60
+
+    def expected(residue_mass: float) -> int:
+        molarity = concentration / (residue_mass * residues)
+        return round(molarity * 1e-27 * SAXS_CELL_VOLUME * avogadro)
+
+    assert saxs_monomer_count(
+        SAXS_CELL_VOLUME, concentration, Macromolecule(rna_nucleotides=residues)
+    ) == expected(339.5)
+    assert saxs_monomer_count(
+        SAXS_CELL_VOLUME, concentration, Macromolecule(dna_nucleotides=residues)
+    ) == expected(327.0)
+
+
+def test_a_mixed_sample_adds_both_masses() -> None:
+    """Unaffected by the swap either way, so it holds the surrounding
+    calculation still while the single-polymer cases move.
+    """
+    mixed = saxs_monomer_count(
+        SAXS_CELL_VOLUME,
+        10.0,
+        Macromolecule(rna_nucleotides=60, dna_nucleotides=60),
+    )
+    rna = saxs_monomer_count(SAXS_CELL_VOLUME, 10.0, Macromolecule(rna_nucleotides=60))
+    dna = saxs_monomer_count(SAXS_CELL_VOLUME, 10.0, Macromolecule(dna_nucleotides=60))
+    assert mixed < min(rna, dna)
 
 
 def test_saxs_needs_a_positive_molecular_weight() -> None:

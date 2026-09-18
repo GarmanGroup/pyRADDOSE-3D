@@ -113,9 +113,12 @@ Two cases exist to pin defects rather than to check arithmetic:
   `CoefCalcSmallMolecules` guards `calculateSolventWater` behind a hardcoded
   `boolean fillRestWithWater = false`, so `SolventHeavyConc` is accepted and
   discarded.
-- `saxs-rna` and `saxs-dna` use equal counts of each nucleic acid and give
-  *different* monomer counts, because `calculateNumMonomers` is declared
-  `(residues, DNA, RNA)` and called `(residues, RNA, DNA)`.
+- `saxs-rna` and `saxs-dna` use equal counts of each nucleic acid, and the
+  heavier residue (RNA) must give the smaller monomer count. It gave the
+  larger until `calculateNumMonomers` was fixed: it was declared
+  `(residues, DNA, RNA)` and called `(residues, RNA, DNA)`. This fixture was
+  regenerated from the fixed Java, so the two counts are now 296 RNA and 307
+  DNA rather than the other way round.
 
 ## Residue table
 
