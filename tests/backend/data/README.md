@@ -131,3 +131,31 @@ arguments:
 java -cp /tmp/coef2:. se.raddo.raddose3D.DumpCoef2 \
      seq_test.fasta seq_dna.fasta > coefficients_frontends.tsv
 ```
+
+
+---
+
+# PDB and CIF reference
+
+`coefficients_files.tsv` is the output of `DumpCoef3.java` against the three
+structure files in `tests/data/`: insulin 3I40, and two Crystallography Open
+Database small-molecule entries. Same tags as the other CoefCalc fixtures.
+
+Two cases exist to pin defects:
+
+- Both CIF cases state a crystal density, and RADDOSE-3D's is low by exactly
+  a factor of `_cell_formula_units_Z`, which `CoefCalcFromCIF` never reads:
+  urea 0.683 against a published 1.367 with Z=2, COD 1008123 0.364 against
+  2.9 with Z=8. Absorption coefficients and doses through `AbsCoefCalc EXPSM`
+  carry the same factor.
+- The PDB case has 24 crystallographic symmetry operators and no
+  non-crystallographic ones, so the monomer count comes out at 24. The Z on
+  the CRYST1 line is ignored deliberately -- the Java's comment says it is
+  "often mis-calculated in the PDB".
+
+`DumpCoef3` takes the PDB path first, then any number of CIF paths:
+
+```
+java -cp /tmp/coef3:. se.raddo.raddose3D.DumpCoef3 \
+     3I40.pdb COD-1008123.cif COD-1008775-urea.cif > coefficients_files.tsv
+```

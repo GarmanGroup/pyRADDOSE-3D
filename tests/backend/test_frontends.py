@@ -78,15 +78,11 @@ def _load_reference() -> dict[str, dict]:
             elif tag == "ATOMS":
                 cases[row[1]]["atoms"][row[3]] = float(row[4])
             elif tag == "COEF":
-                cases[row[1]]["coefficients"].append(
-                    tuple(float(v) for v in row[2:7])
-                )
+                cases[row[1]]["coefficients"].append(tuple(float(v) for v in row[2:7]))
             elif tag == "MONOMERS":
                 cases[row[1]]["scalars"]["monomers"] = int(row[2])
             elif tag == "RESIDUES":
-                cases[row[1]]["scalars"]["residues"] = tuple(
-                    int(v) for v in row[2:5]
-                )
+                cases[row[1]]["scalars"]["residues"] = tuple(int(v) for v in row[2:5])
     return dict(cases)
 
 
@@ -174,9 +170,9 @@ def test_density_matches_java(case_id: str) -> None:
 @pytest.mark.parametrize("case_id", CASE_IDS)
 def test_coefficients_match_java(case_id: str) -> None:
     composition = _build(case_id)
-    for energy, absorption, attenuation, elastic, inelastic in REFERENCE_CASES[
-        case_id
-    ]["coefficients"]:
+    for energy, absorption, attenuation, elastic, inelastic in REFERENCE_CASES[case_id][
+        "coefficients"
+    ]:
         got = material_coefficients(composition, energy)
         for name, value, want in (
             ("absorption", got.absorption, absorption),
