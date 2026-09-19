@@ -14,6 +14,7 @@ from _cases import CASE_IDS, CASES, Case
 
 from pyraddose_3d.backend.coefficients import density, material_coefficients
 from pyraddose_3d.backend.composition import (
+    LIGHT_ATOM_MAX_NUMBER,
     WATER_CONCENTRATION,
     Macromolecule,
     estimate_solvent_fraction,
@@ -362,3 +363,53 @@ def test_both_backends_build_the_same_cell() -> None:
         torch_composition.counts.numpy(),
         rtol=1e-12,
     )
+
+
+# --- things that used to be recorded but never used ---------------------
+
+
+def test_carbohydrates_reduce_the_solvent_fraction() -> None:
+    """Anything in the cell leaves less room for solvent.
+
+    On the sequence path RADDOSE-3D recorded the carbohydrate count in
+    ``addCarbs``, which ran *after* the solvent fraction had been estimated
+    from it, so the estimate always saw zero. Fixed in both.
+    """
+    from pyraddose_3d.backend.composition import sequence_composition
+
+    volume = 479497.0
+    plain = sequence_composition(volume, "ACDEFGHIK", monomers=8)
+    sugary = sequence_composition(
+        volume, "ACDEFGHIK", monomers=8, carbohydrate_residues=50
+    )
+    assert float(sugary.solvent_fraction) < float(plain.solvent_fraction)
+
+
+def test_the_light_atom_threshold_is_inclusive() -> None:
+    """Copper counts as a light atom, as the constant's name says.
+
+    The comparison was ``<``, which excluded Z=29 -- disagreeing with the
+    constant's own description and with its only other use in RADDOSE-3D, a
+    commented-out ``<=``. Fixed in both.
+    """
+    assert LIGHT_ATOM_MAX_NUMBER == 29
+
+    volume = 479497.0
+    macromolecule = Macromolecule(monomers=1, amino_acids=129)
+    with_copper = float(estimate_solvent_fraction(volume, macromolecule, {"CU": 100.0}))
+    with_zinc = float(estimate_solvent_fraction(volume, macromolecule, {"ZN": 100.0}))
+
+    # Copper (29) is inside the threshold so occupies space in the estimate;
+    # zinc (30) is outside it and is ignored.
+    assert with_copper < with_zinc
+
+
+def test_heavy_heteroatoms_are_still_excluded() -> None:
+    """The threshold still does its job: a few heavy atoms must not dominate
+    the estimate, which is the reason it exists.
+    """
+    volume = 479497.0
+    macromolecule = Macromolecule(monomers=1, amino_acids=129)
+    plain = float(estimate_solvent_fraction(volume, macromolecule))
+    with_uranium = float(estimate_solvent_fraction(volume, macromolecule, {"U": 100.0}))
+    assert with_uranium == pytest.approx(plain)

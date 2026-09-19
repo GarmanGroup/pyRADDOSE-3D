@@ -138,7 +138,6 @@ def _counts(composition: Composition) -> dict[str, float]:
 def test_reference_covers_every_front_end() -> None:
     assert set(CASE_IDS) == {
         "smallmole",
-        "smallmole-solv",
         "saxs",
         "saxs-rna",
         "saxs-dna",
@@ -223,18 +222,28 @@ def test_small_molecule_zero_monomers_means_one() -> None:
 def test_small_molecule_has_no_solvent() -> None:
     """No water is added, however much empty cell there is.
 
-    RADDOSE-3D also accepts ``SolventHeavyConc`` here and silently discards
-    it -- ``fillRestWithWater`` is a hardcoded ``false``. The reference
-    fixture pins that: the ``smallmole-solv`` case was built with 500 mM Na
-    and contains no sodium.
+    A small-molecule crystal is modelled as having voids rather than bulk
+    solvent, so there is nothing for a solute concentration to be a
+    concentration of. RADDOSE-3D used to accept ``SolventHeavyConc`` here and
+    silently discard it -- ``fillRestWithWater`` is a hardcoded ``false`` --
+    and now refuses it. This port expresses the same thing structurally, by
+    taking no solvent argument at all, which is why there is nothing here to
+    assert a rejection against.
     """
     counts = _counts(small_molecule_composition(1e6, {"C": 6.0}, monomers=1))
     assert set(counts) == {"C"}
-    assert "NA" not in REFERENCE_CASES["smallmole-solv"]["atoms"]
-    assert (
-        REFERENCE_CASES["smallmole-solv"]["atoms"]
-        == REFERENCE_CASES["smallmole"]["atoms"]
-    )
+
+
+def test_small_molecule_composition_takes_no_solvent_argument() -> None:
+    """The refusal, expressed in the signature rather than at runtime.
+
+    Pinned so that adding a solvent parameter -- which would have to do
+    something, or repeat the original mistake -- is a deliberate act.
+    """
+    import inspect
+
+    parameters = inspect.signature(small_molecule_composition).parameters
+    assert not [p for p in parameters if "solvent" in p]
 
 
 # --- SAXS ---------------------------------------------------------------

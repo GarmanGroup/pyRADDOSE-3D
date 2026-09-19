@@ -88,9 +88,11 @@ _CARBOHYDRATE_AVERAGE_MASS = 162.0
 _CARBOHYDRATE_DENSITY = 1.54
 _HETATM_DENSITY = 1.35
 
-#: Heteroatoms at or above this atomic number are left out of the solvent
-#: estimate, so that a few heavy atoms cannot dominate it. The Java carries a
-#: "TODO: Is this < or <= ?!" against the comparison; it is ``<``.
+#: Heteroatoms above this atomic number are left out of the solvent estimate,
+#: so that a few heavy atoms cannot dominate it. Inclusive: copper counts as
+#: light. RADDOSE-3D used ``<``, which excluded copper and disagreed both with
+#: the constant's own description and with its only other use; a
+#: "TODO: Is this < or <= ?!" stood against it. Fixed in both.
 LIGHT_ATOM_MAX_NUMBER = 29
 
 #: Atoms contributed by one residue of each kind. Averages over composition,
@@ -208,7 +210,7 @@ def estimate_solvent_fraction(
     hetero_atoms : Mapping[str, Array], optional
         Non-solvent, non-polymer atoms per unit cell, keyed by chemical
         symbol. Only ever non-empty for compositions read from a PDB file.
-        Atoms with atomic number at or above ``LIGHT_ATOM_MAX_NUMBER`` are
+        Atoms with atomic number above ``LIGHT_ATOM_MAX_NUMBER`` are
         ignored, so that a handful of heavy atoms cannot dominate.
 
     Returns
@@ -252,7 +254,7 @@ def estimate_solvent_fraction(
     hetatm_mass: Array = 0.0
     for symbol, count in (hetero_atoms or {}).items():
         element = database.by_symbol(symbol)
-        if element.atomic_number < LIGHT_ATOM_MAX_NUMBER:
+        if element.atomic_number <= LIGHT_ATOM_MAX_NUMBER:
             hetatm_mass = hetatm_mass + count * element.atomic_weight_in_grams
     hetatm = hetatm_mass / (cell_volume * _HETATM_DENSITY * _ANGSTROMS_TO_ML)
 
@@ -603,10 +605,10 @@ def sequence_composition(
     multiplication applies only to the macromolecule -- so solvent is counted
     once per cell while protein is counted once per copy.
 
-    ``carbohydrate_residues`` contributes atoms but, as in the Java, is not
-    passed to the solvent-fraction estimate: ``CoefCalcFromSequence`` never
-    calls ``setNumCarb``, so ``calculateSolventFractionFromNums`` sees zero
-    carbohydrate however many are specified.
+    ``carbohydrate_residues`` contributes both atoms and volume, so it also
+    reaches the solvent-fraction estimate. RADDOSE-3D recorded the count in
+    ``addCarbs``, which ran after the estimate had already used it, so the
+    estimate saw zero however many were specified; fixed in both.
     """
     database = element_database()
     residue_counts = sequence_residue_counts(sequence, residue_type)
@@ -625,7 +627,7 @@ def sequence_composition(
         if carbohydrate_residues:
             add_macromolecular(symbol, per_one * carbohydrate_residues)
 
-    residues = _residue_totals(sequence, residue_type, monomers)
+    residues = _residue_totals(sequence, residue_type, monomers, carbohydrate_residues)
     if solvent_fraction is None:
         solvent_fraction = estimate_solvent_fraction(cell_volume, residues)
 
@@ -655,12 +657,23 @@ def sequence_composition(
 
 
 def _residue_totals(
-    sequence: str, residue_type: ResidueType, monomers: int
+    sequence: str,
+    residue_type: ResidueType,
+    monomers: int,
+    carbohydrate_residues: int = 0,
 ) -> Macromolecule:
-    """Count residues in a sequence, as a :class:`Macromolecule`."""
+    """Count residues in a sequence, as a :class:`Macromolecule`.
+
+    Carbohydrates cannot be expressed in a sequence file and are supplied
+    separately, but they occupy space in the cell like anything else and so
+    belong in the solvent estimate. RADDOSE-3D recorded them only in
+    ``addCarbs``, which ran after the estimate had already been made; fixed in
+    both.
+    """
     length = sum(1 for c in sequence if not c.isspace())
+    counts = {"monomers": monomers, "carbohydrate_residues": carbohydrate_residues}
     if residue_type is ResidueType.PROTEIN:
-        return Macromolecule(monomers=monomers, amino_acids=length)
+        return Macromolecule(amino_acids=length, **counts)
     if residue_type is ResidueType.RNA:
-        return Macromolecule(monomers=monomers, rna_nucleotides=length)
-    return Macromolecule(monomers=monomers, dna_nucleotides=length)
+        return Macromolecule(rna_nucleotides=length, **counts)
+    return Macromolecule(dna_nucleotides=length, **counts)

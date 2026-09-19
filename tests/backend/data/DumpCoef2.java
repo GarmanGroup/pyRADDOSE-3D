@@ -37,15 +37,11 @@ public final class DumpCoef2 {
         Arrays.asList(6.0, 12.0, 2.0, 3.0, 1.0),
         NO_S, NO_D, null, NO_S, NO_D, null, null, NO_S, NO_D, 0.0, 0L));
 
-    // Same, but with solvent concentrations that RADDOSE-3D accepts and
-    // then never applies -- recorded to pin that.
-    System.out.println("CASE\tsmallmole-solv\t10.0\t12.0\t14.0\t90.0\t90.0\t90.0\t4");
-    report("smallmole-solv", new CoefCalcSmallMolecules(10.0, 12.0, 14.0,
-        90.0, 90.0, 90.0, 4,
-        Arrays.asList("C", "H", "N", "O", "S"),
-        Arrays.asList(6.0, 12.0, 2.0, 3.0, 1.0),
-        Arrays.asList("Na"), Arrays.asList(500.0),
-        null, NO_S, NO_D, null, null, NO_S, NO_D, 0.0, 0L));
+    // A "smallmole-solv" case used to live here, with 500 mM Na, recording
+    // that RADDOSE-3D accepted SolventHeavyConc under SmallMole and silently
+    // discarded it. It is now refused, so there is nothing left to record --
+    // the refusal is covered by SilentNoOpTest on the Java side and by
+    // test_frontends.py on the Python side.
 
     // --- SAXS: monomer count derived from concentration ---
     System.out.println("CASE\tsaxs\tdefault-cell");

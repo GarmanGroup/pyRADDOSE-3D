@@ -113,12 +113,13 @@ and `Sequence`. Same tags as that file, plus:
 `sequences/` holds the FASTA files the sequence cases were built from. They
 are inputs to both the Java generator and the Python test.
 
-Two cases exist to pin defects rather than to check arithmetic:
+One case exists to pin a defect rather than to check arithmetic:
 
-- `smallmole-solv` is `smallmole` plus 500 mM sodium, and contains no sodium.
-  `CoefCalcSmallMolecules` guards `calculateSolventWater` behind a hardcoded
-  `boolean fillRestWithWater = false`, so `SolventHeavyConc` is accepted and
-  discarded.
+A `smallmole-solv` case used to sit here too, built with 500 mM sodium and
+containing none, recording that `SolventHeavyConc` was accepted under
+`AbsCoefCalc SmallMole` and silently discarded. RADDOSE-3D now refuses it, so
+there is nothing left to record and the case is gone.
+
 - `saxs-rna` and `saxs-dna` use equal counts of each nucleic acid, and the
   heavier residue (RNA) must give the smaller monomer count. It gave the
   larger until `calculateNumMonomers` was fixed: it was declared
