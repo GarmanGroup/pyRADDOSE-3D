@@ -370,10 +370,14 @@ def test_unknown_sequence_letter_is_reported() -> None:
     ``O`` (pyrrolysine) and ``U`` (selenocysteine) are the only two letters
     with no protein residue behind them.
     """
-    with pytest.raises(KeyError, match="does not name a protein residue"):
+    with pytest.raises(ValueError, match="not a recognised protein residue"):
         sequence_residue_counts("O")
-    with pytest.raises(KeyError, match="does not name a protein residue"):
+    with pytest.raises(ValueError, match="not a recognised protein residue"):
         sequence_residue_counts("U")
+
+    # The position is named, so a long sequence can be corrected.
+    with pytest.raises(ValueError, match="position 4"):
+        sequence_residue_counts("ACDOFGHIK")
 
 
 def test_ambiguity_codes_resolve_to_one_residue() -> None:

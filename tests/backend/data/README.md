@@ -33,6 +33,12 @@ Run from the RADDOSE-3D root, so that `constants/MuCalcConstants.txt` resolves.
 Regenerating must be a reviewable diff. A change here is a claim that the
 Java's behaviour changed on purpose.
 
+All three CoefCalc fixtures were regenerated when RADDOSE-3D adopted the
+Fischer et al. (2004) protein density in place of a flat 1.35 g/cm^3. Every
+case with a computed solvent fraction moved -- for the baseline, 0.70889 to
+0.73058 -- while cases stating `SolventFraction` explicitly, and the
+small-molecule cases which have no solvent model, are unchanged.
+
 
 ---
 

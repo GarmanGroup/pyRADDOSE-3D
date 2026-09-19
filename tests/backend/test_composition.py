@@ -6,6 +6,8 @@ of these tests pin a number that someone might one day want to change, and
 say what changing it would mean.
 """
 
+import math
+
 import numpy as np
 import pytest
 from _cases import CASE_IDS, CASES, Case
@@ -15,6 +17,7 @@ from pyraddose_3d.backend.composition import (
     WATER_CONCENTRATION,
     Macromolecule,
     estimate_solvent_fraction,
+    protein_density,
     unit_cell_composition,
 )
 
@@ -147,6 +150,61 @@ def test_water_concentration_is_amorphous_ice() -> None:
     test that fails loudly rather than a constant someone tidies.
     """
     assert WATER_CONCENTRATION == 51666.0
+
+
+def test_protein_density_follows_fischer_2004() -> None:
+    """rho = 1.410 + 0.145 exp(-M/13), M in kDa.
+
+    Fischer et al. (2004), Protein Science 13, 2825-2828. RADDOSE-3D used a
+    flat 1.35 g/cm^3 with this formula commented out beneath it and a comment
+    saying to use it; adopted in both codebases at once so they still agree.
+    """
+    assert protein_density(129) == pytest.approx(
+        1.410 + 0.145 * math.exp(-(110.0 * 129 / 1000.0) / 13.0)
+    )
+    assert protein_density(129) == pytest.approx(1.458676, abs=1e-6)
+
+
+def test_smaller_proteins_are_denser() -> None:
+    """The reason a single constant could not be right: small proteins pack
+    less efficiently, so a formula is needed rather than a number.
+    """
+    assert protein_density(50) > protein_density(500)
+    assert protein_density(500) > protein_density(5000)
+
+
+def test_protein_density_approaches_its_limit() -> None:
+    assert protein_density(100000) == pytest.approx(1.410, abs=1e-6)
+
+
+def test_fischer_raises_the_solvent_fraction() -> None:
+    """Records the size of the change rather than leaving it to be inferred.
+
+    A denser protein occupies less of the cell, so more of it is solvent.
+    """
+    volume = 479497.11828299990
+    with_fischer = float(estimate_solvent_fraction(volume, Macromolecule(8, 129)))
+
+    mass = 1.66e-24 * 110.0 * 129 * 8
+    with_flat_135 = 1 - mass / (volume * 1.35 * 1e-24)
+
+    assert with_fischer == pytest.approx(0.73057648459110820)
+    assert with_flat_135 == pytest.approx(0.70888760279645570)
+    assert with_fischer > with_flat_135
+
+
+def test_only_protein_uses_the_fischer_density() -> None:
+    """Fischer's fit is for globular proteins. RNA, DNA, carbohydrate and
+    heteroatoms keep their constant densities, as in the Java.
+    """
+    volume = 479497.0
+    # Same residue count, different polymer: the answers must differ, which
+    # they would not if one density were being used for everything.
+    protein = float(estimate_solvent_fraction(volume, Macromolecule(1, 200)))
+    rna = float(
+        estimate_solvent_fraction(volume, Macromolecule(1, rna_nucleotides=200))
+    )
+    assert protein != pytest.approx(rna)
 
 
 def test_empty_cell_is_all_solvent() -> None:

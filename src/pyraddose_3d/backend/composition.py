@@ -26,6 +26,7 @@ optimiser can vary.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,7 @@ __all__ = [
     "Composition",
     "Macromolecule",
     "estimate_solvent_fraction",
+    "protein_density",
     "saxs_monomer_count",
     "sequence_composition",
     "sequence_residue_counts",
@@ -70,7 +72,14 @@ WATER_CONCENTRATION = 51666.0
 #: Average residue masses in unified atomic mass units, and the densities
 #: used to convert those masses into a fraction of the cell.
 _AMINO_ACID_AVERAGE_MASS = 110.0
-_PROTEIN_DENSITY = 1.35
+
+#: Protein density from Fischer et al. (2004), Protein Science 13, 2825-2828:
+#: ``rho = 1.410 + 0.145 exp(-M/13)``, with M the molecular weight of one
+#: molecule in kDa. Small proteins pack less efficiently and are
+#: correspondingly denser, which a single constant cannot express.
+FISCHER_DENSITY_LIMIT = 1.410
+FISCHER_DENSITY_RANGE = 0.145
+FISCHER_DECAY_KDA = 13.0
 _RNA_NUCLEOTIDE_MASS = 321.0
 _RNA_DENSITY = 1.3
 _DNA_NUCLEOTIDE_MASS = 312.0
@@ -154,6 +163,31 @@ class Composition:
     solvent_fraction: Array | None = field(default=None)
 
 
+def protein_density(amino_acids: int) -> float:
+    """Density of a globular protein of the given size.
+
+    From Fischer et al. (2004), Protein Science 13, 2825-2828:
+    ``rho = 1.410 + 0.145 exp(-M/13)``, with M the molecular weight of one
+    molecule in kDa. Small proteins pack less efficiently than large ones and
+    are correspondingly denser, approaching 1.410 g/cm^3 as they grow.
+
+    Parameters
+    ----------
+    amino_acids : int
+        Residues in **one molecule**, not in the whole cell. The caller
+        multiplies by the number of monomers separately.
+
+    Returns
+    -------
+    float
+        Density in grams per cubic centimetre.
+    """
+    molecular_weight_kda = _AMINO_ACID_AVERAGE_MASS * amino_acids / 1000.0
+    return FISCHER_DENSITY_LIMIT + FISCHER_DENSITY_RANGE * math.exp(
+        -molecular_weight_kda / FISCHER_DECAY_KDA
+    )
+
+
 def estimate_solvent_fraction(
     cell_volume: Array,
     macromolecule: Macromolecule,
@@ -186,12 +220,14 @@ def estimate_solvent_fraction(
 
     Notes
     -----
-    ``proteinDensity`` is a constant 1.35 here, matching the Java. Directly
-    beneath it in ``CoefCalcCompute.java`` sits a commented-out
-    implementation of the Fischer et al. (2004) molecular-weight-dependent
-    formula, under a comment saying to use Fischer. The two differ by around
-    11%. Reproduced as-is; changing it is a decision for both codebases at
-    once.
+    Protein density comes from :func:`protein_density`, which follows Fischer
+    et al. (2004). RADDOSE-3D used a flat 1.35 g/cm^3 with that formula
+    commented out beneath it; it was adopted in both codebases at once, so
+    the two still agree. For a 129-residue protein it raises the density from
+    1.35 to 1.459 and so the solvent fraction from 0.709 to 0.731.
+
+    The densities used for RNA, DNA, carbohydrate and heteroatoms remain
+    constants, as in the Java -- Fischer's fit is for globular proteins.
     """
     database = element_database()
     monomers = macromolecule.monomers
@@ -201,7 +237,9 @@ def estimate_solvent_fraction(
         return total / (cell_volume * density * _ANGSTROMS_TO_ML)
 
     protein = occupied(
-        _AMINO_ACID_AVERAGE_MASS, macromolecule.amino_acids, _PROTEIN_DENSITY
+        _AMINO_ACID_AVERAGE_MASS,
+        macromolecule.amino_acids,
+        protein_density(macromolecule.amino_acids),
     )
     rna = occupied(_RNA_NUCLEOTIDE_MASS, macromolecule.rna_nucleotides, _RNA_DENSITY)
     dna = occupied(_DNA_NUCLEOTIDE_MASS, macromolecule.dna_nucleotides, _DNA_DENSITY)
@@ -492,15 +530,26 @@ def sequence_residue_counts(
 
     Raises
     ------
-    KeyError
-        If a character does not name a residue of that type.
+    ValueError
+        If a character does not name a residue of that type. Stopping is
+        deliberate: silently dropping it would give a polymer one residue
+        short, and a dose for a molecule the caller did not describe.
     """
     database = residue_database()
     counts: dict[str, float] = {}
-    for character in sequence:
+    for position, character in enumerate(sequence, start=1):
+        # Whitespace is skipped rather than looked up: a sequence written on
+        # Windows carries a carriage return at the end of every line.
         if character.isspace():
             continue
-        for symbol, number in database.by_letter(character, residue_type).atoms.items():
+        try:
+            residue = database.by_letter(character, residue_type)
+        except KeyError:
+            raise ValueError(
+                f"{character!r} at position {position} of the sequence is not "
+                f"a recognised {residue_type.name.lower()} residue code."
+            ) from None
+        for symbol, number in residue.atoms.items():
             counts[symbol] = counts.get(symbol, 0.0) + number
     return counts
 
