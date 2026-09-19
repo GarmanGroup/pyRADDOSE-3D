@@ -18,6 +18,11 @@ NumPy is the default and a required dependency. PyTorch is an extra::
     pip install pyRADDOSE-3D            # CCP4-sized; no gradients
     pip install pyRADDOSE-3D[torch]     # gradients
 
+Three divergences have turned up so far, all handled here: :func:`erf`, which
+NumPy does not have; :func:`sort`, which torch returns as a
+``(values, indices)`` pair where NumPy returns just the values; and
+:func:`astype`, which is a NumPy array method with no torch equivalent.
+
 Nothing in this package imports :mod:`torch` at module scope. The import
 happens only once an array that is *already* a tensor reaches
 :func:`array_namespace`, so a torch-less install never pays for it and never
@@ -33,7 +38,7 @@ import numpy as np
 if TYPE_CHECKING:
     from types import ModuleType
 
-__all__ = ["array_namespace", "erf", "is_torch", "promote"]
+__all__ = ["array_namespace", "astype", "erf", "is_torch", "promote", "sort"]
 
 
 def is_torch(x: Any) -> bool:
@@ -139,3 +144,52 @@ def promote(*values: Any) -> tuple[ModuleType, tuple[Any, ...]]:
     return xp, tuple(
         v if is_torch(v) else torch.as_tensor(v, dtype=dtype) for v in values
     )
+
+
+def sort(x: Any, axis: int = -1) -> Any:
+    """Sort along an axis, returning only the values.
+
+    ``torch.sort`` returns a ``(values, indices)`` named tuple where
+    ``numpy.sort`` returns the array, so the two cannot be called the same
+    way. Only the values are ever wanted here.
+
+    Parameters
+    ----------
+    x : Any
+        Array or tensor to sort.
+    axis : int, optional
+        Axis to sort along. Default the last.
+
+    Returns
+    -------
+    Any
+        The sorted values, ascending.
+    """
+    if is_torch(x):
+        import torch
+
+        return torch.sort(x, dim=axis).values
+    return np.sort(x, axis=axis)
+
+
+def astype(x: Any, dtype: Any) -> Any:
+    """Convert to another dtype.
+
+    ``numpy`` spells this as an array method and ``torch`` as ``Tensor.to``,
+    so neither can be called through the other's name.
+
+    Parameters
+    ----------
+    x : Any
+        Array or tensor.
+    dtype : Any
+        Target dtype, in whichever library ``x`` belongs to.
+
+    Returns
+    -------
+    Any
+        ``x`` as ``dtype``.
+    """
+    if is_torch(x):
+        return x.to(dtype)
+    return x.astype(dtype)

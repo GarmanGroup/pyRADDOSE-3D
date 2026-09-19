@@ -171,3 +171,35 @@ Two cases exist to pin defects:
 java -cp /tmp/coef3:. se.raddo.raddose3D.DumpCoef3 \
      3I40.pdb COD-1008123.cif COD-1008775-urea.cif > coefficients_files.tsv
 ```
+
+
+---
+
+# findDepth reference
+
+`find_depth.tsv.gz` is the output of `DumpDepth.java`: four crystals, each at
+four rotations, probed on a 7x7x7 grid that reaches outside the crystal in
+every direction so that misses, single crossings and grazing hits are all
+covered. 5488 depths in total.
+
+| tag | contents |
+|---|---|
+| `VERT` | vertex index, x, y, z -- the mesh before any rotation |
+| `TRI` | triangle index and its three **one-based** vertex indices |
+| `WEDGE` | the wedge start position, applied before the rotation |
+| `DEPTH` | rotation angle (rad), voxel x, y, z, and the depth in um |
+
+98% come out bit-identical in Python; the worst deviation is 2.7e-15 um.
+
+Two of the four crystals exist for specific reasons. `cuboid-rotated` has
+non-zero `AngleP` and `AngleL`, so no face is axis-aligned. `cylinder` is a
+64-sided prism, which is the only case here with enough triangles for the
+shared-edge de-duplication to matter -- removing that de-duplication fails
+this case by a full 30 um and leaves the cuboids untouched.
+
+The 90 degree rotation is the awkward one: `cos` is 6e-17 rather than 0, so
+faces end up very nearly parallel to the beam and the ray-plane quotient
+divides a cancelling numerator by a near-zero denominator. That is what
+exposed the batch-dependence bug described in `test_geometry.py`.
+
+Regenerate as for the other dumpers; `DumpDepth` takes no arguments.
