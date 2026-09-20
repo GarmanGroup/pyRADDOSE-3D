@@ -99,9 +99,13 @@ def _load_reference() -> dict:
             elif tag == "VOX":
                 case["voxels"].append(
                     (
-                        int(row[2]), int(row[3]), int(row[4]),
+                        int(row[2]),
+                        int(row[3]),
+                        int(row[4]),
                         row[5] == "true",
-                        float(row[6]), float(row[7]), float(row[8]),
+                        float(row[6]),
+                        float(row[7]),
+                        float(row[8]),
                     )
                 )
     return dict(cases)
@@ -135,8 +139,15 @@ def _run(case_id: str) -> tuple:
     translations = np.tile(np.array(position), (len(angles), 1))
 
     result = expose(
-        mesh, grid, occupied, beam, case["coefficients"], case["density"],
-        angles, seconds, translations=translations,
+        mesh,
+        grid,
+        occupied,
+        beam,
+        case["coefficients"],
+        case["density"],
+        angles,
+        seconds,
+        translations=translations,
     )
     return case, grid, coordinates, occupied, result
 
@@ -159,8 +170,11 @@ def _on_a_face(coordinates: np.ndarray, case_id: str = "") -> np.ndarray:
 
 def test_reference_covers_five_exposures() -> None:
     assert set(CASE_IDS) == {
-        "still-tophat", "rotation-gauss", "collimated",
-        "rotated-crystal", "offset",
+        "still-tophat",
+        "rotation-gauss",
+        "collimated",
+        "rotated-crystal",
+        "offset",
     }
 
 
@@ -241,17 +255,20 @@ def test_on_face_voxels_are_intrinsically_unstable() -> None:
     start, end, resolution, seconds, *position = case["wedge"]
     angles = exposure_angles(start, end, resolution)
     beam = GaussianBeam(2.0e12, 12.1, 80.0, 60.0)
-    common = dict(
-        coefficients=case["coefficients"],
-        density=case["density"],
-        angles=angles,
-        exposure_seconds=seconds,
-        translations=np.tile(np.array(position), (len(angles), 1)),
-    )
+    common = {
+        "coefficients": case["coefficients"],
+        "density": case["density"],
+        "angles": angles,
+        "exposure_seconds": seconds,
+        "translations": np.tile(np.array(position), (len(angles), 1)),
+    }
 
     nudged = expose(
         Mesh(np.nextafter(mesh.vertices, mesh.vertices + 1), CUBOID_TRIANGLES),
-        grid, occupied, beam, **common,
+        grid,
+        occupied,
+        beam,
+        **common,
     )
 
     before = np.asarray(result.dose)
@@ -266,9 +283,9 @@ def test_on_face_voxels_are_intrinsically_unstable() -> None:
         "unstable where it has no right to be"
     )
 
-    shift = abs(
-        float(nudged.average_dose) - float(result.average_dose)
-    ) / float(result.average_dose)
+    shift = abs(float(nudged.average_dose) - float(result.average_dose)) / float(
+        result.average_dose
+    )
     assert shift > 1e-5, (
         "if a one-ulp nudge no longer moves the average dose by more than "
         "the tolerance this suite allows against Java, that tolerance can "
@@ -396,13 +413,13 @@ def _simple_exposure(**overrides: object) -> object:
     mesh = cuboid(40.0, 30.0, 20.0)
     grid = voxel_grid(mesh, 0.5)
     occupied = occupancy(mesh, grid.coordinates())
-    settings = dict(
-        beam=GaussianBeam(2.0e12, 12.1, 80.0, 60.0),
-        coefficients=MaterialCoefficients(2.3e-4, 2.67e-4, 1.9e-5, 1.77e-5),
-        density=1.08,
-        angles=exposure_angles(0.0, math.radians(90), math.radians(10)),
-        exposure_seconds=50.0,
-    )
+    settings = {
+        "beam": GaussianBeam(2.0e12, 12.1, 80.0, 60.0),
+        "coefficients": MaterialCoefficients(2.3e-4, 2.67e-4, 1.9e-5, 1.77e-5),
+        "density": 1.08,
+        "angles": exposure_angles(0.0, math.radians(90), math.radians(10)),
+        "exposure_seconds": 50.0,
+    }
     settings.update(overrides)
     return expose(mesh, grid, occupied, **settings)
 
@@ -451,10 +468,14 @@ def test_attenuation_shields_the_far_side_of_the_crystal() -> None:
     coordinates = np.asarray(grid.coordinates())
     occupied = occupancy(mesh, coordinates)
     result = expose(
-        mesh, grid, occupied,
+        mesh,
+        grid,
+        occupied,
         TophatBeam(2.0e12, 12.1, 200.0, 200.0),
         MaterialCoefficients(2.3e-4, 2.67e-2, 1.9e-5, 1.77e-5),
-        1.08, [0.0], 50.0,
+        1.08,
+        [0.0],
+        50.0,
     )
 
     dose = np.asarray(result.dose)
@@ -496,9 +517,14 @@ def _torch_exposure(torch: object, **leaves: object) -> object:
         leaves.get("flux", 2.0e12), leaves.get("energy", 12.1), 80.0, 60.0
     )
     return expose(
-        mesh, grid, torch.tensor(np.asarray(occupied)), beam,
-        MaterialCoefficients(2.3e-4, 2.67e-4, 1.9e-5, 1.77e-5), 1.08,
-        [0.0, 0.3], leaves.get("seconds", 50.0),
+        mesh,
+        grid,
+        torch.tensor(np.asarray(occupied)),
+        beam,
+        MaterialCoefficients(2.3e-4, 2.67e-4, 1.9e-5, 1.77e-5),
+        1.08,
+        [0.0, 0.3],
+        leaves.get("seconds", 50.0),
     )
 
 
@@ -541,12 +567,12 @@ def test_both_backends_agree() -> None:
     plain = cuboid(40.0, 30.0, 20.0)
     grid = voxel_grid(plain, 0.5)
     occupied = occupancy(plain, grid.coordinates())
-    settings = dict(
-        coefficients=MaterialCoefficients(2.3e-4, 2.67e-4, 1.9e-5, 1.77e-5),
-        density=1.08,
-        angles=exposure_angles(0.0, math.radians(90), math.radians(10)),
-        exposure_seconds=50.0,
-    )
+    settings = {
+        "coefficients": MaterialCoefficients(2.3e-4, 2.67e-4, 1.9e-5, 1.77e-5),
+        "density": 1.08,
+        "angles": exposure_angles(0.0, math.radians(90), math.radians(10)),
+        "exposure_seconds": 50.0,
+    }
 
     on_numpy = expose(
         plain, grid, occupied, GaussianBeam(2.0e12, 12.1, 80.0, 60.0), **settings
@@ -561,10 +587,14 @@ def test_both_backends_agree() -> None:
         pixels_per_micron=grid.pixels_per_micron,
     )
     on_torch = expose(
-        as_tensor, torch_grid, torch.tensor(np.asarray(occupied)),
+        as_tensor,
+        torch_grid,
+        torch.tensor(np.asarray(occupied)),
         GaussianBeam(
             torch.tensor(2.0e12, dtype=torch.float64),
-            torch.tensor(12.1, dtype=torch.float64), 80.0, 60.0,
+            torch.tensor(12.1, dtype=torch.float64),
+            80.0,
+            60.0,
         ),
         **settings,
     )

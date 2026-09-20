@@ -78,6 +78,10 @@ public final class DumpExposure {
     double[] v0 = c.getCrystCoord(0, 0, 0);
     System.out.printf("ORIGIN\t%s\t%.17g\t%.17g\t%.17g%n", id, v0[0], v0[1], v0[2]);
 
+    // Registers the summary observer. It is created lazily on first call,
+    // so asking for it after the exposure gets one that saw nothing.
+    ExposureSummary es = c.getExposureSummary();
+
     c.expose(b, w);
 
     int occupied = 0;
@@ -96,6 +100,20 @@ public final class DumpExposure {
     }
     System.out.printf("SUMMARY\t%s\t%d\t%.17g\t%.17g%n", id, occupied,
         total / occupied, peak);
+
+    // The sixteen reported numbers, in OutputSummaryCSV's column order.
+    double thr = 0.95;
+    System.out.printf(
+        "REPORT\t%s\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g"
+        + "\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g%n",
+        id,
+        es.getAvgDiffractedDose(), es.getLastDWD(), es.getWedgeElastic(),
+        es.getWedgeElastic() / es.getAvgDiffractedDose(),
+        es.getAvgDoseWholeCrystal(), es.getAvgDoseExposedRegion(),
+        es.getMaxDose(), es.getAbsDoseThreshold(thr), thr * 100,
+        es.getAvgDoseThreshold(thr), es.getDoseContrast(thr),
+        es.getUsedVolumeFraction(), es.getAbsEnergyTotal(),
+        es.getDoseInefficiency(), es.getDoseInefficiencyPE());
 
     // A sparse sample of individual voxels, so a disagreement can be located.
     int stride = System.getenv("FULL") != null ? 1 : Math.max(1, size[0] / 4);

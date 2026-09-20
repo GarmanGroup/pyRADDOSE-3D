@@ -247,5 +247,15 @@ constructor converts. Passing radians to the generator looks right and
 silently gives a 57-fold smaller rotation, which is what happened the first
 time this fixture was built.
 
+`REPORT` rows carry the sixteen numbers `OutputSummaryCSV` writes, in its
+column order, taken from `ExposureSummary` after the exposure. Note that
+`getExposureSummary()` creates and registers its observer lazily, so it has
+to be called *before* `expose` -- asking afterwards returns one that saw
+nothing and whose getters are null.
+
+Four of the five cases reproduce all sixteen to 1e-13 or better.
+`rotation-gauss` reaches 1.8e-5, which is the same on-face instability
+described above rather than a different formula.
+
 `DumpExposure` takes no arguments. Setting `FULL=1` dumps every voxel rather
 than a strided sample, which is useful when locating a disagreement.

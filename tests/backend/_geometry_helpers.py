@@ -11,9 +11,18 @@ from pyraddose_3d.backend.geometry import Mesh
 CUBOID_TRIANGLES = (
     np.array(
         [
-            [1, 3, 2], [4, 3, 1], [3, 6, 2], [7, 6, 3],
-            [2, 5, 1], [2, 6, 5], [4, 8, 3], [8, 7, 3],
-            [4, 1, 8], [1, 5, 8], [8, 5, 7], [7, 5, 6],
+            [1, 3, 2],
+            [4, 3, 1],
+            [3, 6, 2],
+            [7, 6, 3],
+            [2, 5, 1],
+            [2, 6, 5],
+            [4, 8, 3],
+            [8, 7, 3],
+            [4, 1, 8],
+            [1, 5, 8],
+            [8, 5, 7],
+            [7, 5, 6],
         ]
     )
     - 1
@@ -25,10 +34,14 @@ def cuboid(x: float = 40.0, y: float = 30.0, z: float = 20.0) -> Mesh:
     half_x, half_y, half_z = x / 2, y / 2, z / 2
     vertices = np.array(
         [
-            [-half_x, -half_y, half_z], [-half_x, -half_y, -half_z],
-            [-half_x, half_y, -half_z], [-half_x, half_y, half_z],
-            [half_x, -half_y, half_z], [half_x, -half_y, -half_z],
-            [half_x, half_y, -half_z], [half_x, half_y, half_z],
+            [-half_x, -half_y, half_z],
+            [-half_x, -half_y, -half_z],
+            [-half_x, half_y, -half_z],
+            [-half_x, half_y, half_z],
+            [half_x, -half_y, half_z],
+            [half_x, -half_y, -half_z],
+            [half_x, half_y, -half_z],
+            [half_x, half_y, half_z],
         ]
     )
     return Mesh(vertices, CUBOID_TRIANGLES)

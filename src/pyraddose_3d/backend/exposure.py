@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from pyraddose_3d.backend.coefficients import MaterialCoefficients
     from pyraddose_3d.backend.voxels import VoxelGrid
 
-__all__ = ["ExposureResult", "expose", "exposure_angles"]
+__all__ = ["ExposureResult", "expose", "exposure_angles", "no_decay"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
@@ -73,6 +73,14 @@ class ExposureResult:
         ``(N,)`` energy incident on the voxel, in joules.
     elastic : Array
         ``(N,)`` elastically scattered photons.
+    absorbed_energy : Array
+        ``(N,)`` energy actually absorbed, in joules. Distinct from
+        ``fluence``, which is the energy that arrived: only the absorbed
+        part becomes dose.
+    image_dwd : Array
+        ``(A,)`` diffraction-weighted dose after each image, in MGy. The
+        fluence- and decay-weighted mean dose over the voxels that
+        contributed to that image.
     occupied : Array
         ``(N,)`` boolean, which voxels are inside the crystal. Voxels
         outside it are zero throughout, and must be excluded from averages
@@ -83,6 +91,8 @@ class ExposureResult:
     fluence: Array
     elastic: Array
     occupied: Array
+    absorbed_energy: Array
+    image_dwd: Array
 
     @property
     def average_dose(self) -> Array:
@@ -98,9 +108,7 @@ class ExposureResult:
         return xp.max(xp.where(self.occupied, self.dose, 0.0))
 
 
-def exposure_angles(
-    start: float, end: float, resolution: float
-) -> list[float]:
+def exposure_angles(start: float, end: float, resolution: float) -> list[float]:
     """The rotation angles a wedge is sampled at.
 
     Parameters
@@ -136,6 +144,23 @@ def exposure_angles(
     return [begin + sign * step * resolution for step in range(count)]
 
 
+def no_decay(dose: Array) -> float:
+    """RADDOSE-3D's ``DDM Simple``: diffraction does not decay with dose.
+
+    Parameters
+    ----------
+    dose : Array
+        Accumulated dose, ignored.
+
+    Returns
+    -------
+    float
+        Always one.
+    """
+    del dose
+    return 1.0
+
+
 def _fraction_absorbed(coefficient: Array, pixels_per_micron: float) -> Array:
     """Fraction of a beam absorbed crossing one voxel."""
     xp = array_namespace(coefficient)
@@ -154,6 +179,7 @@ def expose(
     *,
     translations: Array | None = None,
     off_axis: Array = 0.0,
+    decay_model: Any = None,
 ) -> ExposureResult:
     """Accumulate dose over a wedge.
 
@@ -187,12 +213,19 @@ def expose(
         omitted.
     off_axis : Array, optional
         Rotation axis offset from the beam centre, in micrometres.
+    decay_model : Any, optional
+        Callable mapping accumulated dose to relative diffraction
+        efficiency, for the diffraction-weighted dose. Defaults to
+        RADDOSE-3D's ``DDM Simple``, which is no decay at all.
 
     Returns
     -------
     ExposureResult
         Per-voxel dose, fluence and elastic yield.
     """
+    if decay_model is None:
+        decay_model = no_decay
+
     xp = array_namespace(grid.origin, beam.energy, beam.flux, density)
     coordinates = grid.coordinates()
     angle_count = len(angles)
@@ -213,31 +246,34 @@ def expose(
         / voxel_mass_term
         * 1e-6
     )
-    fluence_to_elastic = _fraction_absorbed(
-        coefficients.elastic, pixels_per_micron
-    ) / (photon_energy * KEV_TO_JOULES)
+    fluence_to_elastic = _fraction_absorbed(coefficients.elastic, pixels_per_micron) / (
+        photon_energy * KEV_TO_JOULES
+    )
 
     # Voxel cross-section times the time each angle is exposed for.
-    beam_to_fluence = (
-        pixels_per_micron**-2 * exposure_seconds / angle_count
-    )
+    beam_to_fluence = pixels_per_micron**-2 * exposure_seconds / angle_count
 
     # Compton electrons carry away this fraction of each photon's energy.
     beam_energy_joules = photon_energy * KEV_TO_JOULES
     # Promoted against the values that decide the backend: the ratio is a
     # plain float whenever the photon energy is, even in a torch exposure.
     _, (ratio, *_rest) = promote(
-        _ELECTRON_REST_ENERGY_J
-        / (2 * beam_energy_joules + _ELECTRON_REST_ENERGY_J),
+        _ELECTRON_REST_ENERGY_J / (2 * beam_energy_joules + _ELECTRON_REST_ENERGY_J),
         grid.origin,
         beam.flux,
         density,
     )
     compton_fraction = 1 - xp.sqrt(ratio)
 
+    # Energy absorbed per unit fluence crossing one voxel. The same
+    # numerator as fluence_to_dose, before the mass conversion.
+    energy_per_fluence = _fraction_absorbed(coefficients.absorption, pixels_per_micron)
+
     dose = xp.zeros_like(coordinates[:, 0])
     fluence = xp.zeros_like(dose)
     elastic = xp.zeros_like(dose)
+    absorbed_energy = xp.zeros_like(dose)
+    image_dwd = []
 
     for index, angle in enumerate(angles):
         shift = (
@@ -258,13 +294,47 @@ def expose(
         # doing there: the Java never visits them.
         voxel_fluence = xp.where(occupied, voxel_fluence, 0.0)
 
+        photoelectric_dose = fluence_to_dose * voxel_fluence
+        compton_dose = fluence_to_compton_dose * voxel_fluence * compton_fraction
+        added = photoelectric_dose + compton_dose
+
+        dose_before = dose
+        dose = dose + added
+
+        # The diffraction-weighted dose for this image: the dose each voxel
+        # was at while it diffracted, weighted by how much it diffracted.
+        # The Java takes the midpoint of the dose across the image for the
+        # weighting, but the *end* of it for the decay -- reproduced.
+        decay = decay_model(dose + photoelectric_dose / 2)
+        contributing = voxel_fluence > 0
+        weight = xp.where(contributing, voxel_fluence * decay, 0.0)
+        numerator = xp.sum(
+            xp.where(contributing, (dose_before + added / 2) * weight, 0.0)
+        )
+        denominator = xp.sum(weight)
+        # An image in which nothing diffracted contributes nothing, and the
+        # division is avoided rather than guarded after the fact: reading
+        # the denominator back as a Python float would break the gradient.
+        empty = denominator == 0
+        image_dwd.append(
+            xp.where(empty, 0.0, numerator / xp.where(empty, 1.0, denominator))
+        )
+
         fluence = fluence + voxel_fluence
         elastic = elastic + fluence_to_elastic * voxel_fluence
-        dose = dose + fluence_to_dose * voxel_fluence
-        dose = dose + fluence_to_compton_dose * voxel_fluence * compton_fraction
+        # Both channels deposit energy, and both count towards the absorbed
+        # total used for dose inefficiency.
+        absorbed_energy = absorbed_energy + energy_per_fluence * voxel_fluence * (
+            1 + compton_fraction
+        )
 
     return ExposureResult(
-        dose=dose, fluence=fluence, elastic=elastic, occupied=occupied
+        dose=dose,
+        fluence=fluence,
+        elastic=elastic,
+        occupied=occupied,
+        absorbed_energy=absorbed_energy,
+        image_dwd=xp.stack(image_dwd) if image_dwd else xp.zeros_like(dose[:0]),
     )
 
 
