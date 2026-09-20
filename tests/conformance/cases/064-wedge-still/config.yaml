@@ -1,0 +1,54 @@
+crystal:
+  pixels_per_micron: 0.5
+  angle_p: 0.0
+  angle_l: 0.0
+  composition:
+    unit_cell:
+    - 78.02
+    - 78.02
+    - 78.02
+    unit_cell_angles: null
+    method: unit_cell
+    num_monomers: 24
+    num_residues: 51
+    num_rna: 0
+    num_dna: 0
+    protein_heavy_atoms:
+      Zn: 0.333
+      S: 6.0
+    solvent_heavy_conc:
+      P: 425.0
+    solvent_fraction: 0.64
+  decay_model: simple
+  decay_parameters: null
+  escape:
+    photoelectron: false
+    fluorescence: false
+    surrounding: false
+    pe_resolution: null
+    fl_resolution: null
+  type: cuboid
+  dimensions:
+  - 20.0
+  - 16.0
+  - 12.0
+beam:
+  flux: 2000000000000.0
+  energy: 12.1
+  collimation:
+    shape: rectangular
+    x: 40.0
+    y: 40.0
+  type: gaussian
+  fwhm:
+  - 20.0
+  - 20.0
+wedges:
+- start: 45.0
+  end: 45.0
+  exposure_time: 10.0
+  angular_resolution: null
+  start_offset: null
+  translate_per_degree: null
+  rot_axis_beam_offset: null
+seed: 20260917

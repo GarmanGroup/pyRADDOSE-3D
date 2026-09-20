@@ -1,11 +1,34 @@
-reference_version: 5.0.1090
+reference_version: 5.0.1082
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 29
+case_count: 31
 tolerances:
-  tier_A_relative: 1.0e-05
-  tier_A_ratio_quantities_relative: 0.0001
+  tier_A_relative: 0.0001
+  tier_A_quantised_quantities_relative: 0.005
   tier_B_relative: 0.05
+quantised_quantities:
+- dose_threshold
+- tad
+- dose_contrast
+tolerance_rationale:
+  tier_A_relative: 'Set by how well conditioned the voxel occupancy test is, not by
+    how carefully the port was written. calculateCrystalOccupancy decides membership
+    by ray parity, so a voxel whose centre lies exactly on a face can go either way,
+    and a crystal face aligned with the voxel grid puts a whole plane of them in that
+    position. Moving every mesh vertex by one ulp moves the reported sums by 1.7e-5
+    (rotation-anglep-45) to 9.3e-2 (baseline) -- one to four orders of magnitude more
+    than the port''s disagreement with the reference, which is at worst 5e-5. Java
+    cannot reproduce itself to better than this either: Math.cos and Math.sin are
+    not required to be bit-reproducible across JVMs.'
+  tier_A_quantised_quantities_relative: 'These three are quantised and cannot take
+    a value between two rungs. dose_threshold is a dose some voxel actually has, so
+    it moves in steps of the dose histogram''s bin gap -- median 1e-4 to 3e-3 relative
+    across the corpus. tad and dose_contrast divide by a count of voxels above the
+    threshold, so they move in steps of one voxel in about five hundred, 2e-3. Every
+    disagreement measured is exactly one step: the adjacent histogram bin, or one
+    voxel. 5e-3 is a couple of steps.'
+  tier_B_relative: Escape modelling consumes random draws in an order a vectorised
+    implementation cannot reproduce, so only gross agreement is meaningful.
 notes: Reference values are produced by the Java implementation on the JVM named above.
   The same Java code varies by ~1e-6 between JVMs, so regenerate deliberately and
   review the diff.

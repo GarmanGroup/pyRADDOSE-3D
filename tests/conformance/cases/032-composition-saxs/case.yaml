@@ -2,4 +2,4 @@ case_id: 032-composition-saxs
 tier: A
 exercises: SAXS sample defined by protein concentration
 seed: 20260917
-reference_version: 5.0.1090
+reference_version: 5.0.1082

@@ -376,6 +376,19 @@ _CASES: list[Case] = [
             ]
         },
     ),
+    Case(
+        "064-wedge-still",
+        "A",
+        "a still: start equals end, so the exposure does not rotate",
+        {"wedges": [{"start": 45.0, "end": 45.0, "exposure_time": 10.0}]},
+    ),
+    # --- solvent ------------------------------------------------------------
+    Case(
+        "070-solvent-fraction-computed",
+        "A",
+        "solvent fraction derived from the composition, not stated",
+        {"crystal": {"composition": {"solvent_fraction": REMOVE}}},
+    ),
     # --- escape modelling (tier B: Monte Carlo) -----------------------------
     Case(
         "100-escape-pe",

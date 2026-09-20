@@ -14,10 +14,15 @@ Two tiers, because Monte Carlo cannot be compared value by value:
     a vectorised implementation cannot reproduce, so only loose agreement is
     meaningful.
 
-Until the solver lands these are ``xfail``, not skips -- a skipped test is
-invisible, an xfail is a visible, counted reminder. They flip to ``xpass``
-the moment a module starts producing correct numbers, which is the signal to
-remove the marker.
+Cases the port does not cover are ``xfail``, not skips -- a skipped test is
+invisible, an xfail is a visible, counted reminder -- and the marker is
+derived from the configuration rather than a hand-kept list, so a case cannot
+stay excused after the gap it names is filled. ``strict`` means an xpass
+fails: when escape or the Leal model lands, these turn red and say so.
+
+Tolerances come from ``MANIFEST.yaml`` and are set by how well conditioned
+the calculation is, not by how carefully the port was written; the manifest's
+``tolerance_rationale`` records the measurements behind each one.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ import pytest
 import yaml
 
 from pyraddose_3d.models.experiment import Experiment
+from pyraddose_3d.solve import solve
 
 HERE = Path(__file__).parent
 CASES_DIR = HERE / "cases"
@@ -128,29 +134,90 @@ def test_tier_a_cases_have_no_random_dependence() -> None:
 def compute_summary(experiment: Experiment) -> list[dict[str, float]]:
     """Run the Python implementation and return a comparable summary.
 
+    Parameters
+    ----------
+    experiment : Experiment
+        The case configuration.
+
+    Returns
+    -------
+    list[dict[str, float]]
+        One dict per wedge, keyed as the reference JSON is.
+
     Raises
     ------
     NotImplementedError
-        Until the port's solver exists.
+        If the case asks for something not ported.
     """
-    raise NotImplementedError(
-        "the Python dose calculation is not implemented yet; see the port plan, phase 2"
-    )
+    return [summary.as_dict() for summary in solve(experiment)]
 
 
 def tolerance_for(tier: str, field: str, manifest_data: dict[str, Any]) -> float:
-    """Relative tolerance for one field of one tier."""
+    """Relative tolerance for one field of one tier.
+
+    Parameters
+    ----------
+    tier : str
+        ``"A"`` or ``"B"``.
+    field : str
+        Summary field name.
+    manifest_data : dict[str, Any]
+        The parsed manifest.
+
+    Returns
+    -------
+    float
+        Relative tolerance.
+    """
     tolerances = manifest_data["tolerances"]
     if tier == "B":
         return float(tolerances["tier_B_relative"])
-    ratio_fields = {"diffraction_efficiency", "dose_contrast", "dose_inefficiency"}
-    if field in ratio_fields:
-        return float(tolerances["tier_A_ratio_quantities_relative"])
+    if field in set(manifest_data["quantised_quantities"]):
+        return float(tolerances["tier_A_quantised_quantities_relative"])
     return float(tolerances["tier_A_relative"])
 
 
-@pytest.mark.xfail(reason="Python solver not implemented yet", strict=True)
-@pytest.mark.parametrize("case_dir", CASE_DIRS, ids=CASE_IDS)
+def unported_reason(experiment: Experiment) -> str | None:
+    """Why the port cannot run this case, or ``None`` if it can.
+
+    Read from the configuration rather than a list of case names, so that a
+    case stops being excused as soon as the gap it names is filled.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        The case configuration.
+
+    Returns
+    -------
+    str | None
+        A reason, or ``None``.
+    """
+    if experiment.crystal.escape.any_enabled:
+        return "photoelectron and fluorescence escape are Monte Carlo, not ported"
+    if experiment.crystal.decay_model == "leal":
+        return "the Leal et al. decay model is not ported"
+    return None
+
+
+def _case_params() -> list[Any]:
+    """Case directories, with an xfail marker on the ones not ported."""
+    params = []
+    for case_dir in CASE_DIRS:
+        reason = unported_reason(load_case(case_dir)[1])
+        marks = (
+            [pytest.mark.xfail(reason=reason, raises=NotImplementedError, strict=True)]
+            if reason
+            else []
+        )
+        params.append(pytest.param(case_dir, marks=marks, id=case_dir.name))
+    return params
+
+
+CASE_PARAMS = _case_params()
+
+
+@pytest.mark.parametrize("case_dir", CASE_PARAMS)
 def test_matches_reference(case_dir: Path) -> None:
     """Compare the Python result against the Java reference.
 
