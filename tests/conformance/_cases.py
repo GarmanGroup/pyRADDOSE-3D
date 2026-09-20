@@ -382,6 +382,15 @@ _CASES: list[Case] = [
         "a still: start equals end, so the exposure does not rotate",
         {"wedges": [{"start": 45.0, "end": 45.0, "exposure_time": 10.0}]},
     ),
+    Case(
+        "065-wedge-still-decaying",
+        "A",
+        "a still with a decay model, where the number of steps is observable",
+        {
+            "crystal": {"decay_model": "bfactor"},
+            "wedges": [{"start": 45.0, "end": 45.0, "exposure_time": 10.0}],
+        },
+    ),
     # --- solvent ------------------------------------------------------------
     Case(
         "070-solvent-fraction-computed",

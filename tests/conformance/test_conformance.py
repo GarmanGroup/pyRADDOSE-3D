@@ -33,6 +33,7 @@ from typing import Any
 
 import pytest
 import yaml
+from _agreement import record_agreement
 
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.solve import solve
@@ -247,5 +248,5 @@ def test_matches_reference(case_dir: Path) -> None:
                     f"{act_value!r} (relative {deviation:.3e} > {limit:.1e})"
                 )
 
-    print(f"\n{case_dir.name}: worst deviation {worst_deviation:.3e} ({worst_field})")
+    record_agreement(case_dir.name, worst_deviation, worst_field)
     assert not failures, "\n".join(failures)

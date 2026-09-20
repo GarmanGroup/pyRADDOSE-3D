@@ -22,7 +22,6 @@ from pyraddose_3d.backend import beam as backend_beam
 from pyraddose_3d.backend.coefficients import (
     AVERAGE_COEFFICIENTS,
     AVERAGE_DENSITY,
-    MaterialCoefficients,
     density,
     material_coefficients,
     unit_cell_volume,
@@ -85,9 +84,7 @@ def _sphere_mesh(diameter: float) -> Mesh:
     radius of half it.
     """
     table = _load_table("sphere_mesh.tsv")
-    return Mesh(
-        np.array(table["vertices"]) * diameter, np.array(table["triangles"])
-    )
+    return Mesh(np.array(table["vertices"]) * diameter, np.array(table["triangles"]))
 
 
 def _cylinder_mesh(diameter: float, height: float) -> Mesh:
@@ -156,17 +153,32 @@ def crystal_mesh(crystal: Any) -> Mesh:
         half = np.array(crystal.dimensions) / 2
         signs = np.array(
             [
-                [-1, -1, 1], [-1, -1, -1], [-1, 1, -1], [-1, 1, 1],
-                [1, -1, 1], [1, -1, -1], [1, 1, -1], [1, 1, 1],
+                [-1, -1, 1],
+                [-1, -1, -1],
+                [-1, 1, -1],
+                [-1, 1, 1],
+                [1, -1, 1],
+                [1, -1, -1],
+                [1, 1, -1],
+                [1, 1, 1],
             ]
         )
         vertices = signs * half
         triangles = (
             np.array(
                 [
-                    [1, 3, 2], [4, 3, 1], [3, 6, 2], [7, 6, 3],
-                    [2, 5, 1], [2, 6, 5], [4, 8, 3], [8, 7, 3],
-                    [4, 1, 8], [1, 5, 8], [8, 5, 7], [7, 5, 6],
+                    [1, 3, 2],
+                    [4, 3, 1],
+                    [3, 6, 2],
+                    [7, 6, 3],
+                    [2, 5, 1],
+                    [2, 6, 5],
+                    [4, 8, 3],
+                    [8, 7, 3],
+                    [4, 1, 8],
+                    [1, 5, 8],
+                    [8, 5, 7],
+                    [7, 5, 6],
                 ]
             )
             - 1
@@ -188,8 +200,12 @@ def crystal_mesh(crystal: Any) -> Mesh:
     )
 
 
-def _cell_volume(composition: Any) -> float:
-    """Unit cell volume from a composition that names a cell."""
+def _cell_volume(composition: Any) -> Any:
+    """Unit cell volume from a composition that names a cell.
+
+    Returns the backend's ``Array``, not a ``float``: the cell dimensions
+    may be tensors, and narrowing here would break the gradient.
+    """
     angles = composition.unit_cell_angles or (90.0, 90.0, 90.0)
     return unit_cell_volume(*composition.unit_cell, *angles)
 
