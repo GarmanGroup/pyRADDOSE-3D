@@ -180,6 +180,7 @@ def expose(
     translations: Array | None = None,
     off_axis: Array = 0.0,
     decay_model: Any = None,
+    initial_dose: Array | None = None,
 ) -> ExposureResult:
     """Accumulate dose over a wedge.
 
@@ -217,11 +218,23 @@ def expose(
         Callable mapping accumulated dose to relative diffraction
         efficiency, for the diffraction-weighted dose. Defaults to
         RADDOSE-3D's ``DDM Simple``, which is no decay at all.
+    initial_dose : Array, optional
+        ``(N,)`` dose the crystal already carries, from earlier wedges.
+        Zero if omitted.
 
     Returns
     -------
     ExposureResult
         Per-voxel dose, fluence and elastic yield.
+
+    Notes
+    -----
+    Dose is the only quantity that carries between wedges. RADDOSE-3D holds
+    it on the crystal, so a second wedge starts where the first left off and
+    its summary describes the crystal's whole history; the elastic yield and
+    absorbed energy live on the per-wedge observer and start again at zero.
+    Reproduced by returning a cumulative ``dose`` and per-wedge everything
+    else, so a caller need only feed one back in.
     """
     if decay_model is None:
         decay_model = no_decay
@@ -269,10 +282,10 @@ def expose(
     # numerator as fluence_to_dose, before the mass conversion.
     energy_per_fluence = _fraction_absorbed(coefficients.absorption, pixels_per_micron)
 
-    dose = xp.zeros_like(coordinates[:, 0])
-    fluence = xp.zeros_like(dose)
-    elastic = xp.zeros_like(dose)
-    absorbed_energy = xp.zeros_like(dose)
+    dose = xp.zeros_like(coordinates[:, 0]) if initial_dose is None else initial_dose
+    fluence = xp.zeros_like(coordinates[:, 0])
+    elastic = xp.zeros_like(fluence)
+    absorbed_energy = xp.zeros_like(fluence)
     image_dwd = []
 
     for index, angle in enumerate(angles):
@@ -334,7 +347,7 @@ def expose(
         elastic=elastic,
         occupied=occupied,
         absorbed_energy=absorbed_energy,
-        image_dwd=xp.stack(image_dwd) if image_dwd else xp.zeros_like(dose[:0]),
+        image_dwd=xp.stack(image_dwd) if image_dwd else xp.zeros_like(fluence[:0]),
     )
 
 

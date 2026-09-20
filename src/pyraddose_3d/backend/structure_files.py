@@ -182,7 +182,10 @@ def _seqres_names(line: str) -> list[str]:
     return names
 
 
-def composition_from_pdb(path: str | Path) -> Composition:
+def composition_from_pdb(
+    path: str | Path,
+    solvent_concentrations: Mapping[str, Array] | None = None,
+) -> Composition:
     """Read a unit cell composition from a PDB file.
 
     Ports ``CoefCalcFromPDB``, minus its ability to download an entry from
@@ -212,6 +215,10 @@ def composition_from_pdb(path: str | Path) -> Composition:
     ----------
     path : str | Path
         Path to a PDB file.
+    solvent_concentrations : Mapping[str, Array], optional
+        Heavy-atom concentrations in the solvent, in millimolar, keyed by
+        element symbol. Displaces water, as in
+        :func:`pyraddose_3d.backend.composition.unit_cell_composition`.
 
     Returns
     -------
@@ -254,7 +261,9 @@ def composition_from_pdb(path: str | Path) -> Composition:
         ),
         scaled_hetero,
     )
-    return _assemble(records.cell_volume, scaled, solvent_fraction, None)
+    return _assemble(
+        records.cell_volume, scaled, solvent_fraction, solvent_concentrations
+    )
 
 
 _CIF_FORMULA_KEY = "_chemical_formula_sum"
