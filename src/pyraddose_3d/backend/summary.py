@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from pyraddose_3d.backend._array import array_namespace
+from pyraddose_3d.backend._array import array_namespace, to_namespace
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.exposure import ExposureResult
@@ -139,21 +139,32 @@ def _threshold_dose(
     xp = array_namespace(doses)
     order = xp.argsort(doses)
     ordered = doses[order]
+    # Detached, because everything between here and the chosen index is
+    # discrete: sorting, counting ties and searching are steps, not slopes.
+    values = to_namespace(np, ordered)
 
     # Distinct doses, ascending, with how many voxels share each.
-    unique, counts = np.unique(np.asarray(ordered), return_counts=True)
+    unique, counts = np.unique(values, return_counts=True)
     contribution = unique * counts
     cumulative = np.cumsum(contribution)
 
-    cutoff = (1 - quantile) * float(total_dose)
+    # Detached before narrowing: torch warns that turning a tensor which
+    # requires grad into a scalar loses the graph, and it is right -- the
+    # cutoff is only used to pick an index.
+    cutoff = (1 - quantile) * float(to_namespace(np, total_dose))
     # The first distinct dose at which the running total reaches the cutoff.
     reached = np.searchsorted(cumulative, cutoff, side="left")
     if reached >= len(unique):
         return float("inf"), 0
 
-    threshold = unique[reached]
     above = int(counts[reached + 1 :].sum())
-    return threshold, above
+    # Index back into the live array rather than returning the detached
+    # value, so that a gradient reaches the voxel that was selected. The
+    # selection itself is piecewise constant -- nudge an input far enough and
+    # a different voxel is chosen -- which is the honest derivative of a
+    # quantity that can only take values some voxel actually has.
+    position = int(np.searchsorted(values, unique[reached], side="left"))
+    return ordered[position], above
 
 
 def summarise(
@@ -203,8 +214,8 @@ def summarise(
     absorbed = xp.sum(xp.where(occupied, result.absorbed_energy, 0.0))
     elastic = xp.sum(xp.where(occupied, result.elastic, 0.0))
 
-    exposed_doses = np.asarray(xp.where(exposed, result.dose, 0.0))
-    exposed_doses = exposed_doses[exposed_doses > 0]
+    masked = xp.where(exposed, result.dose, 0.0)
+    exposed_doses = masked[masked > 0]
     threshold, above = _threshold_dose(exposed_doses, total_dose, quantile)
     average_above = quantile * total_dose / above if above else float("inf")
 

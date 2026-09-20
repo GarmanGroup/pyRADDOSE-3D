@@ -13,12 +13,14 @@ what stops configuration concerns leaking into the physics.
 from __future__ import annotations
 
 import math
+import re
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from pyraddose_3d.backend import beam as backend_beam
+from pyraddose_3d.backend._array import array_namespace, to_namespace
 from pyraddose_3d.backend.coefficients import (
     AVERAGE_COEFFICIENTS,
     AVERAGE_DENSITY,
@@ -43,9 +45,91 @@ from pyraddose_3d.backend.summary import WedgeSummary, summarise
 from pyraddose_3d.backend.voxels import occupancy, voxel_grid
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from pyraddose_3d.models.experiment import Experiment
 
-__all__ = ["crystal_mesh", "solve"]
+__all__ = ["FIXED", "TUNABLE", "crystal_mesh", "solve"]
+
+#: Configuration paths whose value may be handed to :func:`solve` as a
+#: tensor, and which then carry a usable gradient. ``*`` stands for a wedge
+#: index, so ``wedges.0.exposure_time`` matches ``wedges.*.exposure_time``.
+#:
+#: Every one of these reaches the dose through arithmetic that is smooth
+#: between steps.
+#:
+#: ``wedges.*.start`` earns its place by a whisker and is worth
+#: understanding. ``exposure_angles`` returns
+#: ``begin + sign * step * resolution``, so shifting the start shifts every
+#: angle in the wedge, and that part of the gradient is real: at a start of
+#: 1 degree it agrees with a central finite difference to 5e-9. But the
+#: start also enters the integer image count, and *that* term is a step no
+#: gradient can carry. At a start of 0 degrees the count falls from 46 to 45
+#: the moment the angle moves, so a finite difference there measures the
+#: step and disagrees with autograd entirely. Autograd is the one telling
+#: the truth -- it reports the slope at fixed image count -- but an
+#: optimiser stepping across one of those boundaries will see the objective
+#: jump. Shifting the *end* has only the step term, which is why it is in
+#: :data:`FIXED` instead.
+TUNABLE: frozenset[str] = frozenset(
+    {
+        "beam.flux",
+        "beam.energy",
+        "beam.fwhm",
+        "beam.collimation.x",
+        "beam.collimation.y",
+        "wedges.*.start",
+        "wedges.*.exposure_time",
+        "wedges.*.rot_axis_beam_offset",
+        "wedges.*.start_offset",
+        "wedges.*.translate_per_degree",
+    }
+)
+
+#: Paths that look tunable, are not, and would otherwise fail silently --
+#: autograd returns a number for these, and the number is wrong. Rejected
+#: with the reason rather than left as a footnote.
+_GEOMETRY_IS_COUNTED = (
+    "crystal geometry decides which voxels are inside the crystal, and that "
+    "test is a boolean parity count. Autograd sees only the attenuation path "
+    "through the mesh and is blind to voxels entering or leaving as the "
+    "crystal changes size, so it returns a confident number that is missing "
+    "a term -- measured 20% wrong against a finite difference for a cuboid's "
+    "thickness. Optimise the beam and the wedge instead; the crystal is "
+    "whatever came out of the drop"
+)
+
+FIXED: dict[str, str] = {
+    "crystal.dimensions": _GEOMETRY_IS_COUNTED,
+    "crystal.diameter": _GEOMETRY_IS_COUNTED,
+    "crystal.height": _GEOMETRY_IS_COUNTED,
+    "crystal.angle_p": _GEOMETRY_IS_COUNTED,
+    "crystal.angle_l": _GEOMETRY_IS_COUNTED,
+    "crystal.pixels_per_micron": (
+        "the voxel grid shape is an integer count, so this is a step "
+        "function with a zero derivative everywhere it is defined"
+    ),
+    "wedges.*.end": (
+        "the end of a wedge sets how many images are taken and nothing "
+        "else. exposure_angles returns begin + step * resolution, so the "
+        "angles depend on the start and the step, never on the end; the end "
+        "appears only inside an integer count. Ending at 88 or 89 degrees "
+        "both give 45 images and identical doses, and 90 gives 46. The "
+        "derivative is therefore zero wherever it exists. Optimise the "
+        "exposure time, which is what actually trades dose against "
+        "completeness at fixed rotation"
+    ),
+    "wedges.*.angular_resolution": (
+        "the angular step sets the number of images, an integer count, so "
+        "this is a step function like wedges.*.end"
+    ),
+}
+
+#: ``math.radians`` and ``math.degrees`` spelled as multiplications, so they
+#: apply to a tensor as well as a float. CPython computes them exactly this
+#: way, so the float results are bit-identical.
+_DEG_TO_RAD = math.pi / 180.0
+_RAD_TO_DEG = 180.0 / math.pi
 
 #: Vertices per circle of a cylinder, and the angular step between them. The
 #: step is negative so the circle is traced anticlockwise, matching the
@@ -309,22 +393,81 @@ def _read_sequence(path: str) -> str:
     )
 
 
-def crystal_beam(beam: Any) -> Any:
-    """Turn a beam model into a backend beam."""
+def _generalise(path: str) -> str:
+    """Replace a wedge index with ``*``, so a path can be matched."""
+    return re.sub(r"^wedges\.\d+\.", "wedges.*.", path)
+
+
+def check_overrides(overrides: Mapping[str, Any]) -> None:
+    """Reject a path that is not tunable, saying why.
+
+    Parameters
+    ----------
+    overrides : Mapping[str, Any]
+        Paths to values, as passed to :func:`solve`.
+
+    Raises
+    ------
+    KeyError
+        If a path is not in :data:`TUNABLE`. A path in :data:`FIXED` is
+        reported with the reason it cannot be optimised; anything else is
+        reported as unknown, with the tunable paths listed.
+    """
+    for path in overrides:
+        general = _generalise(path)
+        if general in TUNABLE:
+            continue
+        if general in FIXED:
+            raise KeyError(f"{path!r} cannot be optimised: {FIXED[general]}")
+        raise KeyError(
+            f"{path!r} is not a tunable setting. Tunable: {', '.join(sorted(TUNABLE))}"
+        )
+
+
+def _setting(overrides: Mapping[str, Any], path: str, fallback: Any) -> Any:
+    """The override for ``path`` if there is one, else the configured value."""
+    return overrides[path] if path in overrides else fallback
+
+
+def crystal_beam(beam: Any, overrides: Mapping[str, Any] | None = None) -> Any:
+    """Turn a beam model into a backend beam.
+
+    Parameters
+    ----------
+    beam : Any
+        One of the beam models.
+    overrides : Mapping[str, Any], optional
+        Tensor values for any of the ``beam.*`` paths in :data:`TUNABLE`.
+
+    Returns
+    -------
+    Any
+        A backend beam. It holds tensors if any override did, and the
+        exposure loop then produces a tensor dose.
+    """
+    overrides = overrides or {}
     collimation = beam.collimation
     circular = collimation is not None and collimation.shape == "circular"
 
+    flux = _setting(overrides, "beam.flux", beam.flux)
+    energy = _setting(overrides, "beam.energy", beam.energy)
+    aperture_x = None if collimation is None else collimation.x
+    aperture_y = None if collimation is None else collimation.y
+    if aperture_x is not None:
+        aperture_x = _setting(overrides, "beam.collimation.x", aperture_x)
+        aperture_y = _setting(overrides, "beam.collimation.y", aperture_y)
+
     if beam.type == "tophat":
-        return backend_beam.TophatBeam(
-            beam.flux, beam.energy, collimation.x, collimation.y, circular
-        )
+        return backend_beam.TophatBeam(flux, energy, aperture_x, aperture_y, circular)
+
+    fwhm = _setting(overrides, "beam.fwhm", beam.fwhm)
     return backend_beam.GaussianBeam(
-        beam.flux,
-        beam.energy,
-        beam.fwhm[0],
-        beam.fwhm[1],
-        None if collimation is None else collimation.x,
-        None if collimation is None else collimation.y,
+        flux,
+        energy,
+        fwhm[0],
+        fwhm[1],
+        aperture_x,
+        aperture_y,
         circular,
     )
 
@@ -382,13 +525,26 @@ def _namespace(value: Any) -> Any:
     return array_namespace(value)
 
 
-def solve(experiment: Experiment) -> list[WedgeSummary]:
+def solve(
+    experiment: Experiment,
+    overrides: Mapping[str, Any] | None = None,
+) -> list[WedgeSummary]:
     """Run an experiment and return one summary per wedge.
 
     Parameters
     ----------
     experiment : Experiment
         The validated configuration.
+    overrides : Mapping[str, Any], optional
+        Values to use in place of the configured ones, keyed by
+        configuration path -- ``"beam.flux"``, ``"wedges.0.exposure_time"``.
+        Only paths in :data:`TUNABLE` are accepted. Pass tensors here and
+        the whole calculation runs in torch and the summaries come back as
+        tensors, so a strategy can be optimised by gradient descent::
+
+            fwhm = torch.tensor([20.0, 20.0], dtype=torch.float64, requires_grad=True)
+            summary = solve(experiment, {"beam.fwhm": fwhm})[0]
+            summary.max_dose.backward()
 
     Returns
     -------
@@ -398,10 +554,26 @@ def solve(experiment: Experiment) -> list[WedgeSummary]:
 
     Raises
     ------
+    KeyError
+        If an override names a path that is not tunable. Crystal geometry is
+        rejected explicitly: autograd returns a number for it and the number
+        is wrong, because the occupancy test is a boolean parity count.
     NotImplementedError
         If the configuration asks for something not ported -- escape
         modelling, the Leal decay model, or a polyhedron from a file.
+
+    Notes
+    -----
+    With no overrides this is pure NumPy, which is what the conformance
+    corpus runs and what a CCP4 install without torch gets. The crystal mesh
+    and the voxel grid stay NumPy either way: they are fixed geometry whose
+    occupancy is counted rather than measured, so there is no gradient there
+    worth carrying. :func:`~pyraddose_3d.backend._array.to_namespace`
+    reconciles the two at the boundary.
     """
+    overrides = dict(overrides or {})
+    check_overrides(overrides)
+
     crystal = experiment.crystal
     if crystal.escape.any_enabled:
         raise NotImplementedError(
@@ -415,7 +587,7 @@ def solve(experiment: Experiment) -> list[WedgeSummary]:
     occupied = occupancy(mesh, coordinates)
 
     built, crystal_density = crystal_material(crystal.composition)
-    beam = crystal_beam(experiment.beam)
+    beam = crystal_beam(experiment.beam, overrides)
 
     if built is None:
         coefficients = AVERAGE_COEFFICIENTS
@@ -429,21 +601,46 @@ def solve(experiment: Experiment) -> list[WedgeSummary]:
     # wedge one left off and its summary covers the whole history.
     carried = None
     for number, wedge in enumerate(experiment.wedges, start=1):
+        index = number - 1
         resolution = math.radians(
             wedge.angular_resolution
             if wedge.angular_resolution is not None
             else DEFAULT_ANGULAR_RESOLUTION
         )
-        angles = exposure_angles(
-            math.radians(wedge.start), math.radians(wedge.end), resolution
+        first = _setting(overrides, f"wedges.{index}.start", wedge.start)
+        last = _setting(overrides, f"wedges.{index}.end", wedge.end)
+        angles = exposure_angles(first * _DEG_TO_RAD, last * _DEG_TO_RAD, resolution)
+
+        offset = _setting(overrides, f"wedges.{index}.start_offset", wedge.start_offset)
+        per_degree = _setting(
+            overrides,
+            f"wedges.{index}.translate_per_degree",
+            wedge.translate_per_degree,
+        )
+        seconds = _setting(
+            overrides, f"wedges.{index}.exposure_time", wedge.exposure_time
+        )
+        off_axis = _setting(
+            overrides,
+            f"wedges.{index}.rot_axis_beam_offset",
+            wedge.rot_axis_beam_offset or 0.0,
         )
 
-        start = np.array(wedge.start_offset or (0.0, 0.0, 0.0))
-        per_degree = np.array(wedge.translate_per_degree or (0.0, 0.0, 0.0))
+        xp = array_namespace(
+            *angles, offset, per_degree, seconds, off_axis, beam.flux, beam.energy
+        )
+        offset = to_namespace(xp, offset if offset is not None else (0.0, 0.0, 0.0))
+        per_degree = to_namespace(
+            xp, per_degree if per_degree is not None else (0.0, 0.0, 0.0)
+        )
         # The translation accumulates with the angle turned since the start
-        # of the wedge, in degrees.
-        turned = np.degrees(np.array(angles) - math.radians(wedge.start))
-        translations = start + turned[:, None] * per_degree
+        # of the wedge, in degrees. Measured from the configured start rather
+        # than from the first angle, which differ when the wedge begins past
+        # a full turn -- exposure_angles reduces the angles and not this.
+        turned = to_namespace(
+            xp, [(angle - first * _DEG_TO_RAD) * _RAD_TO_DEG for angle in angles]
+        )
+        translations = offset + turned[:, None] * per_degree
 
         result = expose(
             mesh,
@@ -453,9 +650,9 @@ def solve(experiment: Experiment) -> list[WedgeSummary]:
             coefficients,
             crystal_density,
             angles,
-            wedge.exposure_time,
+            seconds,
             translations=translations,
-            off_axis=wedge.rot_axis_beam_offset or 0.0,
+            off_axis=off_axis,
             decay_model=decay,
             initial_dose=carried,
         )

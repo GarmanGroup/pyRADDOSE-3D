@@ -18,6 +18,35 @@ Conformance with the Java is a tested property, not a claim: each module is
 checked against reference values generated from RADDOSE-3D itself, and the
 achieved agreement is recorded rather than merely asserted.
 
+## Optimising a strategy
+
+Hand `solve` a tensor for any tunable setting and the whole calculation runs
+in torch, so the reported numbers come back differentiable:
+
+```python
+import torch
+from pyraddose_3d.models.experiment import Experiment
+from pyraddose_3d.solve import solve
+
+experiment = Experiment.from_yaml("beamline.yaml")
+fwhm = torch.tensor([20.0, 20.0], dtype=torch.float64, requires_grad=True)
+
+peak = solve(experiment, {"beam.fwhm": fwhm})[0].max_dose
+peak.backward()
+fwhm.grad          # how the peak dose responds to widening the beam
+```
+
+With no overrides it stays on NumPy, which is what a torch-less install runs
+and what the conformance corpus checks.
+
+Only settings that carry a real gradient are accepted. Crystal geometry is
+refused with the reason: the voxel occupancy test is a boolean parity count,
+so autograd sees only the attenuation path and misses voxels entering or
+leaving the crystal -- it returns a confident number that is 20% wrong. The
+end of a wedge is refused for a different reason: it sets the number of
+images and nothing else, so its derivative is zero wherever it exists. See
+`TUNABLE` and `FIXED` in `pyraddose_3d.solve`.
+
 ## Attribution
 
 This is a derivative work of RADDOSE-3D, by the Garman Group at the University

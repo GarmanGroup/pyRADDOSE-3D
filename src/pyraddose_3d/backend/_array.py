@@ -18,10 +18,13 @@ NumPy is the default and a required dependency. PyTorch is an extra::
     pip install pyRADDOSE-3D            # CCP4-sized; no gradients
     pip install pyRADDOSE-3D[torch]     # gradients
 
-Three divergences have turned up so far, all handled here: :func:`erf`, which
+Four divergences have turned up so far, all handled here: :func:`erf`, which
 NumPy does not have; :func:`sort`, which torch returns as a
-``(values, indices)`` pair where NumPy returns just the values; and
-:func:`astype`, which is a NumPy array method with no torch equivalent.
+``(values, indices)`` pair where NumPy returns just the values;
+:func:`astype`, which is a NumPy array method with no torch equivalent; and
+:func:`to_namespace`, because torch rejects an ndarray where NumPy would
+have accepted a tensor, so a mixed expression has to be reconciled rather
+than merely dispatched.
 
 Nothing in this package imports :mod:`torch` at module scope. The import
 happens only once an array that is *already* a tensor reaches
@@ -38,7 +41,15 @@ import numpy as np
 if TYPE_CHECKING:
     from types import ModuleType
 
-__all__ = ["array_namespace", "astype", "erf", "is_torch", "promote", "sort"]
+__all__ = [
+    "array_namespace",
+    "astype",
+    "erf",
+    "is_torch",
+    "promote",
+    "sort",
+    "to_namespace",
+]
 
 
 def is_torch(x: Any) -> bool:
@@ -193,3 +204,42 @@ def astype(x: Any, dtype: Any) -> Any:
     if is_torch(x):
         return x.to(dtype)
     return x.astype(dtype)
+
+
+def to_namespace(xp: ModuleType, x: Any) -> Any:
+    """Bring ``x`` into ``xp``, leaving it alone if it is already there.
+
+    The fourth divergence, and the one that bites hardest. Choosing a
+    namespace from *some* of the operands and then using it on *all* of them
+    only works if every operand belongs to it: ``torch.zeros_like`` rejects
+    an ndarray outright, where NumPy would have accepted a tensor.
+
+    That mixture is the normal case rather than an exotic one. A crystal mesh
+    is fixed geometry with no gradient worth having -- its occupancy test is
+    a boolean parity count -- so it stays a NumPy array, while the beam and
+    wedge settings a strategy optimiser tunes are tensors. Something has to
+    reconcile them at the boundary.
+
+    Parameters
+    ----------
+    xp : ModuleType
+        Target namespace, from :func:`array_namespace`.
+    x : Any
+        Array, tensor or scalar.
+
+    Returns
+    -------
+    Any
+        ``x`` as one of ``xp``'s arrays. Converting a NumPy array to a
+        tensor shares its memory rather than copying, and a tensor that is
+        already a tensor is returned unchanged, gradient history intact.
+    """
+    if xp is np:
+        return x.detach().cpu().numpy() if is_torch(x) else np.asarray(x)
+    if is_torch(x):
+        return x
+    if isinstance(x, (list, tuple)) and any(is_torch(v) for v in x):
+        # torch.as_tensor refuses a sequence containing tensors, and would
+        # drop their gradient history even if it did not.
+        return xp.stack([xp.as_tensor(v) for v in x])
+    return xp.as_tensor(x)

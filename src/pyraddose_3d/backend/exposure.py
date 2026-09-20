@@ -32,11 +32,12 @@ and crystal silhouettes from the beam and geometry modules.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from pyraddose_3d.backend._array import array_namespace, promote
+from pyraddose_3d.backend._array import array_namespace, promote, to_namespace
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.geometry import Mesh, find_depth
 
@@ -167,6 +168,30 @@ def _fraction_absorbed(coefficient: Array, pixels_per_micron: float) -> Array:
     return -xp.expm1(-coefficient / pixels_per_micron)
 
 
+def _beam_settings(beam: Any) -> tuple[Any, ...]:
+    """Every value the beam holds, for choosing an array namespace.
+
+    A beam's aperture and its width are as likely to be the thing being
+    optimised as its flux, and missing one leaves the namespace on NumPy
+    while the intensities coming back are tensors. Read off the dataclass
+    rather than listed by hand, so a new field cannot be forgotten; anything
+    that is not a dataclass falls back to the two fields every beam has.
+
+    Parameters
+    ----------
+    beam : Any
+        A backend beam.
+
+    Returns
+    -------
+    tuple[Any, ...]
+        Its field values.
+    """
+    if dataclasses.is_dataclass(beam):
+        return tuple(getattr(beam, f.name) for f in dataclasses.fields(beam))
+    return (beam.energy, beam.flux)
+
+
 def expose(
     mesh: Mesh,
     grid: VoxelGrid,
@@ -239,8 +264,25 @@ def expose(
     if decay_model is None:
         decay_model = no_decay
 
-    xp = array_namespace(grid.origin, beam.energy, beam.flux, density)
-    coordinates = grid.coordinates()
+    # Every operand that could be a tensor has to be offered here, not just
+    # the obvious ones: miss one and the namespace comes out NumPy while the
+    # values coming back from the beam are tensors, and the first `where`
+    # that mixes them fails.
+    xp = array_namespace(
+        grid.origin,
+        *_beam_settings(beam),
+        density,
+        exposure_seconds,
+        initial_dose,
+        off_axis,
+        translations,
+        *angles,
+    )
+    # The crystal is usually fixed NumPy geometry while the beam and wedge
+    # settings being optimised are tensors, so the grid has to be brought
+    # into whichever namespace won before anything indexes into it.
+    coordinates = to_namespace(xp, grid.coordinates())
+    occupied = to_namespace(xp, occupied)
     angle_count = len(angles)
 
     pixels_per_micron = grid.pixels_per_micron
@@ -276,7 +318,11 @@ def expose(
         beam.flux,
         density,
     )
-    compton_fraction = 1 - xp.sqrt(ratio)
+    # Dispatched on the ratio itself rather than on `xp`: it stays a plain
+    # float whenever the photon energy is one, even in a torch exposure, and
+    # forcing it into a tensor here would take torch's default float32 and
+    # silently halve the precision of everything downstream.
+    compton_fraction = 1 - array_namespace(ratio).sqrt(ratio)
 
     # Energy absorbed per unit fluence crossing one voxel. The same
     # numerator as fluence_to_dose, before the mass conversion.

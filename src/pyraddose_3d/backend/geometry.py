@@ -109,9 +109,13 @@ class Mesh:
         Mesh
             A new mesh. The triangle indices are shared, not copied.
         """
-        xp, (vertices, angle) = promote(self.vertices, angle)
-        if translation is not None:
-            _, (vertices, shift) = promote(vertices, translation)
+        # Promoted together rather than in two steps: a tensor translation
+        # with a float angle used to leave `xp` as NumPy while the vertices
+        # became tensors, and the stack below would then fail.
+        if translation is None:
+            xp, (vertices, angle) = promote(self.vertices, angle)
+        else:
+            xp, (vertices, angle, shift) = promote(self.vertices, angle, translation)
             vertices = vertices + shift
 
         cos = xp.cos(angle)
