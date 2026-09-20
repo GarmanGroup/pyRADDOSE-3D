@@ -23,10 +23,21 @@ REFERENCE = pathlib.Path(__file__).parent / "data" / "exposure.tsv"
 #: The CSV columns, in the order ``OutputSummaryCSV`` writes them, minus the
 #: wedge number that leads the line.
 FIELDS = [
-    "average_dwd", "last_dwd", "elastic_yield", "diffraction_efficiency",
-    "ad_wc", "ad_exp_region", "max_dose", "dose_threshold",
-    "abs_en_threshold", "tad", "dose_contrast", "used_volume",
-    "wedge_absorbed_energy", "dose_inefficiency", "dose_inefficiency_pe",
+    "average_dwd",
+    "last_dwd",
+    "elastic_yield",
+    "diffraction_efficiency",
+    "ad_wc",
+    "ad_exp_region",
+    "max_dose",
+    "dose_threshold",
+    "abs_en_threshold",
+    "tad",
+    "dose_contrast",
+    "used_volume",
+    "wedge_absorbed_energy",
+    "dose_inefficiency",
+    "dose_inefficiency_pe",
 ]
 
 
@@ -183,9 +194,7 @@ def test_used_volume_is_a_percentage_of_the_crystal() -> None:
     summary, _, result = _summarise("collimated")
 
     occupied = int(np.sum(np.asarray(result.occupied)))
-    exposed = int(
-        np.sum(np.asarray(result.occupied) & (np.asarray(result.dose) > 0))
-    )
+    exposed = int(np.sum(np.asarray(result.occupied) & (np.asarray(result.dose) > 0)))
     assert float(summary.used_volume) == pytest.approx(
         100.0 * exposed / occupied, rel=1e-12
     )
