@@ -11,6 +11,10 @@ Three independent kinds of check, deliberately:
    case of 3.7e-15.
 3. **Properties the Java never had** -- vectorisation, gradients, and the
    piecewise structure at absorption edges.
+4. **Integrity of the vendored tables**, which replaced RADDOSE-3D's single
+   87-by-80 unlabelled file. The sweep in (2) is what proves the split did
+   not corrupt a value; these check the things the old format could not
+   express, such as a row being the wrong length.
 """
 
 import csv
@@ -26,6 +30,7 @@ from pyraddose_3d.backend.elements import (
     Element,
     ElementDatabase,
     element_database,
+    read_table,
 )
 
 REFERENCE = pathlib.Path(__file__).parent / "data" / "element_cross_sections.tsv.gz"
@@ -280,7 +285,7 @@ def test_no_shipped_element_lacks_scattering_coefficients(
 ) -> None:
     """Records that the Java's two ``COEFF_0 != 0`` guards are dead code.
 
-    Every row of MuCalcConstants.txt has non-zero leading coherent and
+    Every element has non-zero leading coherent and
     incoherent coefficients, so neither guard can fire. Kept in the port
     anyway -- see the next test for why it must stay -- but pinned here so
     that if a future database revision does introduce a blank column, this
@@ -357,3 +362,181 @@ def test_both_backends_agree(db: ElementDatabase) -> None:
         torch.tensor(energies, dtype=torch.float64)
     ).total
     np.testing.assert_allclose(got_np, got_torch.numpy(), rtol=1e-14)
+
+
+# --- integrity of the vendored tables -----------------------------------
+#
+# The seven files replaced RADDOSE-3D's constants/MuCalcConstants.txt, which
+# was 87 rows of 80 tab-separated columns with no header. Its column names
+# lived in a Java enum in a different class, six columns were named nowhere
+# at all, and nothing checked that a row was the right length -- gadolinium's
+# had 82 fields.
+
+#: Every table, and whether this module reads it. The four it does not are
+#: the rest of the original 80 columns, waiting for the Monte Carlo paths.
+ALL_TABLES = {
+    "elements.tsv": True,
+    "absorption_edges.tsv": True,
+    "cross_section_coefficients.tsv": True,
+    "fluorescence.tsv": False,
+    "edge_ratios.tsv": False,
+    "electron_ionisation.tsv": False,
+    "elsepa_elastic.tsv": False,
+}
+
+
+@pytest.mark.parametrize("table", sorted(ALL_TABLES))
+def test_every_table_is_well_formed(table: str) -> None:
+    """Reading it at all is the check: ``read_table`` raises on a bad row.
+
+    Including the four nothing reads yet. Data that no test touches is data
+    that can rot silently, and these carry the fluorescence yields and
+    elastic cross-sections the escape modelling will need.
+    """
+    rows = read_table(table)
+    assert rows, f"{table} has no data rows"
+    assert all(row["z"] and row["symbol"] for row in rows)
+
+
+@pytest.mark.parametrize("table", sorted(ALL_TABLES))
+def test_every_table_covers_the_same_elements(table: str, db: ElementDatabase) -> None:
+    """The split must not have lost or duplicated an element anywhere.
+
+    Each table repeats the atomic number and symbol so it can be read on its
+    own; that redundancy is only worth having if it is checked.
+    """
+    expected = {(e.atomic_number, e.name) for e in db}
+    found = [(int(row["z"]), row["symbol"]) for row in read_table(table)]
+
+    assert set(found) == expected
+    if table != "cross_section_coefficients.tsv":
+        assert len(found) == len(expected), f"{table} repeats an element"
+
+
+def test_a_ragged_row_is_rejected(tmp_path: pathlib.Path, monkeypatch) -> None:
+    """The guarantee the old format could not give.
+
+    A row with the wrong number of fields used to be undetectable: with no
+    header there was nothing to be wrong against, and a stray trailing tab
+    shifted nothing because the columns it added were past the last one
+    anyone read.
+    """
+    from importlib import resources
+
+    bad = tmp_path / "ragged.tsv"
+    bad.write_text("z\tsymbol\tvalue\n1\tH\t1.0\n2\tHE\t2.0\t\n", "ascii")
+    monkeypatch.setattr(resources, "files", lambda _package: tmp_path, raising=True)
+
+    with pytest.raises(ValueError, match="4 fields, but the header declares 3"):
+        read_table("ragged.tsv")
+
+
+def test_absent_shells_are_the_only_ones_missing_from_the_table() -> None:
+    """A shell is either fully parameterised or absent; never half of one.
+
+    The coefficients table is written long, one row per element per shell,
+    and omits a shell the element has no parameterisation for rather than
+    writing four blanks. That is only safe because no element has a
+    partially blank polynomial -- 502 shells are complete and 20 are empty,
+    with nothing in between. Pinned so a future revision that introduces a
+    half-filled shell fails here rather than silently reading as zero.
+    """
+    rows = read_table("cross_section_coefficients.tsv")
+
+    assert len(rows) == 502
+    for row in rows:
+        assert all(row[f"c{i}"].strip() for i in range(4)), row
+
+    shells = {row["shell"] for row in rows}
+    assert shells == {"K", "L", "M", "N", "coherent", "incoherent"}
+
+
+def test_an_absent_shell_reads_as_four_zeros(db: ElementDatabase) -> None:
+    """Which is what the Java's blank columns meant -- see quirk (3).
+
+    Every element must offer all six polynomials whether or not the table
+    lists them, because the cross-section code indexes them unconditionally.
+    """
+    listed = {
+        (int(row["z"]), row["shell"])
+        for row in read_table("cross_section_coefficients.tsv")
+    }
+    missing = [
+        (e.name, shell)
+        for e in db
+        for shell in ("K", "L", "M", "N", "coherent", "incoherent")
+        if (e.atomic_number, shell) not in listed
+    ]
+
+    assert missing, "expected some elements to lack a parameterised shell"
+    for name, shell in missing:
+        assert db.by_symbol(name).coefficients[shell] == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_a_blank_edge_is_absent_and_a_zero_edge_is_zero() -> None:
+    """The distinction the old file drew with an empty column, preserved.
+
+    A blank M edge means the element has none, and the photoelectric code
+    branches on that. A zero L edge means the edge is tabulated at zero,
+    which is a different thing, and there are elements with each.
+    """
+    rows = {row["symbol"]: row for row in read_table("absorption_edges.tsv")}
+
+    assert rows["H"]["m1_kev"] == ""
+    assert rows["H"]["l1_kev"] == "0.0"
+    assert rows["FE"]["m1_kev"] == "0.094"
+
+    db = element_database()
+    assert db.by_symbol("H").edge_m is None
+    assert db.by_symbol("H").edge_l == 0.0
+    assert db.by_symbol("Fe").edge_m == 0.094
+
+
+def test_published_edge_energies_are_right(db: ElementDatabase) -> None:
+    """Spot-checks against the X-ray Data Booklet, not against RADDOSE-3D.
+
+    Independent evidence that the tabulated K edges are the real ones,
+    rather than merely that the port agrees with whatever it read last time.
+    Loose, because the published values are themselves rounded; the exact
+    ones are pinned by the test below.
+    """
+    published = {"C": 0.284, "S": 2.472, "FE": 7.112, "SE": 12.658, "AU": 80.725}
+    for symbol, energy in published.items():
+        assert db.by_symbol(symbol).edge_k == pytest.approx(energy, abs=5e-3), symbol
+
+
+#: Exact edge energies in keV: K, L1, M1, L2, L3. Transcribed from the
+#: database itself, so this pins the values rather than validating them --
+#: :func:`test_published_edge_energies_are_right` is the external check.
+EXACT_EDGES = {
+    "H": (0.014, 0.0, None, 0.0, 0.0),
+    "C": (0.284, 0.013925, None, 0.00899, 0.00898),
+    "S": (2.472, 0.193, 0.017, 0.1636, 0.1625),
+    "FE": (7.112, 0.842, 0.094, 0.7199, 0.7068),
+    "SE": (12.658, 1.653, 0.232, 1.477, 1.436),
+    "AU": (80.723, 14.353, 3.425, 13.733, 11.918),
+    "U": (115.603, 21.756, 5.549, 20.947, 17.167),
+}
+
+
+@pytest.mark.parametrize("symbol", sorted(EXACT_EDGES))
+def test_edge_energies_are_exactly_as_tabulated(
+    symbol: str, db: ElementDatabase
+) -> None:
+    """Exact equality, because nothing else notices a small edge change.
+
+    The sweep against the Java samples twenty energies across the MX range,
+    so a K edge moved by a few eV changes no sampled cross-section at all --
+    moving iron's from 7.112 to 7.113 leaves the whole suite green. The edge
+    is not a smooth parameter, though: it is the boundary that decides which
+    polynomial a photon gets, and a crystal probed at exactly that energy
+    would take the wrong branch. So it is pinned to the bit.
+    """
+    element = db.by_symbol(symbol)
+    edge_k, edge_l, edge_m, l2, l3 = EXACT_EDGES[symbol]
+
+    assert element.edge_k == edge_k
+    assert element.edge_l == edge_l
+    assert element.edge_m == edge_m
+    assert element.l2 == l2
+    assert element.l3 == l3

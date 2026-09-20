@@ -1,10 +1,28 @@
 """X-ray cross-sections for the chemical elements.
 
-Ports ``Element.java`` and ``ElementDatabase.java``. Both read the same
-vendored constants file, ``data/MuCalcConstants.txt``, which holds Pathikrit
-Bandyopadhyay's parameterisation of the McMaster tables: for each of 87
-elements, absorption edge energies and the coefficients of a cubic polynomial
-in ``log(E)`` whose exponential gives a cross-section.
+Ports ``Element.java`` and ``ElementDatabase.java``, which read a single
+87-row by 80-column file, ``constants/MuCalcConstants.txt``, with no header
+and no column names anywhere but a Java enum in another class. It holds
+Pathikrit Bandyopadhyay's parameterisation of the McMaster tables: for each
+of 87 elements, absorption edge energies and the coefficients of a cubic
+polynomial in ``log(E)`` whose exponential gives a cross-section.
+
+That file is split here into named, topical tables under ``data/``, each
+with a header row and each narrow enough to read. Three of them are all this
+module needs:
+
+``elements.tsv``
+    Atomic number, symbol, weight, mass and density.
+``absorption_edges.tsv``
+    The K, L1-L3 and M1-M5 edge energies in keV.
+``cross_section_coefficients.tsv``
+    One row per element per shell, four coefficients each.
+
+The other four -- ``fluorescence.tsv``, ``edge_ratios.tsv``,
+``electron_ionisation.tsv`` and ``elsepa_elastic.tsv`` -- carry the rest of
+the original 80 columns and are read by nothing yet; they belong to the
+Monte Carlo paths. ``tests/backend/data/build_element_tables.py`` is the
+script that produced all seven, kept so the derivation is auditable.
 
 Energies are in keV and cross-sections in Barns/Atom throughout, matching the
 Java.
@@ -57,33 +75,17 @@ if TYPE_CHECKING:
 
 __all__ = ["CrossSections", "Element", "ElementDatabase", "element_database"]
 
-# --- layout of MuCalcConstants.txt --------------------------------------
-# Zero-based column indices, transcribed from ElementDatabase.DatabaseFields.
-# The file is tab-separated with 80 columns; only those the X-ray path needs
-# are named here. The rest carry fluorescence yields, edge ratios and ELSEPA
-# elastic cross-sections, used only by the Monte Carlo paths.
-_ATOMIC_NUMBER: Final = 0
-_ELEMENT_NAME: Final = 1
-_EDGE_K: Final = 2
-_EDGE_L: Final = 3
-_EDGE_M: Final = 4
-_ATOMIC_WEIGHT: Final = 23
-_L2: Final = 36
-_L3: Final = 37
-
-# First column of each four-term polynomial in log(E).
-_POLYNOMIALS: Final[dict[str, int]] = {
-    "K": 5,
-    "L": 9,
-    "M": 13,
-    "N": 17,
-    "coherent": 24,
-    "incoherent": 28,
-}
-_POLYNOMIAL_TERMS: Final = 4
-
+# --- the vendored tables ------------------------------------------------
 _DATA_PACKAGE: Final = "pyraddose_3d.data"
-_DATA_FILE: Final = "MuCalcConstants.txt"
+_ELEMENTS_FILE: Final = "elements.tsv"
+_EDGES_FILE: Final = "absorption_edges.tsv"
+_COEFFICIENTS_FILE: Final = "cross_section_coefficients.tsv"
+
+#: Shells and scattering types that have a polynomial. A shell an element has
+#: no parameterisation for is absent from the coefficients table, and becomes
+#: four zeros here -- see "Faithfulness to the Java" (3).
+_SHELLS: Final = ("K", "L", "M", "N", "coherent", "incoherent")
+_NO_COEFFICIENTS: Final = (0.0, 0.0, 0.0, 0.0)
 
 # --- physical constants -------------------------------------------------
 #: Atomic mass unit in grams, as spelled in Element.java.
@@ -300,28 +302,68 @@ def _parse_optional(field: str) -> float | None:
     return None if field == "" else float(field)
 
 
-def _parse_line(line: str) -> Element:
-    """Build an :class:`Element` from one tab-separated row of the database."""
-    columns = line.split("\t")
+def read_table(file_name: str) -> list[dict[str, str]]:
+    """Read one vendored table into a list of rows keyed by column name.
 
-    coefficients: dict[str, tuple[float, ...]] = {}
-    for shell, first in _POLYNOMIALS.items():
-        raw = columns[first : first + _POLYNOMIAL_TERMS]
-        # Missing M and N coefficients become zero -- see "Faithfulness to
-        # the Java" (3).
-        coefficients[shell] = tuple(0.0 if c == "" else float(c) for c in raw)
+    Comment lines and blank lines are skipped; the first line that is
+    neither is the header.
 
-    return Element(
-        name=columns[_ELEMENT_NAME],
-        atomic_number=int(columns[_ATOMIC_NUMBER]),
-        atomic_weight=float(columns[_ATOMIC_WEIGHT]),
-        edge_k=float(columns[_EDGE_K]),
-        edge_l=_parse_optional(columns[_EDGE_L]),
-        edge_m=_parse_optional(columns[_EDGE_M]),
-        l2=float(columns[_L2]),
-        l3=float(columns[_L3]),
-        coefficients=coefficients,
-    )
+    Parameters
+    ----------
+    file_name : str
+        Name of a ``.tsv`` in :mod:`pyraddose_3d.data`.
+
+    Returns
+    -------
+    list[dict[str, str]]
+        One dict per data row, values unparsed.
+
+    Raises
+    ------
+    ValueError
+        If a row does not have exactly as many fields as the header. The
+        single wide file this replaced had no such guarantee, and
+        gadolinium's row carried two stray trailing tabs that nothing
+        noticed for as long as the file has existed.
+    """
+    text = resources.files(_DATA_PACKAGE).joinpath(file_name).read_text("ascii")
+    header: list[str] | None = None
+    rows = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if header is None:
+            header = fields
+            continue
+        if len(fields) != len(header):
+            raise ValueError(
+                f"{file_name}:{number} has {len(fields)} fields, but the "
+                f"header declares {len(header)}"
+            )
+        rows.append(dict(zip(header, fields, strict=True)))
+    if header is None:
+        raise ValueError(f"{file_name} has no header row")
+    return rows
+
+
+def _read_coefficients() -> dict[int, dict[str, tuple[float, ...]]]:
+    """Read the polynomial coefficients, keyed by atomic number then shell.
+
+    Returns
+    -------
+    dict[int, dict[str, tuple[float, ...]]]
+        Every element maps to all of :data:`_SHELLS`; a shell absent from
+        the table becomes four zeros.
+    """
+    found: dict[int, dict[str, tuple[float, ...]]] = {}
+    for row in read_table(_COEFFICIENTS_FILE):
+        terms = tuple(float(row[f"c{i}"]) for i in range(4))
+        found.setdefault(int(row["z"]), {})[row["shell"]] = terms
+    return {
+        z: {shell: shells.get(shell, _NO_COEFFICIENTS) for shell in _SHELLS}
+        for z, shells in found.items()
+    }
 
 
 class ElementDatabase:
@@ -334,14 +376,26 @@ class ElementDatabase:
     """
 
     def __init__(self) -> None:
-        text = resources.files(_DATA_PACKAGE).joinpath(_DATA_FILE).read_text("ascii")
+        edges = {int(row["z"]): row for row in read_table(_EDGES_FILE)}
+        coefficients = _read_coefficients()
+
         self._by_number: dict[int, Element] = {}
         self._by_symbol: dict[str, Element] = {}
-        for line in text.splitlines():
-            if not line or line.startswith("#"):
-                continue
-            element = _parse_line(line)
-            self._by_number[element.atomic_number] = element
+        for row in read_table(_ELEMENTS_FILE):
+            number = int(row["z"])
+            edge = edges[number]
+            element = Element(
+                name=row["symbol"],
+                atomic_number=number,
+                atomic_weight=float(row["atomic_weight"]),
+                edge_k=float(edge["k_kev"]),
+                edge_l=_parse_optional(edge["l1_kev"]),
+                edge_m=_parse_optional(edge["m1_kev"]),
+                l2=float(edge["l2_kev"]),
+                l3=float(edge["l3_kev"]),
+                coefficients=coefficients[number],
+            )
+            self._by_number[number] = element
             self._by_symbol[element.name.lower()] = element
 
     def __len__(self) -> int:
@@ -375,7 +429,7 @@ class ElementDatabase:
         except KeyError:
             raise KeyError(
                 f"no element with atomic number {atomic_number} in "
-                f"{_DATA_FILE} (it covers Z = 1 to {max(self._by_number)})"
+                f"{_ELEMENTS_FILE} (it covers Z = 1 to {max(self._by_number)})"
             ) from None
 
     def by_symbol(self, symbol: str) -> Element:
@@ -399,7 +453,7 @@ class ElementDatabase:
         try:
             return self._by_symbol[symbol.lower()]
         except KeyError:
-            raise KeyError(f"no element named {symbol!r} in {_DATA_FILE}") from None
+            raise KeyError(f"no element named {symbol!r} in {_ELEMENTS_FILE}") from None
 
 
 @functools.lru_cache(maxsize=1)

@@ -27,9 +27,16 @@ of Oxford and contributors. If you use it, cite the original:
 > space-resolved modelling of dose in macromolecular crystallography*.
 > J. Appl. Cryst. **46**, 1225-1230. doi:10.1107/S0021889813011461
 
-`src/pyraddose_3d/data/MuCalcConstants.txt` is taken unmodified from
-RADDOSE-3D. It holds Pathikrit Bandyopadhyay's parameterisation of the
-McMaster tables of X-ray cross-sections.
+The element data in `src/pyraddose_3d/data/` comes from RADDOSE-3D's
+`constants/MuCalcConstants.txt`, which holds Pathikrit Bandyopadhyay's
+parameterisation of the McMaster tables of X-ray cross-sections. The values
+are unmodified; the layout is not. That file is 87 rows of 80 unlabelled
+tab-separated columns, so it is split here into named tables --
+`elements.tsv`, `absorption_edges.tsv`, `cross_section_coefficients.tsv`,
+`fluorescence.tsv`, `edge_ratios.tsv`, `electron_ionisation.tsv` and
+`elsepa_elastic.tsv` -- each with a header and each narrow enough to read.
+`tests/backend/data/build_element_tables.py` is the script that produced
+them.
 
 Numerical behaviour is deliberately reproduced as-is, including several known
 quirks, each marked in the source. Where the port and the Java disagree, the

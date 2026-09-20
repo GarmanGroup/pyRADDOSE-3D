@@ -1,3 +1,50 @@
+# Element data tables
+
+RADDOSE-3D keeps every element constant in one file, `constants/MuCalcConstants.txt`:
+87 rows of 80 tab-separated columns, no header. Seventy-three of the columns
+are named only in `ElementDatabase.DatabaseFields`, a Java enum in a
+different class; the other seven are named nowhere. Nothing checks that a row
+is the right length, and gadolinium's is not -- it carries 82 fields.
+
+`build_element_tables.py` splits it into seven named tables, vendored into
+`src/pyraddose_3d/data/`:
+
+| table | columns | read by the port |
+|---|---|---|
+| `elements.tsv` | weight, mass, density | yes |
+| `absorption_edges.tsv` | K, L1-L3, M1-M5 | yes |
+| `cross_section_coefficients.tsv` | one row per element per shell | yes |
+| `fluorescence.tsv` | line energies and yields | not yet |
+| `edge_ratios.tsv` | edge jump ratios | not yet |
+| `electron_ionisation.tsv` | K-shell ionisation, ionisation potentials | not yet |
+| `elsepa_elastic.tsv` | elastic cross-sections by energy | not yet |
+
+The four marked "not yet" belong to the Monte Carlo paths. They ship because
+throwing away data that is hard to re-derive is not a saving, and
+`test_elements.py` reads all seven so none can rot unnoticed.
+
+```
+python tests/backend/data/build_element_tables.py \
+    ~/git/RADDOSE-3D/constants/MuCalcConstants.txt \
+    src/pyraddose_3d/data
+```
+
+Values are written with `repr`, the shortest string that round-trips to the
+same double, so `1.434560E+01` becomes `14.3456` and reads back identically.
+All 6960 fields were checked to round-trip bit-for-bit, and every `Element`
+the database builds was compared against the old loader's as raw IEEE-754
+bits before the original file was removed.
+
+Six of the seven unnamed columns were identified from their values: 21 and 22
+are the density and the atomic mass, and 32 to 35 are the Ka, Kb, La and Lb
+fluorescence line energies, which agree with the X-ray Data Booklet to the
+tabulated precision. Column 38 is named nowhere and read by nothing; it keeps
+the neutral name `unknown_col38` rather than a guess, and its values are
+carried through untouched.
+
+
+---
+
 # Element cross-section reference
 
 `element_cross_sections.tsv.gz` is the output of RADDOSE-3D's `Element.java`
