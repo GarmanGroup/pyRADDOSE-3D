@@ -14,6 +14,7 @@ from collections import defaultdict
 
 import numpy as np
 import pytest
+from _geometry_helpers import CUBOID_TRIANGLES, cuboid
 
 from pyraddose_3d.backend.geometry import (
     Mesh,
@@ -23,33 +24,6 @@ from pyraddose_3d.backend.geometry import (
 )
 
 REFERENCE = pathlib.Path(__file__).parent / "data" / "find_depth.tsv.gz"
-
-#: A 40 x 30 x 20 um cuboid, as CrystalCuboid builds one: eight corners and
-#: twelve triangles, with RADDOSE-3D's one-based indices made zero-based.
-CUBOID_TRIANGLES = (
-    np.array(
-        [
-            [1, 3, 2], [4, 3, 1], [3, 6, 2], [7, 6, 3],
-            [2, 5, 1], [2, 6, 5], [4, 8, 3], [8, 7, 3],
-            [4, 1, 8], [1, 5, 8], [8, 5, 7], [7, 5, 6],
-        ]
-    )
-    - 1
-)
-
-
-def cuboid(x: float = 40.0, y: float = 30.0, z: float = 20.0) -> Mesh:
-    """A cuboid mesh centred on the origin."""
-    half_x, half_y, half_z = x / 2, y / 2, z / 2
-    vertices = np.array(
-        [
-            [-half_x, -half_y, half_z], [-half_x, -half_y, -half_z],
-            [-half_x, half_y, -half_z], [-half_x, half_y, half_z],
-            [half_x, -half_y, half_z], [half_x, -half_y, -half_z],
-            [half_x, half_y, -half_z], [half_x, half_y, half_z],
-        ]
-    )
-    return Mesh(vertices, CUBOID_TRIANGLES)
 
 
 def _load_reference() -> dict:
@@ -85,9 +59,7 @@ def _shares_an_edge(mesh: Mesh, points: np.ndarray) -> np.ndarray:
     """
     normals, offsets = triangle_planes(mesh)
     parallel = normals[:, 2] == 0
-    distances = (points @ normals.T + offsets) / np.where(
-        parallel, 1.0, normals[:, 2]
-    )
+    distances = (points @ normals.T + offsets) / np.where(parallel, 1.0, normals[:, 2])
     hits = (
         ~parallel
         & (distances > 0)
@@ -111,9 +83,7 @@ def _mesh_for(case: dict) -> Mesh:
 
 
 def test_reference_covers_four_crystals() -> None:
-    assert set(CASE_IDS) == {
-        "cuboid", "cuboid-rotated", "cuboid-offset", "cylinder"
-    }
+    assert set(CASE_IDS) == {"cuboid", "cuboid-rotated", "cuboid-offset", "cylinder"}
     assert sum(len(c["depths"]) for c in REFERENCE_CASES.values()) == 5488
 
 
@@ -174,9 +144,7 @@ def test_depth_does_not_depend_on_the_rest_of_the_batch() -> None:
         ]
     )
     together = np.asarray(find_depth(mesh, points))
-    separately = np.array(
-        [float(find_depth(mesh, p[None, :])[0]) for p in points]
-    )
+    separately = np.array([float(find_depth(mesh, p[None, :])[0]) for p in points])
 
     np.testing.assert_array_equal(
         together,
@@ -204,8 +172,12 @@ def test_batch_order_does_not_matter() -> None:
 def test_a_voxel_outside_the_crystal_has_no_depth() -> None:
     mesh = cuboid()
     outside = np.array(
-        [[100.0, 0.0, 0.0], [0.0, 100.0, 0.0], [0.0, 0.0, 100.0],
-         [-100.0, -100.0, -100.0]]
+        [
+            [100.0, 0.0, 0.0],
+            [0.0, 100.0, 0.0],
+            [0.0, 0.0, 100.0],
+            [-100.0, -100.0, -100.0],
+        ]
     )
     np.testing.assert_array_equal(np.asarray(find_depth(mesh, outside)), 0.0)
 
@@ -289,9 +261,7 @@ def test_a_ray_through_a_shared_edge_is_counted_once() -> None:
     becoming vacuous.
     """
     mesh = cuboid(20.0, 20.0, 20.0)
-    along_diagonal = np.array(
-        [[-t, t, 0.0] for t in np.linspace(-9.5, 9.5, 400)]
-    )
+    along_diagonal = np.array([[-t, t, 0.0] for t in np.linspace(-9.5, 9.5, 400)])
     shared = _shares_an_edge(mesh, along_diagonal)
 
     assert shared.any(), (
@@ -325,9 +295,7 @@ def test_triangle_planes_are_unit_normals_through_their_corners() -> None:
 
 def test_gradient_flows_to_the_rotation_angle() -> None:
     torch = pytest.importorskip("torch")
-    mesh = Mesh(
-        torch.tensor(cuboid().vertices, dtype=torch.float64), CUBOID_TRIANGLES
-    )
+    mesh = Mesh(torch.tensor(cuboid().vertices, dtype=torch.float64), CUBOID_TRIANGLES)
     angle = torch.tensor(0.3, dtype=torch.float64, requires_grad=True)
     point = torch.tensor([[0.0, 0.0, 0.0]], dtype=torch.float64)
 
@@ -342,9 +310,7 @@ def test_gradient_flows_to_the_rotation_angle() -> None:
 
 def test_gradient_flows_to_the_vertices() -> None:
     torch = pytest.importorskip("torch")
-    vertices = torch.tensor(
-        cuboid().vertices, dtype=torch.float64, requires_grad=True
-    )
+    vertices = torch.tensor(cuboid().vertices, dtype=torch.float64, requires_grad=True)
     point = torch.tensor([[0.0, 0.0, 0.0]], dtype=torch.float64)
 
     find_depth(Mesh(vertices, CUBOID_TRIANGLES), point).sum().backward()

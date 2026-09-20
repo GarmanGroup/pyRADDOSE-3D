@@ -203,3 +203,49 @@ divides a cancelling numerator by a near-zero denominator. That is what
 exposed the batch-dependence bug described in `test_geometry.py`.
 
 Regenerate as for the other dumpers; `DumpDepth` takes no arguments.
+
+
+---
+
+# Exposure reference
+
+`exposure.tsv` is the output of `DumpExposure.java`: five complete exposures
+of a 40 x 30 x 20 um cuboid, each run end to end through `Crystal.expose`.
+
+| tag | contents |
+|---|---|
+| `SETUP` | the four coefficients, density and voxels per micron |
+| `WEDGE` | start, end, angular resolution, seconds, start position |
+| `BEAM` | beam type and collimation |
+| `GRID` | voxel counts along x, y, z |
+| `SUMMARY` | occupied voxels, average dose, max dose |
+| `VOX` | i, j, k, occupancy, dose, fluence, elastic yield |
+
+| case | what it exercises |
+|---|---|
+| `still-tophat` | a still exposure, uniform beam |
+| `rotation-gauss` | 46 angles, uncollimated Gaussian |
+| `collimated` | a 50 um aperture, so the flux normalisation matters |
+| `rotated-crystal` | AngleP 45, AngleL 20 -- no axis-aligned faces, and a different grid |
+| `offset` | a non-zero wedge start position |
+
+Grid shapes and occupancy counts match exactly. Doses match to ~1e-15 in the
+interior. Voxels lying **exactly on a crystal face** do not and cannot: they
+sit on the knife edge of the inside/outside parity test, and Java's
+`Math.cos` differs from NumPy's in the last bit. Only `StrictMath` is
+required to be reproducible, which is why RADDOSE-3D already varies against
+itself across JVMs.
+
+`test_on_face_voxels_are_intrinsically_unstable` measures this rather than
+asserting it: nudging the crystal by a single ulp moves 606 voxels -- all of
+them on a face, none in the interior -- and shifts the average dose by 3e-4,
+which is *larger* than the disagreement with Java (1.6e-5). The port tracks
+RADDOSE-3D more closely than the calculation tracks itself.
+
+`AngleP` and `AngleL` are given in **degrees** in the input file; the
+constructor converts. Passing radians to the generator looks right and
+silently gives a 57-fold smaller rotation, which is what happened the first
+time this fixture was built.
+
+`DumpExposure` takes no arguments. Setting `FULL=1` dumps every voxel rather
+than a strided sample, which is useful when locating a disagreement.

@@ -231,7 +231,6 @@ def find_depth(mesh: Mesh, voxels: Array) -> Array:
 
     normals, offsets = triangle_planes(mesh)
 
-
     # Distance from the voxel back along the beam to each triangle's plane.
     # Positive means behind the voxel, which is where the beam came from.
     #
@@ -275,9 +274,7 @@ def find_depth(mesh: Mesh, voxels: Array) -> Array:
 
     # A ray through a shared edge hits both triangles at the same distance.
     same_as_previous = ordered[:, 1:] == ordered[:, :-1]
-    keep = xp.concatenate(
-        [counted[:, :1], counted[:, 1:] & ~same_as_previous], axis=1
-    )
+    keep = xp.concatenate([counted[:, :1], counted[:, 1:] & ~same_as_previous], axis=1)
 
     # depth = d0 - d1 + d2 - d3 + ..., which is the Java's
     # "first crossing, then every other gap" written without the loop.
@@ -288,5 +285,3 @@ def find_depth(mesh: Mesh, voxels: Array) -> Array:
     crossings = xp.sum(astype(keep, ordered.dtype), axis=1)
     inside = (crossings % 2) == 1
     return xp.where(inside, depth, 0.0)
-
-
