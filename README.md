@@ -47,6 +47,15 @@ end of a wedge is refused for a different reason: it sets the number of
 images and nothing else, so its derivative is zero wherever it exists. See
 `TUNABLE` and `FIXED` in `pyraddose_3d.solve`.
 
+## Licence
+
+**AGPL-3.0-only.** Not a preference: RADDOSE-3D is licensed AGPL-3.0, and this
+is a derivative work of it, so it inherits that licence. Upstream grants no
+"or any later version", so neither can this -- hence `AGPL-3.0-only` rather
+than `-or-later`.
+
+See `NOTICE` for what is derived from where.
+
 ## Attribution
 
 This is a derivative work of RADDOSE-3D, by the Garman Group at the University
