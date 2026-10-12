@@ -1,0 +1,45 @@
+##############################################
+### Dose calculation configuration example ###
+##############################################
+# The insulin crystal from RADDOSE-3D's own example input, MyInput.txt --
+# dose_example_input.txt here is that file, and describes the same
+# experiment. Load with `Experiment.from_file(path)`, which reads either.
+#
+# A setting left out takes RADDOSE-3D's default, so leaving it out of this
+# file means what leaving it out of a .txt input means. The .txt keyword for
+# each setting is given in brackets.
+crystal:
+  type: cuboid                    # [Type] cuboid, spherical or cylinder
+  dimensions: [100.0, 100.0, 100.0]  # [Dimensions] x, y, z in micrometres
+  pixels_per_micron: 0.1          # [PixelsPerMicron] default 10 voxels across x
+  # angle_p: 0.0                  # [AngleP] rotation in the plane of the loop, degrees
+  # angle_l: 0.0                  # [AngleL] bend of the loop, degrees
+  # decay_model: simple           # [DDM] simple, linear or bfactor
+  composition:                    # [AbsCoefCalc RD3D]
+    method: unit_cell
+    unit_cell: [78.02, 78.02, 78.02]  # [UnitCell] a, b, c in Angstroms
+    num_monomers: 24              # [NumMonomers] per unit cell
+    num_residues: 51              # [NumResidues] amino acids per monomer
+    protein_heavy_atoms:          # [ProteinHeavyAtoms] atoms per monomer
+      Zn: 0.333
+      S: 6.0
+    solvent_heavy_conc:           # [SolventHeavyConc] mmol/l
+      P: 425.0
+    solvent_fraction: 0.64        # [SolventFraction] computed if left out
+beam:
+  type: gaussian                  # [Type] gaussian or tophat
+  flux: 2.0e+12                   # [Flux] photons per second
+  energy: 12.1                    # [Energy] keV
+  fwhm: [20.0, 70.0]              # [FWHM] x, y in micrometres
+  collimation:                    # [Collimation] leave out for no aperture
+    shape: rectangular            # rectangular or circular
+    x: 100.0                      # micrometres
+    y: 100.0
+wedges:                           # one per [Wedge] block, exposed in order
+  - start: 0.0                    # [Wedge] start and end angles in degrees
+    end: 90.0
+    exposure_time: 50.0           # [ExposureTime] seconds for the whole wedge
+    # angular_resolution: 2.0     # [AngularResolution] degrees per image
+  - start: 90.0
+    end: 180.0
+    exposure_time: 10.0

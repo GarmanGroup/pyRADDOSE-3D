@@ -40,6 +40,7 @@ WHAT IS DERIVED
   Example input files
       tests/data/raddose_txt/ holds the example .txt inputs that ship with
       RADDOSE-3D, copied unmodified, as test data for the .txt reader.
+      programs/dose/dose_example_input.txt is one of them, MyInput.txt.
 
   Conformance corpus
       The reference values in tests/conformance/cases/*/expected/ were
