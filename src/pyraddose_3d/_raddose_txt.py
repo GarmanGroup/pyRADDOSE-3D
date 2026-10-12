@@ -52,13 +52,14 @@ from pyraddose_3d.models.composition import (
 from pyraddose_3d.models.crystal import (
     CuboidCrystal,
     CylinderCrystal,
+    MixtureContainer,
     PolyhedronCrystal,
     SphericalCrystal,
 )
 
 if TYPE_CHECKING:
     from pyraddose_3d.models.composition import Composition
-    from pyraddose_3d.models.crystal import Crystal, EscapeOptions
+    from pyraddose_3d.models.crystal import Container, Crystal, EscapeOptions
     from pyraddose_3d.models.experiment import Experiment
     from pyraddose_3d.models.wedge import Wedge
 
@@ -225,6 +226,26 @@ def _crystal_lines(crystal: Crystal) -> list[str]:
         lines.append(f"DecayParam {params}")
 
     lines.extend(_escape_lines(crystal.escape))
+    lines.extend(_container_lines(crystal.container))
+    return lines
+
+
+def _container_lines(container: Container | None) -> list[str]:
+    """Emit the container, if there is one."""
+    if container is None:
+        return []
+    if isinstance(container, MixtureContainer):
+        lines = [
+            "ContainerMaterialType Mixture",
+            f"ContainerMaterialMixture {container.material}",
+        ]
+    else:
+        lines = [
+            "ContainerMaterialType Elemental",
+            f"ContainerMaterialElements {_elements(container.elements)}",
+        ]
+    lines.append(f"ContainerThickness {_number(container.thickness)}")
+    lines.append(f"ContainerDensity {_number(container.density)}")
     return lines
 
 
@@ -513,6 +534,14 @@ _CRYSTAL_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "GONIOMETERAXIS": ("ignored", _read_number),
     "POLARISATIONDIRECTION": ("ignored", _read_number),
     "SUBPROGRAM": ("subprogram", _read_word),
+    "CONTAINERMATERIALTYPE": ("container_type", _read_word),
+    "MATERIALTYPE": ("container_type", _read_word),
+    "CONTAINERTHICKNESS": ("container_thickness", _read_number),
+    "CONTAINERDENSITY": ("container_density", _read_number),
+    "CONTAINERMATERIALMIXTURE": ("container_mixture", _read_word),
+    "MATERIALMIXTURE": ("container_mixture", _read_word),
+    "CONTAINERMATERIALELEMENTS": ("container_elements", _read_elements),
+    "MATERIALELEMENTS": ("container_elements", _read_elements),
 }
 
 _BEAM_KEYWORDS: dict[str, tuple[str, Reader]] = {
@@ -548,14 +577,6 @@ _SURROUNDING = f"is part of modelling the material around the crystal, {_NOT_POR
 #: Keywords that would change a result this port cannot compute.
 _REFUSED: dict[str, dict[str, str]] = {
     "Crystal": {
-        "CONTAINERMATERIALTYPE": "sample containers are not supported yet",
-        "MATERIALTYPE": "sample containers are not supported yet",
-        "CONTAINERTHICKNESS": "sample containers are not supported yet",
-        "CONTAINERDENSITY": "sample containers are not supported yet",
-        "CONTAINERMATERIALMIXTURE": "sample containers are not supported yet",
-        "MATERIALMIXTURE": "sample containers are not supported yet",
-        "CONTAINERMATERIALELEMENTS": "sample containers are not supported yet",
-        "MATERIALELEMENTS": "sample containers are not supported yet",
         "SURROUNDINGTHICKNESS": _SURROUNDING,
         "SURROUNDINGDENSITY": _SURROUNDING,
         "SURROUNDINGELEMENTS": _SURROUNDING,
@@ -818,6 +839,86 @@ def _composition(
     }
 
 
+_CONTAINER_FIELDS = (
+    "container_thickness",
+    "container_density",
+    "container_mixture",
+    "container_elements",
+)
+
+
+def _container(
+    stream: _Stream, values: dict[str, tuple[Any, int]]
+) -> dict[str, Any] | None:
+    """Build the container as RADDOSE-3D does, leniency included.
+
+    ``ContainerSemiTransparent`` treats a partly specified container as no
+    container at all, printing "Not all of the container fields have been
+    defined. Assuming no container around sample." and carrying on. The
+    same happens here, with a warning; and container settings with no
+    ``ContainerMaterialType`` are ignored, as the grammar never constructs a
+    container for them.
+    """
+    given = [key for key in _CONTAINER_FIELDS if key in values]
+    if "container_type" not in values:
+        if given:
+            warnings.warn(
+                RaddoseTxtWarning(
+                    f"{stream.source}, line {values[given[0]][1]}: container "
+                    f"settings without ContainerMaterialType are ignored, as "
+                    f"RADDOSE-3D ignores them"
+                ),
+                stacklevel=5,
+            )
+        return None
+
+    written, at = values["container_type"]
+    kind = written.upper()
+    if kind == "NONE":
+        return None
+    if kind not in ("MIXTURE", "ELEMENTAL"):
+        raise stream.error(
+            at, f"ContainerMaterialType {written!r} is not None, Mixture or Elemental"
+        )
+    if kind == "ELEMENTAL" and "container_elements" not in values:
+        # ContainerElemental builds its name from the element list before
+        # checking anything, so the Java fails here rather than shrugging.
+        raise stream.error(
+            at, "ContainerMaterialType Elemental needs ContainerMaterialElements"
+        )
+
+    material_key = "container_mixture" if kind == "MIXTURE" else "container_elements"
+    missing = [
+        label
+        for key, label in (
+            ("container_thickness", "ContainerThickness"),
+            ("container_density", "ContainerDensity"),
+            (material_key, "ContainerMaterialMixture"),
+        )
+        if key not in values
+    ]
+    if missing:
+        warnings.warn(
+            RaddoseTxtWarning(
+                f"{stream.source}, line {at}: no {', '.join(missing)}, so "
+                f"RADDOSE-3D assumes no container at all, and so does this"
+            ),
+            stacklevel=5,
+        )
+        return None
+
+    container: dict[str, Any] = {
+        "type": kind.lower(),
+        "thickness": values["container_thickness"][0],
+        "density": values["container_density"][0],
+    }
+    if kind == "MIXTURE":
+        container["material"] = values["container_mixture"][0]
+    else:
+        container["elements"] = values["container_elements"][0]
+    return container
+
+
 def _crystal(
     stream: _Stream, values: dict[str, tuple[Any, int]], line: int
 ) -> dict[str, Any]:
@@ -914,6 +1015,10 @@ def _crystal(
             escape[key] = values[key][0]
     if escape:
         crystal["escape"] = escape
+
+    container = _container(stream, values)
+    if container is not None:
+        crystal["container"] = container
 
     crystal["composition"] = _composition(stream, values, line)
     return crystal

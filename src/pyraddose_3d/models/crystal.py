@@ -10,16 +10,19 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from pyraddose_3d.models._base import RD3DModel
 from pyraddose_3d.models.composition import Composition
 
 __all__ = [
+    "Container",
     "Crystal",
     "CuboidCrystal",
     "CylinderCrystal",
+    "ElementalContainer",
     "EscapeOptions",
+    "MixtureContainer",
     "PolyhedronCrystal",
     "SphericalCrystal",
 ]
@@ -57,8 +60,85 @@ class EscapeOptions(RD3DModel):
         return self.photoelectron or self.fluorescence or self.surrounding
 
 
+class _ContainerBase(RD3DModel):
+    """Fields every container has.
+
+    Attributes
+    ----------
+    thickness : float
+        Thickness the beam crosses, in micrometres.
+    density : float
+        Density in g/cm^3.
+    """
+
+    thickness: Annotated[float, Field(gt=0.0)]
+    density: Annotated[float, Field(gt=0.0)]
+
+
+class MixtureContainer(_ContainerBase):
+    """A container of a compound or mixture NIST tabulates by name.
+
+    ``ContainerMaterialType Mixture``. The mass attenuation coefficient is
+    interpolated from NIST's table for the material, as
+    ``ContainerMixture`` does.
+
+    Attributes
+    ----------
+    material : str
+        A NIST compound name: water, mylar, pmma, polyethylene, pyrex and
+        44 others. Kapton is not among them; use an elemental container.
+    """
+
+    type: Literal["mixture"] = "mixture"
+    material: str
+
+    @field_validator("material")
+    @classmethod
+    def _tabulated(cls, material: str) -> str:
+        from pyraddose_3d.backend.container import known_mixtures
+
+        name = material.lower()
+        if name not in known_mixtures():
+            raise ValueError(
+                f"NIST does not tabulate {material!r}; it has "
+                f"{', '.join(sorted(known_mixtures()))}"
+            )
+        return name
+
+
+class ElementalContainer(_ContainerBase):
+    """A container given by its elemental formula.
+
+    ``ContainerMaterialType Elemental``. Each element's coefficient comes
+    from its own NIST table, combined by mass fraction, as
+    ``ContainerElemental`` does.
+
+    Attributes
+    ----------
+    elements : dict[str, float]
+        Element symbol to number of atoms, e.g. ``{"C": 22, "H": 10,
+        "N": 2, "O": 5}`` for Kapton.
+    """
+
+    type: Literal["elemental"] = "elemental"
+    elements: dict[str, float]
+
+
+Container = Annotated[
+    MixtureContainer | ElementalContainer, Field(discriminator="type")
+]
+
+
 class _CrystalBase(RD3DModel):
-    """Fields common to every crystal shape."""
+    """Fields common to every crystal shape.
+
+    Attributes
+    ----------
+    container : Container | None
+        What the crystal is mounted in, which the beam crosses first.
+        ``None`` is RADDOSE-3D's ``ContainerMaterialType None``: no
+        attenuation.
+    """
 
     pixels_per_micron: Annotated[float, Field(gt=0.0)] | None = None
     angle_p: float = 0.0
@@ -67,6 +147,7 @@ class _CrystalBase(RD3DModel):
     decay_model: Literal["simple", "linear", "leal", "bfactor"] = "simple"
     decay_parameters: tuple[float, float, float] | None = None
     escape: EscapeOptions = Field(default_factory=EscapeOptions)
+    container: Container | None = None
 
     def _first_dimension(self) -> float | None:
         """The size RADDOSE-3D bases its default resolution on."""

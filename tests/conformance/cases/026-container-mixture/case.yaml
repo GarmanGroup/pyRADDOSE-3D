@@ -1,0 +1,5 @@
+case_id: 026-container-mixture
+tier: A
+exercises: a 100 um Mylar container, from NIST's table for the compound
+seed: 20260917
+reference_version: 5.0.1083

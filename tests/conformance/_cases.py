@@ -213,6 +213,36 @@ _CASES: list[Case] = [
     Case("023-beam-low-energy", "A", "6 keV", {"beam": {"energy": 6.0}}),
     Case("024-beam-high-energy", "A", "20 keV", {"beam": {"energy": 20.0}}),
     Case(
+        "026-container-mixture",
+        "A",
+        "a 100 um Mylar container, from NIST's table for the compound",
+        {
+            "crystal": {
+                "container": {
+                    "type": "mixture",
+                    "material": "mylar",
+                    "thickness": 100.0,
+                    "density": 1.4,
+                }
+            }
+        },
+    ),
+    Case(
+        "027-container-elemental",
+        "A",
+        "a 50 um Kapton container by formula, from NIST's per-element tables",
+        {
+            "crystal": {
+                "container": {
+                    "type": "elemental",
+                    "elements": {"C": 22.0, "H": 10.0, "N": 2.0, "O": 5.0},
+                    "thickness": 50.0,
+                    "density": 1.42,
+                }
+            }
+        },
+    ),
+    Case(
         "025-beam-uncollimated",
         "A",
         "no Collimation line: RADDOSE-3D's beam is then uncollimated",

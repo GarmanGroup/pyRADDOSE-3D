@@ -24,6 +24,14 @@ WHAT IS DERIVED
       values are unmodified; only the layout differs. See
       tests/backend/data/build_element_tables.py and the README.
 
+  NIST attenuation tables
+      src/pyraddose_3d/data/nist_elements.tsv and nist_mixtures.tsv hold
+      Hubbell and Seltzer's X-ray mass attenuation coefficients, NIST
+      Standard Reference Database 126 (doi:10.18434/T4D01F), a US government
+      work in the public domain. RADDOSE-3D downloads them on every run;
+      they are vendored here, extracted with RADDOSE-3D's own parsing, by
+      tests/backend/data/build_nist_tables.py.
+
   Residue and mesh tables
       src/pyraddose_3d/data/residues.tsv, sphere_mesh.tsv and
       cylinder_topology.tsv were dumped from RADDOSE-3D rather than

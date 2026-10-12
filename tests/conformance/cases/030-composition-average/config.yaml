@@ -12,6 +12,7 @@ crystal:
     surrounding: false
     pe_resolution: null
     fl_resolution: null
+  container: null
   type: cuboid
   dimensions:
   - 20.0

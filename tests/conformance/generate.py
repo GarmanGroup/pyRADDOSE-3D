@@ -366,7 +366,6 @@ def main() -> None:
                 ),
                 "excluded": {
                     "AbsCoefCalc RDV2": "shells out to an unshipped binary",
-                    "ContainerElemental/Mixture": "scrape NIST at runtime",
                 },
                 "caveats": {
                     "AbsCoefCalc EXPSM (CIF)": (

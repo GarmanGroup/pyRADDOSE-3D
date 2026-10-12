@@ -380,7 +380,6 @@ def test_errors_name_the_file_and_line() -> None:
         ("crystal", "Subprogram EMSP", "MicroED engine"),
         ("crystal", "SurroundingThickness 1 1 1", "material around the crystal"),
         ("crystal", "Runs 3", "Monte Carlo"),
-        ("crystal", "ContainerMaterialType Mixture", "containers"),
         ("crystal", "AbsCoefCalc RDV2", "Fortran"),
         ("crystal", "AbsCoefCalc SAXSSEQ", "not ported"),
     ],
@@ -481,3 +480,92 @@ def test_a_txt_file_converts_to_yaml(tmp_path: Path) -> None:
         yaml.safe_load((tmp_path / "MyInput.yaml").read_text())["beam"]["flux"] == 2e12
     )
     assert math.isclose(experiment.crystal.pixels_per_micron, 0.1)
+
+
+# --- containers -------------------------------------------------------------------
+
+
+def test_containers_read_both_ways() -> None:
+    mixture = read(
+        with_lines(
+            CRYSTAL,
+            "ContainerMaterialType Mixture",
+            "ContainerMaterialMixture mylar",
+            "ContainerThickness 100",
+            "ContainerDensity 1.4",
+        )
+        + BEAM
+        + WEDGE
+    ).crystal.container
+    assert (mixture.type, mixture.material, mixture.thickness) == (
+        "mixture",
+        "mylar",
+        100,
+    )
+
+    elemental = read(
+        with_lines(
+            CRYSTAL,
+            "MaterialType Elemental",
+            "MaterialElements C 22 H 10 N 2 O 5",
+            "ContainerThickness 50",
+            "ContainerDensity 1.42",
+        )
+        + BEAM
+        + WEDGE
+    ).crystal.container
+    assert elemental.elements == {"C": 22, "H": 10, "N": 2, "O": 5}
+
+
+def test_container_type_none_means_no_container() -> None:
+    text = with_lines(CRYSTAL, "ContainerMaterialType None")
+    assert read(text + BEAM + WEDGE).crystal.container is None
+
+
+def test_a_partly_specified_container_is_no_container() -> None:
+    """``ContainerSemiTransparent``: "Assuming no container around sample."
+
+    RADDOSE-3D carries on without the container. So does this, but with a
+    warning rather than a line on the console that is easy to miss.
+    """
+    text = with_lines(
+        CRYSTAL,
+        "ContainerMaterialType Mixture",
+        "ContainerMaterialMixture mylar",
+        "ContainerThickness 100",
+    )
+    with pytest.warns(RaddoseTxtWarning, match="no ContainerDensity"):
+        assert read(text + BEAM + WEDGE).crystal.container is None
+
+
+def test_container_settings_without_a_type_are_ignored() -> None:
+    text = with_lines(CRYSTAL, "ContainerThickness 100", "ContainerDensity 1.4")
+    with pytest.warns(RaddoseTxtWarning, match="without ContainerMaterialType"):
+        assert read(text + BEAM + WEDGE).crystal.container is None
+
+
+def test_an_elemental_container_needs_its_elements() -> None:
+    """The Java builds the name from the element list first, and fails there."""
+    text = with_lines(
+        CRYSTAL,
+        "ContainerMaterialType Elemental",
+        "ContainerThickness 50",
+        "ContainerDensity 1.42",
+    )
+    with pytest.raises(RaddoseTxtError, match="needs ContainerMaterialElements"):
+        read(text + BEAM + WEDGE)
+
+
+def test_a_mixture_nist_does_not_tabulate_is_refused() -> None:
+    """Kapton is the obvious one to try, and NIST does not have it."""
+    from pydantic import ValidationError
+
+    text = with_lines(
+        CRYSTAL,
+        "ContainerMaterialType Mixture",
+        "ContainerMaterialMixture kapton",
+        "ContainerThickness 50",
+        "ContainerDensity 1.42",
+    )
+    with pytest.raises(ValidationError, match="NIST does not tabulate 'kapton'"):
+        read(text + BEAM + WEDGE)

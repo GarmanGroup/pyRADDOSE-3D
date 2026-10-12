@@ -1,7 +1,7 @@
 reference_version: 5.0.1083
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 36
+case_count: 38
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
@@ -62,7 +62,6 @@ notes: Reference values are produced by the Java implementation on the JVM named
   review the diff.
 excluded:
   AbsCoefCalc RDV2: shells out to an unshipped binary
-  ContainerElemental/Mixture: scrape NIST at runtime
 caveats:
   AbsCoefCalc EXPSM (CIF): 'Covered by case 034, but note CoefCalcFromCIF crashes
     when the last token of _chemical_formula_sum is a bare single-letter symbol (urea''s

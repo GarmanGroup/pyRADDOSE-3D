@@ -36,6 +36,11 @@ from pyraddose_3d.backend.composition import (
     small_molecule_composition,
     unit_cell_composition,
 )
+from pyraddose_3d.backend.container import (
+    container_transmission,
+    elemental_mass_attenuation,
+    mixture_mass_attenuation,
+)
 from pyraddose_3d.backend.exposure import ExposureResult, expose, exposure_angles
 from pyraddose_3d.backend.geometry import Mesh
 from pyraddose_3d.backend.structure_files import (
@@ -472,7 +477,35 @@ def _setting(overrides: Mapping[str, Any], path: str, fallback: Any) -> Any:
     return overrides[path] if path in overrides else fallback
 
 
-def crystal_beam(beam: Any, overrides: Mapping[str, Any] | None = None) -> Any:
+def container_transmission_at(container: Any, energy: Any) -> Any:
+    """The fraction of the beam a container lets through, at an energy.
+
+    Parameters
+    ----------
+    container : Any
+        A container model, or ``None``.
+    energy : Any
+        Photon energy in keV.
+
+    Returns
+    -------
+    Any
+        Between 0 and 1; exactly 1 when there is no container.
+    """
+    if container is None:
+        return 1.0
+    if container.type == "mixture":
+        mu_rho = mixture_mass_attenuation(container.material, energy)
+    else:
+        mu_rho = elemental_mass_attenuation(container.elements, energy)
+    return container_transmission(mu_rho, container.density, container.thickness)
+
+
+def crystal_beam(
+    beam: Any,
+    overrides: Mapping[str, Any] | None = None,
+    container: Any = None,
+) -> Any:
     """Turn a beam model into a backend beam.
 
     Parameters
@@ -481,6 +514,9 @@ def crystal_beam(beam: Any, overrides: Mapping[str, Any] | None = None) -> Any:
         One of the beam models.
     overrides : Mapping[str, Any], optional
         Tensor values for any of the ``beam.*`` paths in :data:`TUNABLE`.
+    container : Any, optional
+        The crystal's container, which the beam crosses first and which
+        attenuates it, as ``BeamGaussian.applyContainerAttenuation`` does.
 
     Returns
     -------
@@ -494,6 +530,8 @@ def crystal_beam(beam: Any, overrides: Mapping[str, Any] | None = None) -> Any:
 
     flux = _setting(overrides, "beam.flux", beam.flux)
     energy = _setting(overrides, "beam.energy", beam.energy)
+    if container is not None:
+        flux = flux * container_transmission_at(container, energy)
     aperture_x = None if collimation is None else collimation.x
     aperture_y = None if collimation is None else collimation.y
     if aperture_x is not None:
@@ -702,7 +740,7 @@ def simulate(
     occupied = occupancy(mesh, coordinates)
 
     built, crystal_density = crystal_material(crystal.composition)
-    beam = crystal_beam(experiment.beam, overrides)
+    beam = crystal_beam(experiment.beam, overrides, crystal.container)
 
     if built is None:
         coefficients = AVERAGE_COEFFICIENTS
