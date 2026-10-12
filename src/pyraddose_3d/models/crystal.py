@@ -154,13 +154,16 @@ class _CrystalBase(RD3DModel):
         return None
 
     @property
-    def effective_pixels_per_micron(self) -> float:
-        """The resolution the calculation uses: as given, or RADDOSE-3D's default.
+    def base_pixels_per_micron(self) -> float:
+        """The resolution asked for, or RADDOSE-3D's default before its cap.
 
         ``Crystal.java`` sets ``CRYSTAL_RESOLUTION_DEF = 10 / CRYSTAL_DIM_X``
         when no ``PixelsPerMicron`` is given -- ten voxels across the first
         dimension. A shape with no dimensions keeps the Java's static fallback
-        of 0.5.
+        of 0.5. The Java then caps a default at a million voxels over the
+        crystal's bounding box, which needs the mesh, so that step is
+        :func:`pyraddose_3d.solve.pixels_per_micron`'s; that is the
+        resolution a calculation uses.
 
         The field itself stays ``None`` when nothing was given, so that a
         configuration records what its author wrote and the ``.txt`` handed to
@@ -234,22 +237,36 @@ class CylinderCrystal(_CrystalBase):
         return self.diameter
 
 
+#: One to three numbers, as RADDOSE-3D accepts for a polyhedron.
+_Placeholders = Annotated[tuple[float, ...], Field(min_length=1, max_length=3)]
+
+
 class PolyhedronCrystal(_CrystalBase):
     """An arbitrary mesh loaded from a wireframe file.
 
     Attributes
     ----------
     model_file : str
-        Path to the wireframe file, resolved relative to the run's working
-        directory.
+        Path to a triangulated Wavefront ``.obj`` file, in micrometres,
+        resolved relative to the run's working directory.
     wireframe_type : str
         Wireframe format. Only ``obj`` is supported by the reference
         implementation.
+    dimensions : tuple[float, ...] | None
+        Optional, and not the crystal's size -- the mesh is. RADDOSE-3D
+        accepts them as placeholders, and still bases its default resolution
+        on the first: ten voxels across it.
     """
 
     type: Literal["polyhedron"] = "polyhedron"
     model_file: str
     wireframe_type: Literal["obj"] = "obj"
+    dimensions: (
+        Annotated[tuple[float, ...], Field(min_length=1, max_length=3)] | None
+    ) = None
+
+    def _first_dimension(self) -> float | None:
+        return None if self.dimensions is None else self.dimensions[0]
 
 
 Crystal = Annotated[

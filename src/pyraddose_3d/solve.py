@@ -50,6 +50,7 @@ from pyraddose_3d.backend.structure_files import (
 )
 from pyraddose_3d.backend.summary import WedgeSummary, summarise
 from pyraddose_3d.backend.voxels import VoxelGrid, occupancy, voxel_grid
+from pyraddose_3d.backend.wireframe import read_obj
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -62,6 +63,7 @@ __all__ = [
     "Simulation",
     "apply_overrides",
     "crystal_mesh",
+    "pixels_per_micron",
     "simulate",
     "solve",
     "wedge_resolution",
@@ -246,8 +248,8 @@ def crystal_mesh(crystal: Any) -> Mesh:
 
     Raises
     ------
-    NotImplementedError
-        For a polyhedron read from a file, which is not ported.
+    pyraddose_3d.backend.wireframe.ObjError
+        For a polyhedron whose file is not a triangle mesh.
     """
     if crystal.type == "cuboid":
         half = np.array(crystal.dimensions) / 2
@@ -289,15 +291,49 @@ def crystal_mesh(crystal: Any) -> Mesh:
     elif crystal.type == "cylinder":
         mesh = _cylinder_mesh(crystal.diameter, crystal.height)
     else:
-        raise NotImplementedError(
-            f"crystal type {crystal.type!r} is not ported; a polyhedron read "
-            f"from a file needs an .obj reader"
-        )
+        mesh = read_obj(crystal.model_file)
 
     return Mesh(
         _apply_crystal_angles(mesh.vertices, crystal.angle_p, crystal.angle_l),
         mesh.triangles,
     )
+
+
+#: ``Crystal.CRYSTAL_RESOLUTION_DEF_VOXLIM``: a default resolution is lowered
+#: until the crystal's bounding box holds no more voxels than this.
+_DEFAULT_VOXEL_LIMIT = 1_000_000
+
+
+def pixels_per_micron(crystal: Any, mesh: Mesh) -> float:
+    """The resolution a calculation uses, in voxels per micrometre.
+
+    As given, if it was. Otherwise ``Crystal.getDefaultLimitedResolution``:
+    ten voxels across the first dimension, unless that would put more than a
+    million voxels in the bounding box of the crystal -- after its P and L
+    rotations -- in which case the resolution that puts exactly a million
+    there. Only a thin plate or a needle reaches the limit: a 10 x 500 x
+    500 um plate would otherwise need 2.5 million.
+
+    Parameters
+    ----------
+    crystal : Any
+        One of the crystal models.
+    mesh : Mesh
+        Its mesh, from :func:`crystal_mesh`.
+
+    Returns
+    -------
+    float
+        Voxels per micrometre.
+    """
+    if crystal.pixels_per_micron is not None:
+        return float(crystal.pixels_per_micron)
+    base = float(crystal.base_pixels_per_micron)
+    vertices = np.asarray(to_namespace(np, mesh.vertices))
+    x, y, z = (float(v) for v in vertices.max(axis=0) - vertices.min(axis=0))
+    if (x * base) * (y * base) * (z * base) <= _DEFAULT_VOXEL_LIMIT:
+        return base
+    return math.pow(_DEFAULT_VOXEL_LIMIT / (x * y * z), 1 / 3)
 
 
 def _cell_volume(composition: Any) -> Any:
@@ -807,7 +843,7 @@ def simulate(
         )
 
     mesh = crystal_mesh(crystal)
-    grid = voxel_grid(mesh, crystal.effective_pixels_per_micron)
+    grid = voxel_grid(mesh, pixels_per_micron(crystal, mesh))
     coordinates = grid.coordinates()
     occupied = occupancy(mesh, coordinates)
 

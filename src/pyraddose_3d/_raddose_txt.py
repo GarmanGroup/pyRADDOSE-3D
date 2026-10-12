@@ -210,6 +210,10 @@ def _crystal_lines(crystal: Crystal) -> list[str]:
         lines.append("Type Polyhedron")
         lines.append(f"WireframeType {crystal.wireframe_type}")
         lines.append(f"ModelFile {crystal.model_file}")
+        if crystal.dimensions is not None:
+            lines.append(
+                f"Dimensions {' '.join(_number(d) for d in crystal.dimensions)}"
+            )
 
     if crystal.pixels_per_micron is not None:
         lines.append(f"PixelsPerMicron {_number(crystal.pixels_per_micron)}")
@@ -957,6 +961,10 @@ def _crystal(
         )
         if "wireframe_type" in values:
             crystal["wireframe_type"] = values["wireframe_type"][0].lower()
+        if "dimensions" in values:
+            # Placeholders: the mesh is the shape, but the Java still takes
+            # its default resolution from the first.
+            crystal["dimensions"] = tuple(values["dimensions"][0])
     else:
         dims = _require(
             stream,

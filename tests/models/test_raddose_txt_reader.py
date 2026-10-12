@@ -303,7 +303,7 @@ def test_defaults_for_omitted_settings() -> None:
     experiment = read(CRYSTAL + BEAM + WEDGE)
 
     assert experiment.crystal.pixels_per_micron is None
-    assert experiment.crystal.effective_pixels_per_micron == pytest.approx(10 / 20)
+    assert experiment.crystal.base_pixels_per_micron == pytest.approx(10 / 20)
     assert experiment.crystal.composition.method == "unit_cell"
     assert experiment.crystal.decay_model == "simple"
     assert not experiment.crystal.escape.any_enabled
@@ -326,7 +326,7 @@ def test_default_resolution_follows_the_first_dimension(
         "Dimensions 20 16 12", f"Dimensions {dimensions}"
     )
     crystal = read(text + BEAM + WEDGE).crystal
-    assert crystal.effective_pixels_per_micron == pytest.approx(10 / first)
+    assert crystal.base_pixels_per_micron == pytest.approx(10 / first)
 
 
 def test_ignored_keywords_are_ignored() -> None:

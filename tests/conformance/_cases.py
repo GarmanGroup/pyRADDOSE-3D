@@ -179,6 +179,35 @@ _CASES: list[Case] = [
         "no PixelsPerMicron: RADDOSE-3D uses ten voxels across the first dimension",
         {"crystal": {"dimensions": [25.0, 16.0, 12.0], "pixels_per_micron": REMOVE}},
     ),
+    Case(
+        "013-crystal-polyhedron",
+        "A",
+        "a hexagonal prism read from an .obj file; with no PixelsPerMicron and "
+        "no Dimensions, the Java's static default of 0.5",
+        {
+            "crystal": {
+                "type": "polyhedron",
+                "model_file": "tests/data/hexagonal_prism.obj",
+                "composition": BASELINE_COMPOSITION,
+            }
+        },
+    ),
+    Case(
+        "014-crystal-polyhedron-rotated",
+        "A",
+        "the prism tilted by AngleP and AngleL, with a placeholder Dimensions "
+        "setting the default resolution to ten voxels across it",
+        {
+            "crystal": {
+                "type": "polyhedron",
+                "model_file": "tests/data/hexagonal_prism.obj",
+                "dimensions": [16.0],
+                "angle_p": 30.0,
+                "angle_l": 20.0,
+                "composition": BASELINE_COMPOSITION,
+            }
+        },
+    ),
     # --- beam ---------------------------------------------------------------
     Case(
         "020-beam-tophat",

@@ -473,7 +473,7 @@ def crystal_description(simulation: Simulation) -> str:
     crystal = simulation.experiment.crystal
     vertices = _numpy(simulation.mesh.vertices)
     size = vertices.max(axis=0) - vertices.min(axis=0)
-    voxel = java_f(1 / crystal.effective_pixels_per_micron, 2)
+    voxel = java_f(1 / simulation.grid.pixels_per_micron, 2)
 
     if crystal.type == "cuboid":
         dims = ", ".join(java_f(s, 0) for s in size)
@@ -494,7 +494,11 @@ def crystal_description(simulation: Simulation) -> str:
             f"Spherical crystal of diameter {java_f(size[0], 0)} um, "
             f"at a resolution of {voxel} um per voxel edge."
         )
-    raise NotImplementedError(f"no description for a {crystal.type} crystal")
+    dims = ", ".join(java_f(s, 2) for s in size)
+    return (
+        f"Polyhedron crystal of bounding size [{dims}] um [x, y, z] at a "
+        f"resolution of {voxel} microns per voxel edge." + _rotation_line(crystal)
+    )
 
 
 def decay_description(crystal: Crystal) -> str:

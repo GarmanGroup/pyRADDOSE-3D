@@ -103,7 +103,7 @@ def test_default_resolution_is_ten_voxels_across(
     shape with no dimensions and nothing else.
     """
     assert crystal.pixels_per_micron is None
-    assert crystal.effective_pixels_per_micron == pytest.approx(expected)
+    assert crystal.base_pixels_per_micron == pytest.approx(expected)
 
 
 def test_a_given_resolution_is_kept() -> None:
