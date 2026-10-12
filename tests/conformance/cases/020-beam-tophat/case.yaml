@@ -2,4 +2,4 @@ case_id: 020-beam-tophat
 tier: A
 exercises: top hat beam profile
 seed: 20260917
-reference_version: 5.0.1082
+reference_version: 5.0.1083

@@ -1,4 +1,4 @@
-reference_version: 5.0.1082
+reference_version: 5.0.1083
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
 case_count: 32
@@ -6,6 +6,34 @@ tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
   tier_B_relative: 0.05
+array_tolerances:
+  DoseState/totals: 0.0001
+  DoseState/extremes: 0.005
+  DoseState/position_um: 0.005
+  VoxelDose/sum: 0.005
+  VoxelDose/max: 0.0001
+  VoxelFluences/sum: 0.05
+  VoxelFluences/max: 0.05
+  DWDs/dwd: 0.005
+  DWDs/volume: 1.0e-12
+  RDE/weighted: 0.0005
+  RDE/minimum: 0.0005
+  counts: 0
+  angle_degrees: 1.0e-09
+array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the worst
+  disagreement with the reference across the corpus, with headroom, justified because
+  it is smaller than the port''s disagreement with itself when every rotation angle
+  is moved by one ulp. Statistics that average over the crystal agree to 5e-5 and
+  share the summary''s 1e-4. The rest are dominated by voxels whose centres lie exactly
+  on a crystal face: at some angles their path length through the crystal flips between
+  zero and the full chord on the last bit of a cosine, and Math.cos is not bit-reproducible
+  across JVMs. Per-image fluence maxima are the most exposed because the brightest
+  voxel in an image is one on the upstream face. How much a flip matters scales with
+  absorption: the worst case is the antimony CIF crystal, at 3.6e-2 against the reference
+  and 4.8e-2 against itself. The stills, which do not rotate, and the AngleP 45 case,
+  which has no face on a voxel plane, agree to about 1e-8 on every statistic -- the
+  control showing the disagreement is the knife edge and not the physics. Counts of
+  voxels, images and exposed voxels are exact.'
 quantised_quantities:
 - dose_threshold
 - tad

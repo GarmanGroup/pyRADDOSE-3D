@@ -25,7 +25,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+import numpy as np
 import yaml
+from _array_stats import dose_state, image_rows, per_image_series
 from _cases import SEED, Case, all_cases, config_for
 
 from pyraddose_3d.models.experiment import Experiment
@@ -154,36 +156,56 @@ def parse_summary(path: Path) -> list[dict[str, float]]:
     return rows
 
 
-def summarise_array_csv(path: Path) -> dict[str, float] | None:
-    """Reduce a large per-voxel output to statistics.
+def _rows(path: Path, *, skip: int) -> list[list[float]]:
+    """Numeric rows of a Java CSV, tolerating its trailing commas."""
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines()[skip:]:
+        fields = [f.strip() for f in line.split(",") if f.strip()]
+        if fields:
+            rows.append([float(f) for f in fields])
+    return rows
 
-    The voxel-level files are megabytes; committing them would bloat the repo
-    for no benefit. Statistics still catch gross error.
+
+def reduce_java_outputs(out_dir: Path) -> dict[str, Any]:
+    """Reduce the Java's per-voxel and per-image files to statistics.
+
+    Each file is parsed by its actual layout, then handed to the reducers in
+    ``_array_stats`` -- the same ones the test applies to the port's arrays.
+
+    ``DoseState`` has no header: ``x,y,z,dose,fluence,elastic`` per voxel
+    inside the crystal. ``VoxelDose`` and ``VoxelFluences`` open with a row
+    of ``x_y_z`` labels, then one row per image of the last wedge, every
+    value followed by a comma. ``DWDs`` and ``RDE`` have a header and one
+    row per image of every wedge, at full double precision.
     """
-    if not path.is_file():
-        return None
-    values: list[float] = []
-    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
-        for field in line.split(","):
-            field = field.strip()
-            try:
-                values.append(float(field))
-            except ValueError:
-                continue
-    if not values:
-        return None
-    values.sort()
-    n = len(values)
-    return {
-        "count": float(n),
-        "min": values[0],
-        "max": values[-1],
-        "sum": float(sum(values)),
-        "mean": float(sum(values) / n),
-        "median": values[n // 2],
-        "p05": values[int(0.05 * n)],
-        "p95": values[int(0.95 * n)],
-    }
+    stats: dict[str, Any] = {}
+
+    state = np.array(_rows(out_dir / "out-DoseState.csv", skip=0))
+    stats["DoseState"] = dose_state(
+        state[:, 0:3], state[:, 3], state[:, 4], state[:, 5]
+    )
+
+    for name in ("VoxelDose", "VoxelFluences"):
+        stats[name] = image_rows(np.array(_rows(out_dir / f"out-{name}.csv", skip=1)))
+
+    dwds = np.array(_rows(out_dir / "out-DWDs.csv", skip=1))
+    stats["DWDs"] = per_image_series(
+        wedge=dwds[:, 0],
+        angle=dwds[:, 2],
+        dwd=dwds[:, 3],
+        volume=dwds[:, 4],
+        rde_1A=dwds[:, 5],
+        rde_2A=dwds[:, 6],
+        rde_3A=dwds[:, 7],
+        rde_4A=dwds[:, 8],
+        rde_max_res=dwds[:, 9],
+    )
+
+    rde = np.array(_rows(out_dir / "out-RDE.csv", skip=1))
+    stats["RDE"] = per_image_series(
+        wedge=rde[:, 0], angle=rde[:, 2], weighted=rde[:, 3], minimum=rde[:, 4]
+    )
+    return stats
 
 
 def generate_case(case: Case, root: Path, version: str) -> None:
@@ -211,11 +233,7 @@ def generate_case(case: Case, root: Path, version: str) -> None:
             json.dumps(summary, indent=2) + "\n", encoding="utf-8"
         )
 
-        stats: dict[str, Any] = {}
-        for name in ("DoseState", "VoxelDose", "VoxelFluences", "RDE", "DWDs"):
-            reduced = summarise_array_csv(out_dir / f"out-{name}.csv")
-            if reduced is not None:
-                stats[name] = reduced
+        stats = reduce_java_outputs(out_dir)
         (expected / "array_stats.json").write_text(
             json.dumps(stats, indent=2) + "\n", encoding="utf-8"
         )
@@ -264,6 +282,43 @@ def main() -> None:
                     "tier_A_quantised_quantities_relative": 5.0e-3,
                     "tier_B_relative": 5.0e-2,
                 },
+                "array_tolerances": {
+                    "DoseState/totals": 1.0e-4,
+                    "DoseState/extremes": 5.0e-3,
+                    "DoseState/position_um": 5.0e-3,
+                    "VoxelDose/sum": 5.0e-3,
+                    "VoxelDose/max": 1.0e-4,
+                    "VoxelFluences/sum": 5.0e-2,
+                    "VoxelFluences/max": 5.0e-2,
+                    "DWDs/dwd": 5.0e-3,
+                    "DWDs/volume": 1.0e-12,
+                    "RDE/weighted": 5.0e-4,
+                    "RDE/minimum": 5.0e-4,
+                    "counts": 0,
+                    "angle_degrees": 1.0e-9,
+                },
+                "array_tolerance_rationale": (
+                    "Set by the same rule as the summary tolerances: the "
+                    "worst disagreement with the reference across the corpus, "
+                    "with headroom, justified because it is smaller than the "
+                    "port's disagreement with itself when every rotation angle "
+                    "is moved by one ulp. Statistics that average over the "
+                    "crystal agree to 5e-5 and share the summary's 1e-4. The "
+                    "rest are dominated by voxels whose centres lie exactly on "
+                    "a crystal face: at some angles their path length through "
+                    "the crystal flips between zero and the full chord on the "
+                    "last bit of a cosine, and Math.cos is not bit-reproducible "
+                    "across JVMs. Per-image fluence maxima are the most exposed "
+                    "because the brightest voxel in an image is one on the "
+                    "upstream face. How much a flip matters scales with "
+                    "absorption: the worst case is the antimony CIF crystal, "
+                    "at 3.6e-2 against the reference and 4.8e-2 against itself. "
+                    "The stills, which do not rotate, and the AngleP 45 case, "
+                    "which has no face on a voxel plane, agree to about 1e-8 "
+                    "on every statistic -- the control showing the "
+                    "disagreement is the knife edge and not the physics. "
+                    "Counts of voxels, images and exposed voxels are exact."
+                ),
                 "quantised_quantities": [
                     "dose_threshold",
                     "tad",

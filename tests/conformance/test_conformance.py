@@ -33,10 +33,12 @@ from typing import Any
 
 import pytest
 import yaml
-from _agreement import record_agreement
+from _agreement import record_agreement, record_array_agreement
+from _array_stats import compare as compare_arrays
+from _array_stats import from_simulation
 
 from pyraddose_3d.models.experiment import Experiment
-from pyraddose_3d.solve import solve
+from pyraddose_3d.solve import simulate, solve
 
 HERE = Path(__file__).parent
 CASES_DIR = HERE / "cases"
@@ -250,3 +252,100 @@ def test_matches_reference(case_dir: Path) -> None:
 
     record_agreement(case_dir.name, worst_deviation, worst_field)
     assert not failures, "\n".join(failures)
+
+
+@pytest.mark.parametrize("case_dir", CASE_PARAMS)
+def test_arrays_match_reference(case_dir: Path) -> None:
+    """Compare the dose field and the per-image series, not just the totals.
+
+    The sixteen summary numbers are averages and extremes over the whole
+    crystal and wedge, so they cannot see a dose that is right in total but
+    in the wrong place, or right at the end but wrong along the way. These
+    statistics can: the dose-weighted centroid moves if the field is
+    mirrored, and the per-image series move if dose arrives at the wrong
+    time. See ``_array_stats`` for what each one is, and the manifest's
+    ``array_tolerance_rationale`` for how the limits were measured.
+    """
+    _, experiment, _ = load_case(case_dir)
+    expected = json.loads(
+        (case_dir / "expected" / "array_stats.json").read_text("utf-8")
+    )
+    actual = from_simulation(simulate(experiment, record_images=True))
+
+    failures, achieved = compare_arrays(
+        expected, actual, manifest()["array_tolerances"]
+    )
+
+    used = [
+        (
+            deviation / limit if limit else (0.0 if deviation == 0 else float("inf")),
+            label,
+        )
+        for label, deviation, limit in achieved
+    ]
+    fraction, statistic = max(used, default=(0.0, ""))
+    record_array_agreement(case_dir.name, fraction, statistic)
+    assert not failures, "\n".join(failures)
+
+
+def test_every_array_statistic_has_a_tolerance() -> None:
+    """A statistic without a measured tolerance is an error, not a default.
+
+    Checked against the corpus as a whole, so adding a statistic to the
+    reducers without adding its tolerance to the manifest fails here rather
+    than in whichever case happens to run first.
+    """
+    from _array_stats import DEFERRED, _leaves, tolerance_for
+
+    tolerances = manifest()["array_tolerances"]
+    seen = set()
+    for case_dir in CASE_DIRS:
+        stats = json.loads(
+            (case_dir / "expected" / "array_stats.json").read_text("utf-8")
+        )
+        for path, _ in _leaves(stats):
+            if (path[0], path[-1]) in DEFERRED:
+                continue
+            tolerance_for(path, tolerances)
+            seen.add("/".join(path))
+    assert seen, "the corpus has no array statistics"
+
+
+def test_arrays_see_a_mirrored_dose_field_the_summary_cannot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Why the array statistics exist, pinned so it cannot quietly stop being true.
+
+    Rotating the crystal the wrong way mirrors the dose field. Every summary
+    number is an average, sum or extreme over the crystal, and so is
+    unchanged by a mirror -- for the cylinder case, whose voxel set is
+    symmetric about the rotation axis, all sixteen stay within tolerance.
+    The dose-weighted centroid does not: it flips sign exactly, from
+    +0.00498 um to -0.00498 um across the axis.
+
+    In the other cases reversing the rotation also changes the totals,
+    because the half-open occupancy test leaves their voxel sets slightly
+    lopsided, so the summary catches it there too. The cylinder is the case
+    where only the position of the dose gives it away.
+    """
+    import pyraddose_3d.solve as solve_module
+
+    real = solve_module.exposure_angles
+    monkeypatch.setattr(
+        solve_module,
+        "exposure_angles",
+        lambda *args, **kwargs: [-angle for angle in real(*args, **kwargs)],
+    )
+
+    case_dir = CASES_DIR / "011-crystal-cylinder"
+    _, experiment, _ = load_case(case_dir)
+    expected = json.loads(
+        (case_dir / "expected" / "array_stats.json").read_text("utf-8")
+    )
+    mirrored = from_simulation(simulate(experiment, record_images=True))
+
+    failures, _ = compare_arrays(expected, mirrored, manifest()["array_tolerances"])
+
+    assert any(f.startswith("DoseState/dose_centroid") for f in failures), (
+        "reversing the rotation should move the dose centroid past tolerance"
+    )

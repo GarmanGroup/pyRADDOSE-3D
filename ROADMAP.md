@@ -5,10 +5,11 @@ check a claim rather than take it on trust.
 
 ## Where the port stands
 
-4,900 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML
-only) and `solve.py` (the seam). 510 tests, 6 xfail. 26 of 32 conformance cases match the Java
-within measured tolerances; the six that do not are the five Monte Carlo escape cases (tier B by
-design) and `041-ddm-leal`. `solve()` is differentiable end to end — ten tunable settings carry
+5,300 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML
+only) and `solve.py` (the seam). 544 tests, 12 xfail. 26 of 32 conformance cases match the Java
+within measured tolerances — on the sixteen summary numbers *and* on the dose field and
+per-image series behind them; the six that do not are the five Monte Carlo escape cases (tier B
+by design) and `041-ddm-leal`. `solve()` is differentiable end to end — ten tunable settings carry
 gradients matching central finite differences to ~1e-10, at 0.15 s per optimiser step.
 
 The physics is done. Everything below is about making it usable, provable and published.
@@ -18,11 +19,11 @@ The physics is done. Everything below is about making it usable, provable and pu
 1. **RADDOSE-3D is AGPL-3.0** (`LICENSE.txt`, added in a commit titled "AGPL v3.0"), and this
    is a derivative work of it. pyRADDOSE-3D declared BSD-3-Clause, which it could not. Now
    AGPL-3.0-only. See Milestone 0.
-2. **`array_stats.json` is generated for all 32 cases and never compared.** Conformance is
-   currently sixteen averaged numbers per case; the dose *field* is unchecked.
+2. **`array_stats.json` was generated for all 32 cases and never compared**, so conformance was
+   sixteen averaged numbers per case and the dose *field* was unchecked. Fixed in Milestone 1.
 3. **The input models are missing the sample container**, which multiplies beam flux by
    `1 - attenuationFraction` on the ordinary MX path (`BeamGaussian.java:270`). Also missing:
-   `MaxResolution` (feeds RDE) and `NumCarb`.
+   `MaxResolution` (feeds the RDE columns of `DWDs.csv`) and `NumCarb`.
 
 ---
 
@@ -62,30 +63,74 @@ CCP4 nowhere — so this would be a first submission.
 
 **Still outstanding:** putting the relicensing question to the contributors.
 
-# Milestone 1 — Tighten the specification
+# Milestone 1 — Tighten the specification — *done*
 
-**Why.** Cheapest large gain available, and it should come before any new physics because it is
+**Why.** Cheapest large gain available, and it had to come before any new physics because it is
 what will catch errors in that physics.
 
-`generate.py:summarise_array_csv` flattens *every* numeric field of a CSV into one list before
-taking statistics, so files with heterogeneous columns produce a meaningless mash:
+**What was wrong.** `generate.py` flattened *every* numeric field of each Java CSV into one list
+before taking statistics, so three of the five entries were a meaningless mash — `DoseState`
+reported a minimum of −10 (a coordinate) and a maximum of 7.3e6 (a fluence) — and nothing read
+any of them anyway.
 
-| entry | min | median | max | usable as generated? |
-|---|---|---|---|---|
-| `VoxelDose` | 0.175 | 8.90 | 25.2 | yes — all doses |
-| `VoxelFluences` | 2.2e-06 | 5.9e-06 | 7.7e-06 | yes — all fluences |
-| `DoseState` | **-10** | **2** | 7.3e+06 | no — x,y,z mashed with dose, fluence, elastic |
-| `RDE` | 0 | 1 | **90** | no — angles mashed with RDE values |
-| `DWDs` | 0 | 0.98 | **3840** | no — image numbers, angles, DWD, five RDE columns |
+**What exists now.** `tests/conformance/_array_stats.py` holds one set of reducers that both
+sides go through: `generate.py` feeds it the Java's CSVs, `test_arrays_match_reference` feeds
+it the port's arrays. A reduction implemented twice would drift, and the drift would look like a
+port error.
 
-**Do:** make `summarise_array_csv` column-aware, regenerate, wire the comparison into
-`test_conformance.py`. `VoxelDose` and `VoxelFluences` are computable from `ExposureResult`
-today; `DWDs` follows from `result.image_dwd`; `RDE` waits for `MaxResolution` in Milestone 2.
-Derive tolerances by the same measure-then-justify method used for the summary fields and record
-them in `MANIFEST.yaml`.
+| entry | what is compared |
+|---|---|
+| `DoseState` | per-column distribution of dose, fluence and elastic yield; dose-weighted centroid and spread along each axis |
+| `VoxelDose`, `VoxelFluences` | per image: sum, maximum, number of exposed voxels |
+| `DWDs` | per image: angle, DWD, exposed volume |
+| `RDE` | per image: fluence-weighted mean and running minimum of the decay model's efficiency |
 
-**Done when:** conformance checks the dose field rather than sixteen averaged numbers, and a
-mutation of a ported constant is shown to fail a case the summary alone would have passed.
+All counts are exact across the corpus — voxels, images, and exposed voxels in every image.
+
+**Two things the plan above had wrong, found by reading the Java writers rather than trusting
+a survey of them:**
+
+- `VoxelDose` and `VoxelFluences` are *per image*, not final, so they were not computable from
+  `ExposureResult`, which only accumulates. `expose(record_images=True)` now keeps every voxel's
+  dose, fluence and decay after every image as an `ImageRecord`, off by default because it costs
+  a field per image. Milestone 2's writers need exactly this.
+- `RDE.csv` does not need `MaxResolution`. It records the *decay model's* efficiency, which the
+  port already computed, so it is compared now. `MaxResolution` feeds only the five RDE columns
+  of `DWDs.csv` — `exp(-DWD/De)` — which are the one thing deferred, listed in
+  `_array_stats.DEFERRED`. The comparison fails if the port starts producing a deferred
+  quantity, so the deferral cannot outlive the gap.
+
+To reach the arrays at all, `solve()` became a thin wrapper over `simulate()`, which returns a
+`Simulation` — the grid, which voxels are occupied, the per-wedge exposures and angles, and the
+summaries. `solve()`'s behaviour and signature are unchanged.
+
+**Tolerances**, per statistic family, recorded with their measured basis in `MANIFEST.yaml`.
+Same rule as the summary: the worst disagreement with the Java across the corpus, with
+headroom, justified because it is *smaller* than the port's disagreement with itself when every
+rotation angle moves by one ulp. Statistics that average over the crystal agree to 5e-5 and
+share the summary's 1e-4.
+
+The rest are limited by voxels whose centres lie exactly on a crystal face. At some angles
+their path length through the crystal flips between zero and the full chord on the last bit
+of a cosine — measured directly: a face voxel's depth at 66° is 14.75 µm one ulp either side
+and exactly zero *at* the angle. Java's `Math.cos` is not bit-reproducible, so the two
+implementations land on different sides at different angles: 144 voxel-images one way and 152
+the other in the worst case, a coin flip rather than a bias. How much a flip matters scales with
+absorption — per-image fluence maximum agrees to 2.5e-3 for protein at 12.1 keV and 3.6e-2 for
+the antimony CIF crystal. The control: the stills, which do not rotate, and the AngleP 45 case,
+which has no face on a voxel plane, agree to about 1e-8 on every statistic.
+
+**Shown to catch what the summary cannot.** Reversing the rotation direction mirrors the dose
+field. In 25 of 26 cases that also changes the totals, because the half-open occupancy test
+leaves the voxel set slightly lopsided. The cylinder's voxel set is genuinely symmetric about
+the axis, so all sixteen summary numbers stay within tolerance — and the dose centroid flips
+from +0.00498 µm to −0.00498 µm. Pinned as
+`test_arrays_see_a_mirrored_dose_field_the_summary_cannot`.
+
+One caveat on that demonstration: the centroid tolerance, 5e-3 µm, is set by the antimony case,
+so the cylinder's flip of 0.01 µm is caught with only a factor of two to spare, although the
+cylinder itself agrees with the Java to 3e-5 µm. Per-case tolerances would tighten this; they
+were not worth the machinery yet.
 
 # Milestone 2 — Make it usable
 
@@ -120,17 +165,19 @@ The Java turns nine on by default. These four are what people actually read:
 | `SummaryText` | `output-Summary.txt` **and stdout** | human-readable block plus a 9-bin dose histogram; this is what a user sees |
 | `SummaryCSV` | `output-Summary.csv` | the sixteen numbers `WedgeSummary` already holds — nearly free |
 | `FinalDoseStateCSV` | `output-DoseState.csv` | `x,y,z,dose,fluence,elastic` per in-crystal voxel; `ExposureResult` has all six |
-| `DWDs` | `output-DWDs.csv` | per image; `result.image_dwd` exists, RDE columns need `MaxResolution` |
+| `DWDs` | `output-DWDs.csv` | per image; DWD and volume are already compared, the five RDE columns need `MaxResolution` |
 
-`VoxelDose`/`VoxelFluences` need per-image fields that `expose` does not retain — defer behind
-an opt-in flag. `FinalDoseStateR` emits an R/rgl script; a Python port should offer a plotting
+`VoxelDose`/`VoxelFluences` can be written from `simulate(record_images=True)`, which Milestone 1
+added for the comparison. `FinalDoseStateR` emits an R/rgl script; a Python port should offer a plotting
 helper instead.
 
 ### Input coverage gaps
 
-- **`MaxResolution`** on the wedge → RDE. The whole calculation is
-  `q = {2π/maxRes, 2π, π, 2π/3, π/2}`, `De = 81.3 / q**1.7`, `RDE = exp(-DWD/De)`
-  (`ExposureSummary.java:123-125`). About 20 lines, and it completes the `DWDs` writer.
+- **`MaxResolution`** on the wedge → the five RDE columns of `DWDs.csv`. The whole calculation
+  is `q = {2π/maxRes, 2π, π, 2π/3, π/2}`, `De = 81.3 / q**1.7`, `RDE = exp(-DWD/De)`
+  (`ExposureSummary.java:123-125`). About 20 lines; it completes the `DWDs` writer and empties
+  `_array_stats.DEFERRED`. (`RDE.csv` is a different quantity — the decay model's efficiency —
+  and is already compared.)
 - **`Container`** → a scalar flux attenuation. `ContainerTransparent` is free;
   `ContainerElemental`/`ContainerMixture` need mass attenuation coefficients the Java scrapes
   from NIST at runtime. *Decision deferred to this milestone:* our own element tables could
@@ -277,7 +324,7 @@ Found while surveying, unrelated to the port:
 - `solve()` with no overrides stays pure NumPy — `test_no_overrides_stays_on_numpy` and the
   architecture test enforce it, and CCP4 sizing depends on it.
 - Mutation-check every new conformance comparison the way the existing ones were: perturb a
-  constant, confirm the relevant cases fail. `array_stats` in particular must be shown to catch
-  something the summary misses, or it is not worth wiring up.
+  constant, confirm the relevant cases fail, and show the new comparison catches something the
+  old ones miss — as the array statistics did with a mirrored dose field, now pinned as a test.
 - Notebooks run in CI, so an example that stops working fails the build rather than misleading a
   reader.

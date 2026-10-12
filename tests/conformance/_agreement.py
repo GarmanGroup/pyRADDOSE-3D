@@ -26,3 +26,25 @@ def record_agreement(case_id: str, deviation: float, field: str) -> None:
         Which field and wedge that was.
     """
     AGREEMENT[case_id] = (deviation, field)
+
+
+#: case id -> (largest fraction of its tolerance any array statistic used,
+#: which statistic). Array statistics come in different units against
+#: different limits, so the fraction is the comparable number: how close the
+#: case is to failing.
+ARRAY_AGREEMENT: dict[str, tuple[float, str]] = {}
+
+
+def record_array_agreement(case_id: str, fraction: float, statistic: str) -> None:
+    """Record how much of its tolerance a case's worst array statistic used.
+
+    Parameters
+    ----------
+    case_id : str
+        Case directory name.
+    fraction : float
+        Deviation divided by tolerance; above 1 is a failure.
+    statistic : str
+        Which statistic that was.
+    """
+    ARRAY_AGREEMENT[case_id] = (fraction, statistic)
