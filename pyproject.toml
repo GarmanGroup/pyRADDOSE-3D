@@ -82,6 +82,23 @@ dev = [
     "rich",  # https://github.com/Textualize/rich
     "ruff",
 ]
+# The notebooks in docs/examples are executed by nbmake, so an example that
+# stops working fails the build instead of misleading a reader.
+notebooks = [
+    { include-group = "test" },
+    "ipykernel>=7.4.0",
+    "jupytext>=1.19.6",
+    "matplotlib>=3.11.2",
+    "nbmake>=1.5.5",
+]
+# Building the site executes the examples, so it needs what they need.
+docs = [
+    { include-group = "notebooks" },
+    "mkdocs>=1.6.1",
+    "mkdocs-jupyter>=0.26.3",
+    "mkdocs-material>=9.7.7",
+    "mkdocstrings[python]>=1.0",
+]
 
 [tool.uv.sources]
 pyRADDOSE-3D = { workspace = true }

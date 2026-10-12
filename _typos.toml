@@ -24,3 +24,7 @@ fhwm = "fhwm"
 iit = "iit"
 # "mis-selected", in a docstring about branch selection.
 mis = "mis"
+
+[default]
+# Notebook cell ids are random hex, which reads as misspellings ("daa", "ded").
+extend-ignore-re = ['"id": "[0-9a-f]{8}"']

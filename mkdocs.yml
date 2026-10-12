@@ -1,0 +1,72 @@
+site_name: pyRADDOSE-3D
+site_description: Radiation dose in macromolecular crystallography, as RADDOSE-3D calculates it, in Python
+repo_url: https://github.com/jdickerson95/pyRADDOSE-3D
+docs_dir: docs
+strict: true
+
+nav:
+  - Home: index.md
+  - Examples:
+      - Getting started: examples/01_getting_started.ipynb
+      - Crystals and beams: examples/02_crystals_and_beams.ipynb
+      - Composition: examples/03_composition.ipynb
+      - Decay models: examples/04_decay_models.ipynb
+      - Gradients: examples/05_gradients.ipynb
+  - Programs:
+      - Dose: programs/dose.md
+  - Agreement with RADDOSE-3D: conformance.md
+  - API Reference:
+      - Experiments: api/models.md
+      - Running: api/solve.md
+      - Output files: api/outputs.md
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  # The examples are committed without outputs and executed when the site is
+  # built, so what a reader sees is what the code does today. An example that
+  # raises fails the build.
+  - mkdocs-jupyter:
+      execute: true
+      allow_errors: false
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            members_order: source
+            docstring_style: numpy
+            docstring_section_style: list
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 60
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  # Pages that are the repository's own READMEs include them, rather than
+  # keeping a second copy that would drift.
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true

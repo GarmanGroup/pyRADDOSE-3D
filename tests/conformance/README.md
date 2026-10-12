@@ -6,24 +6,41 @@ same" is a testable claim rather than an aspiration.
 
 ## Layout
 
-    MANIFEST.yaml        corpus-wide: reference version, JVM, seed, tolerances
-    _cases.py            the single definition of every case
-    generate.py          regenerates cases/ from the Java implementation
-    test_conformance.py  the pytest side
+    MANIFEST.yaml         corpus-wide: reference version, JVM, seed, and
+                          each tolerance with how it was measured
+    _cases.py             the single definition of every case
+    generate.py           regenerates cases/ from the Java implementation
+    _array_stats.py       reduces voxel-level outputs to statistics
+    _java_files.py        reads RADDOSE-3D's output files
+    test_conformance.py   the numbers: summaries and array statistics
+    test_output_files.py  the files: the port's output files against the Java's
     cases/<id>/
-      config.yaml        canonical input (generated, committed, reviewable)
-      case.yaml          tier, what it exercises, seed, reference version
+      config.yaml         canonical input (generated, committed, reviewable)
+      case.yaml           tier, what it exercises, seed, reference version
       expected/
-        summary.json     per-wedge summary from the reference
-        array_stats.json statistics of the voxel-level outputs
+        summary.json      per-wedge summary from the reference
+        array_stats.json  statistics of the voxel-level outputs
+        Summary.txt       the reference's own files, kept whole: compared
+        Summary.csv         line by line with the port's
+        DoseState.R         (its timestamp blanked)
+        first_lines.json  the opening line of each per-voxel file
+
+Both sides of every comparison go through the same reduction and the same
+parser: `generate.py` applies them to the Java's files, the tests to the
+port's arrays and to the port's own files. A reduction implemented twice
+would drift, and the drift would look exactly like a port error.
 
 ## Why YAML is canonical
 
 The `.txt` handed to the Java implementation is *emitted* from `config.yaml`
 (`Experiment.to_raddose_txt`), not written by hand. The two inputs therefore
 cannot drift apart, and a conformance failure is unambiguously a difference in
-behaviour rather than a difference in input. It also avoids reimplementing the
-legacy ANTLR grammar, which this port deliberately does not do.
+behaviour rather than a difference in input.
+
+The port also reads `.txt` files (`Experiment.from_raddose_txt`), so existing
+inputs keep working. Every case survives the round trip YAML to `.txt` and
+back -- all but the seed, which RADDOSE-3D takes from its command line --
+which tests the reader against the emitter on 38 configurations.
 
 ## The two tiers
 

@@ -219,7 +219,9 @@ def test_per_voxel_files_reduce_to_the_java_statistics(
     )  # fmt: skip
 
     reduced = reduce_java_outputs(tmp_path)
-    expected = json.loads((case_dir / "expected" / "array_stats.json").read_text())
+    expected = json.loads(
+        (case_dir / "expected" / "array_stats.json").read_text("utf-8")
+    )
     failures, _ = compare_arrays(expected, reduced, manifest()["array_tolerances"])
     assert not failures, "\n".join(failures)
 

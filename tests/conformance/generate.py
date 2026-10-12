@@ -261,7 +261,7 @@ def main() -> None:
                     "The five RDE columns of DWDs are compared absolutely: "
                     "they are fractions of 1 that fall to exp(-40) on the "
                     "antimony crystal, where any relative difference is the "
-                    "knife edge in the DWD multiplied by DWD over the half "
+                    "knife edge in the DWD multiplied by DWD over the 1/e "
                     "dose. Worst 2.6e-4 against the reference, on that "
                     "crystal, and 7.9e-4 against itself; the stills agree "
                     "to 2e-15. DoseState.R is compared voxel by voxel, which "

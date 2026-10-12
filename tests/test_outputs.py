@@ -57,7 +57,7 @@ def test_leal_description_matches_java(experiment: Experiment) -> None:
     crystal = experiment.crystal.model_copy(
         update={"decay_model": "leal", "decay_parameters": (0.3, 10.0, 0.03)}
     )
-    reference = (CASES / "041-ddm-leal" / "expected" / "Summary.txt").read_text()
+    reference = (CASES / "041-ddm-leal" / "expected" / "Summary.txt").read_text("utf-8")
     assert (
         outputs.decay_description(crystal).splitlines() == (reference.splitlines()[1:6])
     )

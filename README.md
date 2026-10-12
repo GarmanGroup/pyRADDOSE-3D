@@ -18,6 +18,27 @@ Conformance with the Java is a tested property, not a claim: each module is
 checked against reference values generated from RADDOSE-3D itself, and the
 achieved agreement is recorded rather than merely asserted.
 
+## Running a dose calculation
+
+Existing RADDOSE-3D input files are read unchanged, and the output files are
+written with RADDOSE-3D's names and formats, so the port can stand in for the
+Java in an existing pipeline. Edit the parameters at the top of
+[`programs/dose/run_dose.py`](programs/dose/run_dose.py) and run it, or:
+
+```python
+from pyraddose_3d.models.experiment import Experiment
+from pyraddose_3d.outputs import summary_text, write_outputs
+from pyraddose_3d.solve import simulate
+
+experiment = Experiment.from_file("input.txt")  # or a .yaml configuration
+simulation = simulate(experiment, record_images=True)
+print(summary_text(simulation))
+write_outputs(simulation)  # output-Summary.txt, output-DoseState.csv, ...
+```
+
+The notebooks in [`docs/examples`](docs/examples) walk through crystals and
+beams, composition, decay models and gradients.
+
 ## Optimising a strategy
 
 Hand `solve` a tensor for any tunable setting and the whole calculation runs
@@ -97,6 +118,18 @@ Run tests:
 
 ```sh
 uv run pytest
+```
+
+Run the example notebooks, which are tests too:
+
+```sh
+uv run --group notebooks pytest --nbmake docs/examples
+```
+
+Build and preview the documentation, executing the examples:
+
+```sh
+uv run --group docs mkdocs serve
 ```
 
 Lint files:

@@ -234,8 +234,9 @@ def summarise(
     )
 
 
-#: ``ExposureSummary.K`` and ``alpha``: the half-dose of diffraction at
-#: resolution d is ``K / q**alpha`` MGy, with ``q = 2 pi / d``.
+#: ``ExposureSummary.K`` and ``alpha``: intensity at resolution d falls by
+#: 1/e for every ``K / q**alpha`` MGy, with ``q = 2 pi / d``. (The Java names
+#: this ``De``; it is not a half-dose.)
 _RDE_K = 81.3
 _RDE_ALPHA = 1.7
 
@@ -272,6 +273,6 @@ def resolution_rde(image_dwd: Array, max_resolution: float) -> Array:
     q = (2 * math.pi / max_resolution, *_RDE_FIXED_Q)
     columns = []
     for q_value in q:
-        half_dose = _RDE_K / math.pow(q_value, _RDE_ALPHA)
-        columns.append(xp.where(image_dwd == 0, 0.0, xp.exp(-image_dwd / half_dose)))
+        decay_dose = _RDE_K / math.pow(q_value, _RDE_ALPHA)
+        columns.append(xp.where(image_dwd == 0, 0.0, xp.exp(-image_dwd / decay_dose)))
     return xp.stack(columns, axis=-1)
