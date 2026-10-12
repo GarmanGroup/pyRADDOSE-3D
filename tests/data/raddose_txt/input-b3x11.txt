@@ -1,0 +1,19 @@
+CRYSTAL
+Type Cuboid
+Dimensions 230 230 230
+PixelsPerMicron 0.5
+AbsCoefCalc SEQUENCE
+UnitCell 78.75 78.75 36.95
+SeqFile /home/murphy/doc/dose/before/AbsCoefCalc/seq.fasta
+NumMonomers 8
+SolventHeavyConc P 54.7 Cl 427.8 Na 496.8
+BEAM
+Type Gaussian
+Flux 4.8e11
+Fwhm 64 19
+Energy 12.66
+Collimation Circular 200 200
+WEDGE 0 45
+ExposureTime 9
+WEDGE 90 135
+ExposureTime 9

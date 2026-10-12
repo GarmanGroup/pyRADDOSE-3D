@@ -1,0 +1,26 @@
+CRYSTAL
+TYPE POLYHEDRON
+WIREFRAMETYPE OBJ
+MODELFILE b3x14.obj
+#DIMENSIONS 230 230 230
+PixelsPerMicron 0.1
+AbsCoefCalc RD3D
+UnitCell 78.22 78.22 37.15
+NumResidues  51                 # number of residues per monomer
+NumMonomers 8
+SolventHeavyConc P 54.7 Cl 427.8 Na 572.6
+
+BEAM
+Type Gaussian
+Flux 4.8e11
+Fwhm 64 19
+Energy 12.66
+Collimation Circular 200 200
+WEDGE 0 45
+ExposureTime 9
+AngularResolution 0.5
+WEDGE 90 135
+ExposureTime 9
+AngularResolution 0.5ß
+
+

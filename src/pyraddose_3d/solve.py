@@ -50,7 +50,15 @@ if TYPE_CHECKING:
 
     from pyraddose_3d.models.experiment import Experiment
 
-__all__ = ["FIXED", "TUNABLE", "Simulation", "crystal_mesh", "simulate", "solve"]
+__all__ = [
+    "FIXED",
+    "TUNABLE",
+    "Simulation",
+    "crystal_mesh",
+    "simulate",
+    "solve",
+    "wedge_resolution",
+]
 
 #: Configuration paths whose value may be handed to :func:`solve` as a
 #: tensor, and which then carry a usable gradient. ``*`` stands for a wedge
@@ -328,6 +336,7 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
                 amino_acids=composition.num_residues,
                 rna_nucleotides=composition.num_rna,
                 dna_nucleotides=composition.num_dna,
+                carbohydrate_residues=composition.num_carb,
             ),
             heavy_protein_atoms=composition.protein_heavy_atoms or None,
             solvent_concentrations=composition.solvent_heavy_conc or None,
@@ -345,6 +354,7 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
             amino_acids=composition.num_residues,
             rna_nucleotides=composition.num_rna,
             dna_nucleotides=composition.num_dna,
+            carbohydrate_residues=composition.num_carb,
         )
         monomers = saxs_monomer_count(
             volume, composition.protein_concentration, macromolecule
@@ -356,6 +366,7 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
                 amino_acids=composition.num_residues,
                 rna_nucleotides=composition.num_rna,
                 dna_nucleotides=composition.num_dna,
+                carbohydrate_residues=composition.num_carb,
             ),
             heavy_protein_atoms=composition.protein_heavy_atoms or None,
             solvent_concentrations=composition.solvent_heavy_conc or None,
@@ -366,6 +377,7 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
             _cell_volume(composition),
             _read_sequence(composition.sequence_file),
             monomers=composition.num_monomers,
+            carbohydrate_residues=composition.num_carb,
             heavy_protein_atoms=composition.protein_heavy_atoms or None,
             solvent_concentrations=composition.solvent_heavy_conc or None,
             solvent_fraction=composition.solvent_fraction,
@@ -392,6 +404,36 @@ def _read_sequence(path: str) -> str:
         for line in Path(path).read_text("ascii").splitlines()
         if not line.startswith(">")
     )
+
+
+def wedge_resolution(start: float, end: float, requested: float | None) -> float:
+    """The angular step RADDOSE-3D actually uses, in degrees.
+
+    Not always the one asked for. ``Wedge.java`` keeps a requested step only
+    if the wedge spans more than ten of them, and otherwise uses 2 degrees::
+
+        if (angularResolution != null && (end - start) / angularResolution > 10)
+
+    So a 30 degree wedge at 5 degrees -- six steps -- is simulated at 2, and so
+    is any wedge with no step given. The Java prints "ANGULAR RESOLUTION TOO
+    BIG - RESETTING TO DEFAULT" in both cases, including the second, where
+    nothing was too big.
+
+    Parameters
+    ----------
+    start, end : float
+        The wedge's angles, in degrees.
+    requested : float | None
+        ``AngularResolution`` as given, if it was.
+
+    Returns
+    -------
+    float
+        The step in degrees.
+    """
+    if requested is not None and (end - start) / requested > 10:
+        return requested
+    return DEFAULT_ANGULAR_RESOLUTION
 
 
 def _generalise(path: str) -> str:
@@ -655,7 +697,7 @@ def simulate(
         )
 
     mesh = crystal_mesh(crystal)
-    grid = voxel_grid(mesh, crystal.pixels_per_micron)
+    grid = voxel_grid(mesh, crystal.effective_pixels_per_micron)
     coordinates = grid.coordinates()
     occupied = occupancy(mesh, coordinates)
 
@@ -677,13 +719,16 @@ def simulate(
     carried = None
     for number, wedge in enumerate(experiment.wedges, start=1):
         index = number - 1
-        resolution = math.radians(
-            wedge.angular_resolution
-            if wedge.angular_resolution is not None
-            else DEFAULT_ANGULAR_RESOLUTION
-        )
         first = _setting(overrides, f"wedges.{index}.start", wedge.start)
         last = _setting(overrides, f"wedges.{index}.end", wedge.end)
+        # The step is a discrete choice, so it is taken on detached values.
+        resolution = math.radians(
+            wedge_resolution(
+                float(to_namespace(np, first)),
+                float(to_namespace(np, last)),
+                wedge.angular_resolution,
+            )
+        )
         angles = exposure_angles(first * _DEG_TO_RAD, last * _DEG_TO_RAD, resolution)
 
         offset = _setting(overrides, f"wedges.{index}.start_offset", wedge.start_offset)

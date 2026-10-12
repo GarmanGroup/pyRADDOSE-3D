@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from pathlib import Path
+from typing import TYPE_CHECKING, Annotated, Self
 
 from pydantic import Field
 
 from pyraddose_3d.models._base import RD3DModel
-from pyraddose_3d.models.beam import Beam, GaussianBeam
-from pyraddose_3d.models.crystal import Crystal, CuboidCrystal
+from pyraddose_3d.models.beam import Beam
+from pyraddose_3d.models.crystal import Crystal
 from pyraddose_3d.models.wedge import Wedge
+
+if TYPE_CHECKING:
+    import os
 
 __all__ = ["Experiment"]
 
@@ -31,12 +35,59 @@ class Experiment(RD3DModel):
         otherwise.
     """
 
-    crystal: Crystal = Field(default_factory=CuboidCrystal)
-    beam: Beam = Field(default_factory=GaussianBeam)
-    wedges: Annotated[list[Wedge], Field(min_length=1)] = Field(
-        default_factory=lambda: [Wedge()]
-    )
+    crystal: Crystal
+    beam: Beam
+    wedges: Annotated[list[Wedge], Field(min_length=1)]
     seed: int | None = None
+
+    @classmethod
+    def from_raddose_txt(cls, path: str | os.PathLike[str]) -> Self:
+        """Load a RADDOSE-3D ``.txt`` input file.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Path to the input file.
+
+        Returns
+        -------
+        Self
+            The validated experiment -- the same object the equivalent YAML
+            would have produced.
+
+        Raises
+        ------
+        RaddoseTxtError
+            If the file does not parse, asks for something this port does
+            not support, or leaves out something RADDOSE-3D requires. The
+            message names the line.
+        """
+        from pyraddose_3d._raddose_txt import parse_raddose_txt
+
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+        return cls(**parse_raddose_txt(text, source=str(path)))
+
+    @classmethod
+    def from_file(cls, path: str | os.PathLike[str]) -> Self:
+        """Load either input format, chosen by the file's extension.
+
+        ``.yaml`` and ``.yml`` are read as YAML; anything else as a
+        RADDOSE-3D ``.txt`` input, since those have never had a fixed
+        extension.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Path to the input file.
+
+        Returns
+        -------
+        Self
+            The validated experiment.
+        """
+        if Path(path).suffix.lower() in (".yaml", ".yml"):
+            return cls.from_yaml(path)
+        return cls.from_raddose_txt(path)
 
     def to_raddose_txt(self) -> str:
         """Render this experiment as a legacy RADDOSE-3D input file.

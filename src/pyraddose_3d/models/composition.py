@@ -4,6 +4,12 @@ Maps onto RADDOSE-3D's ``AbsCoefCalc`` directive. Each variant needs a
 different set of parameters, so these are a discriminated union rather than
 one model with many optional fields -- an incomplete composition then fails at
 load time rather than part way through a run.
+
+A field has a default only where RADDOSE-3D has one, and it is RADDOSE-3D's.
+The Java's residue counts are uninitialised ``int`` fields, so an omitted
+count is zero; the unit cell and the monomer count have no usable default and
+are required. These used to default to insulin's values, so a configuration
+that left out ``num_residues`` was silently insulin.
 """
 
 from __future__ import annotations
@@ -32,7 +38,7 @@ ElementAmounts = dict[str, float]
 class _CellMixin(RD3DModel):
     """Unit cell shared by the composition variants that need one."""
 
-    unit_cell: tuple[float, float, float] = (78.02, 78.02, 78.02)
+    unit_cell: tuple[float, float, float]
     unit_cell_angles: tuple[float, float, float] | None = None
 
 
@@ -58,6 +64,8 @@ class UnitCellComposition(_CellMixin):
         Amino acid residues per monomer.
     num_rna, num_dna : int
         Nucleotides per monomer.
+    num_carb : int
+        Carbohydrate residues per monomer.
     protein_heavy_atoms : dict[str, float]
         Heavy atoms added to the protein part of each monomer, by symbol.
     solvent_heavy_conc : dict[str, float]
@@ -69,10 +77,11 @@ class UnitCellComposition(_CellMixin):
     """
 
     method: Literal["unit_cell"] = "unit_cell"
-    num_monomers: Annotated[int, Field(gt=0)] = 24
-    num_residues: Annotated[int, Field(ge=0)] = 51
+    num_monomers: Annotated[int, Field(gt=0)]
+    num_residues: Annotated[int, Field(ge=0)] = 0
     num_rna: Annotated[int, Field(ge=0)] = 0
     num_dna: Annotated[int, Field(ge=0)] = 0
+    num_carb: Annotated[int, Field(ge=0)] = 0
     protein_heavy_atoms: ElementAmounts = Field(default_factory=dict)
     solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
     solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
@@ -91,7 +100,7 @@ class SmallMoleculeComposition(_CellMixin):
 
     method: Literal["small_molecule"] = "small_molecule"
     atoms: ElementAmounts
-    num_monomers: Annotated[int, Field(gt=0)] = 8
+    num_monomers: Annotated[int, Field(gt=0)]
 
 
 class SaxsComposition(_CellMixin):
@@ -104,13 +113,16 @@ class SaxsComposition(_CellMixin):
     num_residues : int
         Residues per monomer. At least one of the residue counts must be
         non-zero, or the monomer has no mass.
+    num_carb : int
+        Carbohydrate residues per monomer.
     """
 
     method: Literal["saxs"] = "saxs"
-    protein_concentration: Annotated[float, Field(gt=0.0)] = 10.0
-    num_residues: Annotated[int, Field(ge=0)] = 129
+    protein_concentration: Annotated[float, Field(gt=0.0)]
+    num_residues: Annotated[int, Field(ge=0)] = 0
     num_rna: Annotated[int, Field(ge=0)] = 0
     num_dna: Annotated[int, Field(ge=0)] = 0
+    num_carb: Annotated[int, Field(ge=0)] = 0
     protein_heavy_atoms: ElementAmounts = Field(default_factory=dict)
     solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
     solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
@@ -124,21 +136,25 @@ class SequenceComposition(_CellMixin):
     sequence_file : str
         Path to a FASTA file, resolved relative to the working directory of
         the run.
+    num_carb : int
+        Carbohydrate residues per monomer, which a sequence cannot express.
     """
 
     method: Literal["sequence"] = "sequence"
     sequence_file: str
-    num_monomers: Annotated[int, Field(gt=0)] = 24
+    num_monomers: Annotated[int, Field(gt=0)]
+    num_carb: Annotated[int, Field(ge=0)] = 0
     protein_heavy_atoms: ElementAmounts = Field(default_factory=dict)
     solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
     solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
 
 
 class PdbComposition(RD3DModel):
-    """Composition read from a PDB entry (``AbsCoefCalc EXP``).
+    """Composition read from a PDB entry (``AbsCoefCalc EXP`` or ``PDB``).
 
-    Note the keyword is ``EXP``, not ``PDB``: the grammar's token *named* PDB
-    matches the literal "EXP", exactly as the token named CIF matches "EXPSM".
+    ``EXP`` is the original keyword: the grammar's token *named* PDB matches
+    the literal "EXP", exactly as the token named CIF matches "EXPSM".
+    RADDOSE-3D has accepted ``PDB`` as well since 2026.
 
     The unit cell, symmetry and solvent fraction all come from the file, so
     none of the usual cell parameters apply here.
@@ -157,10 +173,10 @@ class PdbComposition(RD3DModel):
 
 
 class CifComposition(RD3DModel):
-    """Composition read from a small-molecule CIF (``AbsCoefCalc EXPSM``).
+    """Composition read from a small-molecule CIF (``AbsCoefCalc EXPSM`` or ``CIF``).
 
-    Note the keyword is ``EXPSM``, not ``CIF``: the grammar's token *named*
-    CIF matches the literal "EXPSM".
+    ``EXPSM`` is the original keyword: the grammar's token *named* CIF matches
+    the literal "EXPSM". RADDOSE-3D has accepted ``CIF`` as well since 2026.
 
     This is the *small-molecule* route. It needs ``_chemical_formula_sum`` and
     ``_cell_volume``, so a protein mmCIF (with dotted tags such as

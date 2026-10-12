@@ -1,0 +1,35 @@
+###############################################################################
+				#Crystal Block#
+###############################################################################
+Crystal
+Type Cuboid
+Dimensions 0.2 0.2 0.2
+
+PixelsPerMicron 100       #the number of voxel per micron in the crystal
+
+AbsCoefCalc  RD3D       # Tells RADDOSE-3D how to calculate the
+                        # Absorption coefficients
+
+# Example case for insulin:
+UnitCell   78.02  78.02  78.02  # unit cell size: a, b, c
+                                # alpha, beta and gamma angles default to 90°
+NumMonomers  24                 # number of monomers in unit cell
+NumResidues  51                 # number of residues per monomer
+
+SolventFraction 0.50            # fraction of the unit cell occupied by solvent
+
+SUBPROGRAM EMED
+
+###############################################################################
+				#Beam Block#
+###############################################################################
+Beam
+Type TopHat
+Energy 300
+Collimation Circular 2.0 2.0
+Exposure 7.8e-4 # in e-/A^2
+###############################################################################
+				#Wedge Block#
+###############################################################################
+Wedge 0 0
+ExposureTime 1

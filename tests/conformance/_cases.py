@@ -173,6 +173,12 @@ _CASES: list[Case] = [
             }
         },
     ),
+    Case(
+        "012-crystal-default-resolution",
+        "A",
+        "no PixelsPerMicron: RADDOSE-3D uses ten voxels across the first dimension",
+        {"crystal": {"dimensions": [25.0, 16.0, 12.0], "pixels_per_micron": REMOVE}},
+    ),
     # --- beam ---------------------------------------------------------------
     Case(
         "020-beam-tophat",
@@ -206,7 +212,19 @@ _CASES: list[Case] = [
     ),
     Case("023-beam-low-energy", "A", "6 keV", {"beam": {"energy": 6.0}}),
     Case("024-beam-high-energy", "A", "20 keV", {"beam": {"energy": 20.0}}),
+    Case(
+        "025-beam-uncollimated",
+        "A",
+        "no Collimation line: RADDOSE-3D's beam is then uncollimated",
+        {"beam": {"collimation": REMOVE}},
+    ),
     # --- composition --------------------------------------------------------
+    Case(
+        "036-composition-carbohydrates",
+        "A",
+        "NumCarb: carbohydrate residues in each monomer",
+        {"crystal": {"composition": {"num_carb": 40}}},
+    ),
     Case(
         "030-composition-average",
         "A",
@@ -392,6 +410,21 @@ _CASES: list[Case] = [
         },
     ),
     # --- solvent ------------------------------------------------------------
+    Case(
+        "066-wedge-resolution-overridden",
+        "A",
+        "AngularResolution 5 on a 30 degree wedge: six steps, so RADDOSE-3D uses 2",
+        {
+            "wedges": [
+                {
+                    "start": 0.0,
+                    "end": 30.0,
+                    "exposure_time": 10.0,
+                    "angular_resolution": 5.0,
+                }
+            ]
+        },
+    ),
     Case(
         "070-solvent-fraction-computed",
         "A",

@@ -13,6 +13,7 @@ crystal:
     num_residues: 51
     num_rna: 0
     num_dna: 0
+    num_carb: 0
     protein_heavy_atoms:
       Zn: 0.333
       S: 6.0
@@ -51,6 +52,7 @@ wedges:
   start_offset: null
   translate_per_degree: null
   rot_axis_beam_offset: null
+  max_resolution: 2.0
 - start: 90.0
   end: 180.0
   exposure_time: 20.0
@@ -58,4 +60,5 @@ wedges:
   start_offset: null
   translate_per_degree: null
   rot_axis_beam_offset: null
+  max_resolution: 2.0
 seed: 20260917

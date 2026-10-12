@@ -39,4 +39,5 @@ wedges:
   start_offset: null
   translate_per_degree: null
   rot_axis_beam_offset: null
+  max_resolution: 2.0
 seed: 20260917

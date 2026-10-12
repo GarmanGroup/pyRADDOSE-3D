@@ -1,4 +1,4 @@
-"""Tests for the legacy .txt emitter.
+"""Tests for writing the legacy .txt format.
 
 The emitter is what lets YAML be the single source of truth for conformance
 cases: the .txt handed to the Java reference implementation is generated from
@@ -7,6 +7,7 @@ If these tests are wrong, every conformance result is meaningless.
 """
 
 import pytest
+from _build import INSULIN, beam, crystal, experiment, wedge
 
 from pyraddose_3d.models.beam import Collimation, GaussianBeam, TophatBeam
 from pyraddose_3d.models.composition import (
@@ -60,7 +61,7 @@ def directives(text: str) -> dict[str, str]:
 
 
 def test_blocks_appear_in_the_order_raddose_expects():
-    text = Experiment().to_raddose_txt()
+    text = experiment().to_raddose_txt()
     assert text.index("Crystal") < text.index("Beam") < text.index("Wedge")
 
 
@@ -106,17 +107,20 @@ def test_baseline_emits_the_expected_directives():
 
 
 @pytest.mark.parametrize(
-    ("crystal", "expected_type"),
+    ("shape", "expected_type"),
     [
-        (CuboidCrystal(), "Cuboid"),
-        (SphericalCrystal(diameter=50.0), "Spherical"),
-        (CylinderCrystal(diameter=40.0, height=20.0), "Cylinder"),
-        (PolyhedronCrystal(model_file="mesh.obj"), "Polyhedron"),
+        (crystal(), "Cuboid"),
+        (SphericalCrystal(diameter=50.0, composition=INSULIN), "Spherical"),
+        (
+            CylinderCrystal(diameter=40.0, height=20.0, composition=INSULIN),
+            "Cylinder",
+        ),
+        (PolyhedronCrystal(model_file="mesh.obj", composition=INSULIN), "Polyhedron"),
     ],
     ids=lambda x: getattr(x, "type", x),
 )
-def test_crystal_types_emit_their_keyword(crystal, expected_type):
-    parsed = blocks(Experiment(crystal=crystal).to_raddose_txt())
+def test_crystal_types_emit_their_keyword(shape, expected_type):
+    parsed = blocks(experiment(crystal=shape).to_raddose_txt())
     assert parsed["Crystal"]["Type"] == expected_type
 
 
@@ -126,15 +130,17 @@ def test_cylinder_dimensions_follow_raddose_axis_convention():
     RADDOSE-3D reads radius from Dimensions[0] and height from Dimensions[1],
     and ignores Dimensions[2] entirely.
     """
-    text = Experiment(
-        crystal=CylinderCrystal(diameter=40.0, height=20.0)
+    text = experiment(
+        crystal=CylinderCrystal(diameter=40.0, height=20.0, composition=INSULIN)
     ).to_raddose_txt()
     assert directives(text)["Dimensions"].split()[:2] == ["40", "20"]
 
 
 def test_polyhedron_emits_its_mesh_file():
-    text = Experiment(
-        crystal=PolyhedronCrystal(model_file="tests/data/cuboid.obj")
+    text = experiment(
+        crystal=PolyhedronCrystal(
+            model_file="tests/data/cuboid.obj", composition=INSULIN
+        )
     ).to_raddose_txt()
     d = directives(text)
     assert d["ModelFile"] == "tests/data/cuboid.obj"
@@ -145,47 +151,66 @@ def test_polyhedron_emits_its_mesh_file():
     ("composition", "keyword"),
     [
         (AverageComposition(), "Average"),
-        (UnitCellComposition(), "RD3D"),
-        (SmallMoleculeComposition(atoms={"Mg": 1, "O": 3}), "SmallMole"),
-        (SaxsComposition(), "SAXS"),
-        (SequenceComposition(sequence_file="seq.fasta"), "Sequence"),
+        (UnitCellComposition(**INSULIN), "RD3D"),
+        (
+            SmallMoleculeComposition(
+                unit_cell=(5.0, 5.0, 5.0), num_monomers=2, atoms={"Mg": 1, "O": 3}
+            ),
+            "SmallMole",
+        ),
+        (
+            SaxsComposition(
+                unit_cell=(78.0, 78.0, 78.0),
+                protein_concentration=10.0,
+                num_residues=129,
+            ),
+            "SAXS",
+        ),
+        (
+            SequenceComposition(
+                unit_cell=(78.0, 78.0, 78.0), num_monomers=24, sequence_file="seq.fasta"
+            ),
+            "Sequence",
+        ),
     ],
     ids=lambda x: getattr(x, "method", x),
 )
 def test_composition_emits_the_right_abscoefcalc(composition, keyword):
-    text = Experiment(crystal=CuboidCrystal(composition=composition)).to_raddose_txt()
+    text = experiment(crystal=crystal(composition=composition)).to_raddose_txt()
     assert directives(text)["AbsCoefCalc"] == keyword
 
 
 def test_average_composition_emits_no_cell_parameters():
     """Average takes no composition parameters; emitting them would error."""
-    text = Experiment(
-        crystal=CuboidCrystal(composition=AverageComposition())
+    text = experiment(
+        crystal=crystal(composition=AverageComposition())
     ).to_raddose_txt()
     assert "UnitCell" not in text
     assert "NumMonomers" not in text
 
 
 def test_tophat_beam_has_no_fwhm():
-    text = Experiment(beam=TophatBeam()).to_raddose_txt()
+    text = experiment(
+        beam=TophatBeam(flux=2e12, energy=12.1, collimation=Collimation(x=50, y=50))
+    ).to_raddose_txt()
     assert blocks(text)["Beam"]["Type"] == "TopHat"
     assert "FWHM" not in text
 
 
 def test_circular_collimation_is_emitted():
-    text = Experiment(
-        beam=GaussianBeam(collimation=Collimation(shape="circular", x=60, y=60))
+    text = experiment(
+        beam=beam(collimation=Collimation(shape="circular", x=60, y=60))
     ).to_raddose_txt()
     assert directives(text)["Collimation"] == "Circular 60 60"
 
 
 def test_escape_flags_are_only_emitted_when_enabled():
-    off = Experiment().to_raddose_txt()
+    off = experiment().to_raddose_txt()
     assert "CalculatePEEscape" not in off
     assert "CalcSurrounding" not in off
 
-    on = Experiment(
-        crystal=CuboidCrystal(
+    on = experiment(
+        crystal=crystal(
             escape={"photoelectron": True, "fluorescence": True, "surrounding": True}
         )
     ).to_raddose_txt()
@@ -195,7 +220,7 @@ def test_escape_flags_are_only_emitted_when_enabled():
 
 
 def test_multiple_wedges_each_emit_a_block():
-    exp = Experiment(
+    exp = experiment(
         wedges=[
             Wedge(start=0, end=90, exposure_time=10),
             Wedge(start=90, end=180, exposure_time=20),
@@ -208,16 +233,16 @@ def test_multiple_wedges_each_emit_a_block():
 
 
 def test_optional_wedge_fields_are_omitted_when_unset():
-    text = Experiment(wedges=[Wedge()]).to_raddose_txt()
+    text = experiment().to_raddose_txt()
     assert "StartOffset" not in text
     assert "TranslatePerDegree" not in text
     assert "RotAxBeamOffset" not in text
 
 
 def test_optional_wedge_fields_are_emitted_when_set():
-    text = Experiment(
+    text = experiment(
         wedges=[
-            Wedge(
+            wedge(
                 start_offset=(1.0, 2.0, 3.0),
                 translate_per_degree=(0.1, 0.0, 0.3),
                 rot_axis_beam_offset=5.0,
@@ -233,12 +258,31 @@ def test_optional_wedge_fields_are_emitted_when_set():
 
 
 def test_rotation_angles_are_only_emitted_when_non_zero():
-    assert "AngleP" not in Experiment().to_raddose_txt()
-    text = Experiment(crystal=CuboidCrystal(angle_p=45.0)).to_raddose_txt()
+    assert "AngleP" not in experiment().to_raddose_txt()
+    text = experiment(crystal=crystal(angle_p=45.0)).to_raddose_txt()
     assert directives(text)["AngleP"] == "45"
 
 
 @pytest.mark.parametrize("model", ["simple", "linear", "leal", "bfactor"])
 def test_every_decay_model_is_emitted(model):
-    text = Experiment(crystal=CuboidCrystal(decay_model=model)).to_raddose_txt()
+    text = experiment(crystal=crystal(decay_model=model)).to_raddose_txt()
     assert directives(text)["DiffractionDecayModel"].lower() == model
+
+
+def test_an_uncollimated_beam_emits_no_collimation() -> None:
+    """No Collimation line is how RADDOSE-3D spells an uncollimated beam."""
+    assert "Collimation" not in experiment().to_raddose_txt()
+
+
+def test_carbohydrates_are_emitted_when_present() -> None:
+    assert "NumCarb" not in experiment().to_raddose_txt()
+    text = experiment(
+        crystal=crystal(composition={**INSULIN, "num_carb": 12})
+    ).to_raddose_txt()
+    assert directives(text)["NumCarb"] == "12"
+
+
+def test_max_resolution_is_emitted_only_when_not_the_default() -> None:
+    assert "MaxResolution" not in experiment().to_raddose_txt()
+    text = experiment(wedges=[wedge(max_resolution=1.5)]).to_raddose_txt()
+    assert directives(text)["MaxResolution"] == "1.5"

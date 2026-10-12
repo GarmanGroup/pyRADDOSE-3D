@@ -1,0 +1,136 @@
+##############################################################################
+#                                 Crystal Block                              #
+##############################################################################
+
+Crystal
+
+Type Cuboid             # Cuboid
+Dimensions 80 7 7       # Dimensions of the crystal in X,Y,Z in µm.
+ANGLEP 45		# orientation of crystal upon grid. 0 is horizontal
+PixelsPerMicron 1.0 	# 10 for monte carlo the computational resolution
+AbsCoefCalc  RD3D       # Tells RADDOSE-3D how to calculate the
+                        # Absorption coefficients
+
+#SUBPROGRAM MONTECARLO
+#Runs 6
+#SIMPHOTONS 1000000
+
+CALCULATEPEESCAPE TRUE	#PE calculation without monte carlo which doesn't use wedges
+CALCULATEFLESCAPE TRUE
+CALCSURROUNDING TRUE
+
+UnitCell   35.38 28.77 62.98 90 106.11 90    # unit cell size: a, b, c
+                                # alpha, beta and gamma angles default to 90°
+NumMonomers  1                 # number of monomers in unit cell
+NumResidues  154                # number of residues per monomer
+ProteinHeavyAtoms  Fe 1 S 3         # heavy atoms added to protein part of the
+                                # monomer, i.e. S, coordinated metals,
+                                # Se in Se-Met
+                                # Note: If a sequence file is used S does not 
+                                # need to be added
+                                
+SolventHeavyConc S 3200 Na 100 Cl 200 #Fe 22                concentration of elements in the solvent
+                                # in mmol/l. Oxygen and lighter elements
+                                # should not be specified
+SolventFraction 0.32            # fraction of the unit cell occupied by solvent
+
+##############################################################################
+#                                  Beam Block                                #
+##############################################################################
+
+Beam
+
+Type Gaussian             # Gaussian profile beam
+Flux 1.7E11                 # in photons per second (2e12 = 2 * 10^12)
+FWHM 3 3               # in µm, X and Y for a Gaussian beam
+						  # X=vertical and Y = horizontal for a 
+						  # horizontal goniometer
+						  # Opposite for a vertical goniometer
+
+Energy 21.266               # in keV
+
+Collimation Rectangular  9 9 # X/Y collimation of the beam in µm
+								# X = vertical and Y = horizontal for a
+								# horizontal goniometer
+								# Opposite for a vertical goniometer
+
+
+
+##############################################################################
+#                                  Wedge Block 1                             #
+##############################################################################
+
+Wedge 145 146                # Start and End rotational angle of the crystal
+                          # Start < End
+
+STARTOFFSET 19.8 -19.8 0
+
+ExposureTime 1.0           # Total time for entire angular range in seconds
+
+AngularResolution 0.01     # Only change from the defaults when using very
+                          # small wedges, e.g 5°.
+##############################################################################
+#                                  Wedge Block 2                             #
+##############################################################################
+
+Wedge 150 151                # Start and End rotational angle of the crystal
+                          # Start < End
+
+STARTOFFSET 14.14 -14.14 0
+
+ExposureTime 1.0           # Total time for entire angular range in seconds
+
+AngularResolution 0.01     # Only change from the defaults when using very
+                          # small wedges, e.g 5°.
+##############################################################################
+#                                  Wedge Block 3                             #
+##############################################################################
+
+Wedge 155 156                # Start and End rotational angle of the crystal
+                          # Start < End
+
+STARTOFFSET 7.78 -7.78 0
+
+ExposureTime 1.0           # Total time for entire angular range in seconds
+
+AngularResolution 0.01     # Only change from the defaults when using very
+                          # small wedges, e.g 5°.
+##############################################################################
+#                                  Wedge Block 4                             #
+##############################################################################
+
+Wedge 160 161                # Start and End rotational angle of the crystal
+                          # Start < End
+
+STARTOFFSET -0.71 0.71 0
+
+ExposureTime 1.0           # Total time for entire angular range in seconds
+
+AngularResolution 0.01     # Only change from the defaults when using very
+                          # small wedges, e.g 5°.
+##############################################################################
+#                                  Wedge Block 5                             #
+##############################################################################
+
+Wedge 165 166                # Start and End rotational angle of the crystal
+                          # Start < End
+
+STARTOFFSET -14.14 14.14 0
+
+ExposureTime 1.0           # Total time for entire angular range in seconds
+
+AngularResolution 0.01     # Only change from the defaults when using very
+                          # small wedges, e.g 5°.
+##############################################################################
+#                                  Wedge Block 6                             #
+##############################################################################
+
+Wedge 170 171                # Start and End rotational angle of the crystal
+                          # Start < End
+
+STARTOFFSET 24.75 -24.71 0
+
+ExposureTime 1.0           # Total time for entire angular range in seconds
+
+AngularResolution 0.01     # Only change from the defaults when using very
+                          # small wedges, e.g 5°.

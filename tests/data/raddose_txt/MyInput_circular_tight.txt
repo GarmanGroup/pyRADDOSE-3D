@@ -1,0 +1,21 @@
+Crystal
+Type Cuboid
+Dimensions 100 100 100
+PixelsPerMicron 0.1
+AbsCoefCalc  RD3D
+UnitCell   78.02  78.02  78.02
+NumMonomers  24
+NumResidues  51
+ProteinHeavyAtoms Zn 0.333 S 6
+SolventHeavyConc P 425
+SolventFraction 0.64
+
+Beam
+Type Gaussian
+Flux 2e12
+FWHM 20 20
+Energy 12.1
+Collimation Circular 20 20
+
+Wedge 0 90
+ExposureTime 50
