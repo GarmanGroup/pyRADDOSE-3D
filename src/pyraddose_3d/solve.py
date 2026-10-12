@@ -42,6 +42,7 @@ from pyraddose_3d.backend.container import (
     elemental_mass_attenuation,
     mixture_mass_attenuation,
 )
+from pyraddose_3d.backend.decay import leal_decay
 from pyraddose_3d.backend.exposure import ExposureResult, expose, exposure_angles
 from pyraddose_3d.backend.geometry import Mesh
 from pyraddose_3d.backend.structure_files import (
@@ -657,18 +658,14 @@ def decay_function(name: str, parameters: tuple[float, float, float] | None) -> 
     name : str
         One of ``simple``, ``linear``, ``leal`` or ``bfactor``.
     parameters : tuple[float, float, float] | None
-        ``(gamma, b0, beta)`` for the B-factor model. RADDOSE-3D defaults
-        every one of them to 9 when they are omitted.
+        ``(gamma, b0, beta)`` for the B-factor and Leal models. When they are
+        omitted RADDOSE-3D sets every one to 9 for the B-factor model and to
+        0 for Leal's, which then does not decay at all.
 
     Returns
     -------
     Any
         A callable from dose in MGy to a factor between 0 and 1.
-
-    Raises
-    ------
-    NotImplementedError
-        For the Leal model, which is not ported.
     """
     if name == "simple":
         return lambda dose: 1.0
@@ -690,10 +687,10 @@ def decay_function(name: str, parameters: tuple[float, float, float] | None) -> 
 
         return bfactor
 
-    raise NotImplementedError(
-        f"decay model {name!r} is not ported; Leal et al. needs its "
-        f"integrated-intensity machinery"
-    )
+    # DDMLeal reads (gamma, b0, beta), and uses zeros -- no decay -- if any
+    # is missing.
+    gamma, b_zero, beta = parameters or (0.0, 0.0, 0.0)
+    return leal_decay(gamma, b_zero, beta)
 
 
 def _namespace(value: Any) -> Any:

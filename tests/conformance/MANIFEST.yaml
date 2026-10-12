@@ -19,7 +19,7 @@ array_tolerances:
   DWDs/volume: 1.0e-12
   DWDs/rde: 0.0005
   DoseState.R/voxel: 0.05
-  RDE/weighted: 0.0005
+  RDE/weighted: 0.001
   RDE/minimum: 0.0005
   counts: 0
   angle_degrees: 1.0e-09
@@ -42,7 +42,10 @@ array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the 
   the 1/e dose. Worst 2.6e-4 against the reference, on that crystal, and 7.9e-4 against
   itself; the stills agree to 2e-15. DoseState.R is compared voxel by voxel, which
   is the knife edge undiluted: worst 1.6e-2 against the reference and 4.6e-2 against
-  itself, both on the antimony crystal, so it shares the fluence maxima''s 5e-2.'
+  itself, both on the antimony crystal, so it shares the fluence maxima''s 5e-2. The
+  weighted RDE is amplified the same way under the Leal model, whose Gaussian term
+  makes log RDE fall by 2 gamma^2 D per MGy: worst 7.1e-4 against the reference, where
+  the efficiency is down to 1e-4, and 2.6e-3 against itself.'
 quantised_quantities:
 - dose_threshold
 - tad

@@ -198,8 +198,6 @@ def unported_reason(experiment: Experiment) -> str | None:
     """
     if experiment.crystal.escape.any_enabled:
         return "photoelectron and fluorescence escape are Monte Carlo, not ported"
-    if experiment.crystal.decay_model == "leal":
-        return "the Leal et al. decay model is not ported"
     return None
 
 

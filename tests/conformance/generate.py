@@ -232,7 +232,7 @@ def main() -> None:
                     "DWDs/volume": 1.0e-12,
                     "DWDs/rde": 5.0e-4,
                     "DoseState.R/voxel": 5.0e-2,
-                    "RDE/weighted": 5.0e-4,
+                    "RDE/weighted": 1.0e-3,
                     "RDE/minimum": 5.0e-4,
                     "counts": 0,
                     "angle_degrees": 1.0e-9,
@@ -267,7 +267,12 @@ def main() -> None:
                     "to 2e-15. DoseState.R is compared voxel by voxel, which "
                     "is the knife edge undiluted: worst 1.6e-2 against the "
                     "reference and 4.6e-2 against itself, both on the "
-                    "antimony crystal, so it shares the fluence maxima's 5e-2."
+                    "antimony crystal, so it shares the fluence maxima's 5e-2. "
+                    "The weighted RDE is amplified the same way under the "
+                    "Leal model, whose Gaussian term makes log RDE fall by "
+                    "2 gamma^2 D per MGy: worst 7.1e-4 against the reference, "
+                    "where the efficiency is down to 1e-4, and 2.6e-3 against "
+                    "itself."
                 ),
                 "quantised_quantities": [
                     "dose_threshold",
