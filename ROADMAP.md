@@ -5,14 +5,17 @@ check a claim rather than take it on trust.
 
 ## Where the port stands
 
-5,300 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML
-only) and `solve.py` (the seam). 544 tests, 12 xfail. 26 of 32 conformance cases match the Java
-within measured tolerances — on the sixteen summary numbers *and* on the dose field and
-per-image series behind them; the six that do not are the five Monte Carlo escape cases (tier B
-by design) and `041-ddm-leal`. `solve()` is differentiable end to end — ten tunable settings carry
-gradients matching central finite differences to ~1e-10, at 0.15 s per optimiser step.
+7,800 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
+RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 963 tests,
+42 xfail. 32 of 38 conformance cases match the Java within measured tolerances — on the sixteen
+summary numbers, on the dose field and per-image series behind them, and on the output files
+themselves; the six that do not are the five Monte Carlo escape cases (tier B by design) and
+`041-ddm-leal`. `solve()` is differentiable end to end — ten tunable settings carry gradients
+matching central finite differences to ~1e-10, at 0.15 s per optimiser step.
 
-The physics is done. Everything below is about making it usable, provable and published.
+It reads RADDOSE-3D's input files and writes its output files, so it can stand in for the Java;
+`programs/dose` runs it, and five executed notebooks show it. What is left is the
+differentiability's payoff, the rest of the MX path, and publication.
 
 ## Three findings that set the priorities
 
@@ -21,9 +24,9 @@ The physics is done. Everything below is about making it usable, provable and pu
    AGPL-3.0-only. See Milestone 0.
 2. **`array_stats.json` was generated for all 32 cases and never compared**, so conformance was
    sixteen averaged numbers per case and the dose *field* was unchecked. Fixed in Milestone 1.
-3. **The input models are missing the sample container**, which multiplies beam flux by
-   `1 - attenuationFraction` on the ordinary MX path (`BeamGaussian.java:270`). Also missing:
-   `MaxResolution` (feeds the RDE columns of `DWDs.csv`) and `NumCarb`.
+3. **The input models were missing the sample container**, which multiplies beam flux by
+   `1 - attenuationFraction` on the ordinary MX path (`BeamGaussian.java:270`), and
+   `MaxResolution` and `NumCarb`. All three added in Milestone 2.
 
 ---
 
@@ -96,9 +99,9 @@ a survey of them:**
   a field per image. Milestone 2's writers need exactly this.
 - `RDE.csv` does not need `MaxResolution`. It records the *decay model's* efficiency, which the
   port already computed, so it is compared now. `MaxResolution` feeds only the five RDE columns
-  of `DWDs.csv` — `exp(-DWD/De)` — which are the one thing deferred, listed in
+  of `DWDs.csv` — `exp(-DWD/De)` — which were the one thing deferred, listed in
   `_array_stats.DEFERRED`. The comparison fails if the port starts producing a deferred
-  quantity, so the deferral cannot outlive the gap.
+  quantity, so the deferral could not outlive the gap. Emptied in Milestone 2.
 
 To reach the arrays at all, `solve()` became a thin wrapper over `simulate()`, which returns a
 `Simulation` — the grid, which voxels are occupied, the per-wedge exposures and angles, and the
@@ -132,89 +135,88 @@ so the cylinder's flip of 0.01 µm is caught with only a factor of two to spare,
 cylinder itself agrees with the Java to 3e-5 µm. Per-case tolerances would tighten this; they
 were not worth the machinery yet.
 
-# Milestone 2 — Make it usable
+# Milestone 2 — Make it usable — *done, CI unverified*
 
-**Why.** Nobody outside this machine can run the port.
+**Why.** Nobody outside this machine could run the port.
 
-### No CLI — run scripts and YAML, per Leopard-EM
+**Done when** someone in the group can clone, edit a YAML — or bring an existing `.txt` — run a
+script and get the output files they expect, and the notebooks run green in CI. All of that
+holds locally; the CI half waits for the repository to have a remote.
 
-Follow `programs/<name>/` as Leopard-EM does it: a short **editable** `run_<name>.py` with a
-marked parameters block at the top, a worked `<name>_example_config.yaml`, and a per-program
-`README.md`. No `[project.scripts]`, no argparse.
+### Input: YAML, and RADDOSE-3D's `.txt` unchanged
 
-That is the right call for this audience. Scientists run a handful of configured jobs, often via
-SLURM; an editable script is trivially extended, and the optimisation loop in Milestone 3 is
-naturally a script rather than a flag. It also matches the house style the rest of the port
-already follows.
+`Experiment.from_file` reads either. The `.txt` reader follows `Inputfile.g` rather than a
+reading of the manual: case-insensitive, not line-based, every keyword alias, the three comment
+styles, and the lexer's habit of *skipping* a character it does not recognise, with a message,
+rather than failing — a warning here. Every corpus case survives YAML → `.txt` → YAML
+(all but the seed, which RADDOSE-3D takes from its command line), and eight of the thirteen
+example inputs RADDOSE-3D ships are read; the other five ask for something unported and are
+refused, saying what.
 
-The counter-argument is worth recording rather than dismissed: RADDOSE-3D users today type
-`java -jar raddose3d.jar -i input.txt`, and CCP4 may want a command-line program. If either
-turns out to matter, a CLI is ~30 lines of argparse over the same `solve()` and the same
-writers — so **the writers are the real work, and they are needed either way**. Defer the CLI
-until something actually demands it.
+Defaults now mirror the Java's, and what the Java requires is required. That changed the models:
+a crystal's `PixelsPerMicron` defaults to ten voxels across its first dimension, no
+`Collimation` means no aperture, `AngularResolution` is honoured only above ten images, and the
+made-up defaults the models had carried are gone. Each default has a conformance case that
+leaves the setting out of the `.txt`, so the case checks the Java's default rather than restating
+it.
 
-Two programs to start: `programs/dose/` (run an experiment, write the outputs) and, in
-Milestone 3, `programs/optimise/`.
+Added, each with a case: **`MaxResolution`**, completing `DWDs.csv`; **`NumCarb`**; and
+**containers**. For the containers, NIST's mass attenuation tables are vendored rather than
+fetched at run time as the Java does, extracted with the Java's own parsing so the rows are the
+ones it interpolates between — so they match to 2e-6 rather than being a recorded divergence,
+which our own element tables would have been. The interpolation is reproduced exactly, including
+its being linear rather than log-log and taking the value *above* an absorption edge for a beam
+exactly at one.
 
-### Output writers
+### Output: the same eight files
 
-The Java turns nine on by default. These four are what people actually read:
+`write_outputs` writes what RADDOSE-3D writes by default, under the same names: `Summary.txt`,
+`Summary.csv`, `DoseState.csv`, `DoseState.R`, `RDE.csv`, `DWDs.csv`, `VoxelDose.csv` and
+`VoxelFluences.csv`. Two departures from the plan above: `DoseState.R` is ported rather than
+replaced with a plotting helper, since "the same files" was the point and it is a fixed
+template around the dose grid; and the per-image files need `record_images=True`, which the run
+script sets.
 
-| writer | file | notes |
-|---|---|---|
-| `SummaryText` | `output-Summary.txt` **and stdout** | human-readable block plus a 9-bin dose histogram; this is what a user sees |
-| `SummaryCSV` | `output-Summary.csv` | the sixteen numbers `WedgeSummary` already holds — nearly free |
-| `FinalDoseStateCSV` | `output-DoseState.csv` | `x,y,z,dose,fluence,elastic` per in-crystal voxel; `ExposureResult` has all six |
-| `DWDs` | `output-DWDs.csv` | per image; DWD and volume are already compared, the five RDE columns need `MaxResolution` |
+Java prints numbers its own way, and Python's formatting gets the last digit wrong
+surprisingly often: `String.format` rounds the shortest decimal half-up, Python rounds the
+binary value half-even, so `1.005` prints `1.01` in one and `1.00` in the other.
+`_java_format` reproduces `%f`, `%e`, `Double.toString` and `Float.toString`, checked against
+4,356 strings JDK 25 produced (`tests/data/java_format.tsv`).
 
-`VoxelDose`/`VoxelFluences` can be written from `simulate(record_images=True)`, which Milestone 1
-added for the comparison. `FinalDoseStateR` emits an R/rgl script; a Python port should offer a plotting
-helper instead.
+Against every case, `tests/conformance/test_output_files.py` compares `Summary.txt`,
+`Summary.csv` and `DoseState.R` with the Java's line by line — text identical, every number laid
+out identically, values within the manifest's tolerances — and for the two stills `Summary.txt`
+is byte-identical. The other files are read back with the parser applied to the Java's and
+reduced to the corpus statistics. Two tolerances joined the manifest, both measured by the usual
+rule: the dose histogram, in percentage points, and `DoseState.R` per voxel.
 
-### Input coverage gaps
+### Running it: `programs/dose`
 
-- **`MaxResolution`** on the wedge → the five RDE columns of `DWDs.csv`. The whole calculation
-  is `q = {2π/maxRes, 2π, π, 2π/3, π/2}`, `De = 81.3 / q**1.7`, `RDE = exp(-DWD/De)`
-  (`ExposureSummary.java:123-125`). About 20 lines; it completes the `DWDs` writer and empties
-  `_array_stats.DEFERRED`. (`RDE.csv` is a different quantity — the decay model's efficiency —
-  and is already compared.)
-- **`Container`** → a scalar flux attenuation. `ContainerTransparent` is free;
-  `ContainerElemental`/`ContainerMixture` need mass attenuation coefficients the Java scrapes
-  from NIST at runtime. *Decision deferred to this milestone:* our own element tables could
-  supply them offline — better engineering, but it would not match the Java numerically, so it
-  is a deliberate divergence to be recorded in the corpus, not a silent one.
-- **`NumCarb`** → carbohydrate residues in the composition.
+As planned, Leopard-EM's layout and no CLI: an editable `run_dose.py`, a commented
+`dose_example_config.yaml`, and `dose_example_input.txt`, which is RADDOSE-3D's own
+`MyInput.txt`, unmodified. A test checks the YAML and the `.txt` load to the same experiment.
 
-### Notebooks that are also tests
+The CLI question stays open on the same terms: RADDOSE-3D users type
+`java -jar raddose3d.jar -i input.txt`, and CCP4 may want a command-line program. Now that the
+reader and the writers exist, a CLI is ~30 lines of argparse over them. Defer it until something
+demands it.
 
-Beyond the Leopard-EM pattern — their `40S_demo.ipynb` is not run in CI, and documentation that
-is never executed rots quietly. Ours should be executed.
+### Notebooks and documentation
 
-One notebook per capability, kept small enough to run in CI (a baseline solve is 0.15 s):
+Five notebooks in `docs/examples` — getting started, crystals and beams, composition, decay
+models, gradients — each run as a test with `pytest --nbmake` and committed without outputs.
+The site is mkdocs-material with mkdocs-jupyter, which executes them at build time, and
+mkdocstrings for the API; pages that are already READMEs are included, not copied.
 
-1. **Getting started** — YAML in, dose out, reading the summary.
-2. **Crystal and beam geometry** — cuboid/sphere/cylinder, Gaussian vs tophat, collimation, with
-   plots of the dose field.
-3. **Composition routes** — unit cell, sequence, PDB, CIF, SAXS, and what solvent content does.
-4. **Decay models** — simple, linear, B-factor, and what each does to the DWD series.
-5. **Gradients and optimisation** — Milestone 3's example.
+Not zensical, which Leopard-EM uses: zensical 0.0.70 does not support mkdocs-jupyter, ignores it
+without a warning and publishes the notebooks as raw `.ipynb` downloads.
 
-Run them in CI with `pytest --nbmake` (or jupytext-paired scripts, if diffs matter more than
-convenience — worth choosing when we get there). Add a `docs/` tree at the same time; Leopard-EM
-uses zensical/mkdocs-material and that is a reasonable default.
+### Housekeeping
 
-### Housekeeping while here
-
-- **Windows in CI.** CCP4 requires all three platforms; CI runs ubuntu and macos only.
-- **Python floor.** CCP4 9 ships Python 3.9, CCP4 2026 ships 3.11. Keep `>=3.11` and target
-  CCP4 2026, since relicensing gates CCP4 anyway. Cost of changing our mind is one import:
-  `typing.Self` in `models/_base.py:5` is the only 3.11-only construct in the tree.
-- **scipy** is a dependency for `erf` alone (`pyproject.toml:48`). At ~3% of a 3–4 GB CCP4
-  install the size is defensible, but one function is a thin reason for the heaviest dependency
-  in the tree.
-
-**Done when:** someone in the group can clone, edit a YAML, run a script and get the output
-files they expect — and the notebooks run green in CI.
+- **Windows** is in the CI matrix — unverified until there is a remote. The library names an
+  encoding wherever it reads a file, the obvious Windows trap.
+- **Python floor** unchanged at 3.11, targeting CCP4 2026.
+- **scipy** unchanged: still a dependency for `erf` alone.
 
 # Milestone 3 — Deliver the differentiability
 
@@ -231,7 +233,14 @@ running the Java.
 - Honest scope in the docs. `TUNABLE` and `FIXED` already encode which settings carry a gradient
   and why the others do not. Both step discontinuities found so far — the integer image count
   and the voxel occupancy parity test — mean an optimiser can see its objective jump; worth a
-  short note on choosing step sizes that do not straddle them.
+  short note on choosing step sizes that do not straddle them. The gradients notebook has
+  the first version of that note.
+- The two backends are not bit-identical. Torch's `cos` and `sin` can differ from NumPy's in
+  the last bit, which flips face voxels like any other one-ulp change: the baseline's summary
+  moves by 2e-4 between them, and even a still by 1e-3 in its maximum dose — a still has face
+  voxels too, and NumPy's `cos(π/4)` happens to match Java's where torch's does not. Within the
+  port's measured self-sensitivity, but above tier A's 1e-4, so the conformance claim is
+  NumPy's; worth stating alongside any optimised strategy.
 
 **Done when:** a notebook demonstrates a better strategy found by gradient descent than by
 scanning, with the compute budget stated.
@@ -247,7 +256,9 @@ Finishes what the port already claims to cover. In value order, none urgent.
   (`addDoseAfterPE`, `addDoseAfterFL`, `escapeFactor`) that the five tier-B conformance cases
   exercise. Monte Carlo, so comparable only statistically: match the generator, then compare
   means over N seeds against the observed standard error, as the corpus already anticipates.
-  Closing this takes conformance from 26/32 to 31/32.
+  Closing this takes conformance from 32/38 to 37/38.
+- **Pink beams** (`EnergyFWHM`) — the Java samples the spectrum at 200 energies and changes the
+  MX dose, so the reader refuses the keyword rather than ignore it.
 
 # Milestone 5 — Publication and CCP4
 
@@ -301,7 +312,7 @@ someone wants it, and does not block the others.
 
 ---
 
-## Upstream: three small Java defects to report
+## Upstream: small Java defects to report
 
 Found while surveying, unrelated to the port:
 
@@ -313,11 +324,17 @@ Found while surveying, unrelated to the port:
 - `MicroED.getSolventFraction()` returns 0 when explicitly set, and `getBeamArea()`/
   `getExposure()` are stubs in `BeamGaussian`/`BeamExperimental` — from the earlier audit, still
   open.
+- Lexer errors are not refused. A character the grammar does not know is skipped with a
+  message ("no viable alternative at character 'ß'") and the run carries on —
+  `input-b3x14.txt`, which RADDOSE-3D ships, has a stray `ß`. A gap in #34, which refuses input
+  the *parser* cannot read.
+- A wedge from 0° to 30° at 2° per image takes 15 images, not 16: the count is computed in
+  radians, where 30°/2° comes to 14.999999999999998, and truncated. The port reproduces it.
 
 ## Verification, throughout
 
 - Every step keeps the conformance corpus bit-identical unless it deliberately changes a number,
-  and a changed expectation is a reviewable diff. Baseline is 26/32, worst deviation 1.94e-3
+  and a changed expectation is a reviewable diff. Baseline is 32/38, worst deviation 1.94e-3
   (`011-crystal-cylinder`, `tad`); `pytest tests/conformance` prints the per-case table.
 - New output writers are checked against the Java's own files for the same case through
   `generate.py`, not against hand-written expectations.
