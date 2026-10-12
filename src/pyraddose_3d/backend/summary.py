@@ -25,6 +25,7 @@ than the comparison.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +36,7 @@ from pyraddose_3d.backend._array import array_namespace, to_namespace
 if TYPE_CHECKING:
     from pyraddose_3d.backend.exposure import ExposureResult
 
-__all__ = ["WedgeSummary", "summarise"]
+__all__ = ["WedgeSummary", "resolution_rde", "summarise"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
@@ -240,3 +241,46 @@ def summarise(
         dose_inefficiency=(max_dose * 1e6) / (1000 * absorbed),
         dose_inefficiency_pe=(max_dose * 1e6) / (1000 * total_energy),
     )
+
+
+#: ``ExposureSummary.K`` and ``alpha``: the half-dose of diffraction at
+#: resolution d is ``K / q**alpha`` MGy, with ``q = 2 pi / d``.
+_RDE_K = 81.3
+_RDE_ALPHA = 1.7
+
+#: ``ExposureSummary.q`` for 1, 2, 3 and 4 angstroms, spelled as the Java
+#: spells them so the values are bit-identical.
+_RDE_FIXED_Q = (2 * math.pi, math.pi, 2 * math.pi / 3, 0.5 * math.pi)
+
+
+def resolution_rde(image_dwd: Array, max_resolution: float) -> Array:
+    """Relative diffraction efficiency at five resolutions, per image.
+
+    ``exp(-DWD / De)`` with ``De = K / q**alpha``: how much of its original
+    intensity a reflection at each resolution keeps, given the dose. This is
+    the five RDE columns of ``output-DWDs.csv``; not to be confused with
+    ``output-RDE.csv``, which reports the *decay model's* efficiency.
+
+    Parameters
+    ----------
+    image_dwd : Array
+        ``(A,)`` diffraction-weighted dose per image, in MGy. Zero marks an
+        image in which nothing diffracted.
+    max_resolution : float
+        The wedge's maximum resolution in angstroms.
+
+    Returns
+    -------
+    Array
+        ``(A, 5)``: at the maximum resolution, then 1, 2, 3 and 4 angstroms --
+        ``ExposureSummary.imageRDE``'s order, which the CSV then rearranges.
+        An image in which nothing diffracted is all zeros, as the Java never
+        fills it in.
+    """
+    xp = array_namespace(image_dwd)
+    q = (2 * math.pi / max_resolution, *_RDE_FIXED_Q)
+    columns = []
+    for q_value in q:
+        half_dose = _RDE_K / math.pow(q_value, _RDE_ALPHA)
+        columns.append(xp.where(image_dwd == 0, 0.0, xp.exp(-image_dwd / half_dose)))
+    return xp.stack(columns, axis=-1)

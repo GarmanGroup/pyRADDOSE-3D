@@ -25,6 +25,7 @@ from pyraddose_3d.backend._array import array_namespace, to_namespace
 from pyraddose_3d.backend.coefficients import (
     AVERAGE_COEFFICIENTS,
     AVERAGE_DENSITY,
+    MaterialCoefficients,
     density,
     material_coefficients,
     unit_cell_volume,
@@ -617,6 +618,14 @@ class Simulation:
 
     Attributes
     ----------
+    experiment : Experiment
+        What was run.
+    mesh : Mesh
+        The crystal, with its angles applied. Its bounding box is what
+        RADDOSE-3D reports as the crystal's size.
+    coefficients : MaterialCoefficients
+        Absorption, attenuation, elastic and inelastic coefficients at the
+        beam energy, in inverse micrometres.
     grid : VoxelGrid
         The voxel grid, in the lab frame before any rotation.
     occupied : Array
@@ -633,6 +642,9 @@ class Simulation:
         One per wedge -- what :func:`solve` returns.
     """
 
+    experiment: Experiment
+    mesh: Mesh
+    coefficients: MaterialCoefficients
     grid: VoxelGrid
     occupied: Any
     density: Any
@@ -823,6 +835,9 @@ def simulate(
         )
 
     return Simulation(
+        experiment=experiment,
+        mesh=mesh,
+        coefficients=coefficients,
         grid=grid,
         occupied=occupied,
         density=crystal_density,

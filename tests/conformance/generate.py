@@ -233,6 +233,20 @@ def generate_case(case: Case, root: Path, version: str) -> None:
             json.dumps(summary, indent=2) + "\n", encoding="utf-8"
         )
 
+        # The human-readable summary and the summary CSV are kept whole, so
+        # the port's writers can be compared with them line by line. They
+        # are a few kilobytes; the per-voxel files are megabytes, and are
+        # checked through their statistics instead, plus their first line.
+        for name in ("Summary.txt", "Summary.csv"):
+            shutil.copyfile(out_dir / f"out-{name}", expected / name)
+        first_lines = {}
+        for name in ("DWDs", "RDE", "DoseState", "VoxelDose", "VoxelFluences"):
+            with (out_dir / f"out-{name}.csv").open(encoding="utf-8") as handle:
+                first_lines[name] = handle.readline().rstrip("\n")[:200]
+        (expected / "first_lines.json").write_text(
+            json.dumps(first_lines, indent=2) + "\n", encoding="utf-8"
+        )
+
         stats = reduce_java_outputs(out_dir)
         (expected / "array_stats.json").write_text(
             json.dumps(stats, indent=2) + "\n", encoding="utf-8"
@@ -292,6 +306,7 @@ def main() -> None:
                     "VoxelFluences/max": 5.0e-2,
                     "DWDs/dwd": 5.0e-3,
                     "DWDs/volume": 1.0e-12,
+                    "DWDs/rde": 5.0e-4,
                     "RDE/weighted": 5.0e-4,
                     "RDE/minimum": 5.0e-4,
                     "counts": 0,
@@ -317,7 +332,14 @@ def main() -> None:
                     "which has no face on a voxel plane, agree to about 1e-8 "
                     "on every statistic -- the control showing the "
                     "disagreement is the knife edge and not the physics. "
-                    "Counts of voxels, images and exposed voxels are exact."
+                    "Counts of voxels, images and exposed voxels are exact. "
+                    "The five RDE columns of DWDs are compared absolutely: "
+                    "they are fractions of 1 that fall to exp(-40) on the "
+                    "antimony crystal, where any relative difference is the "
+                    "knife edge in the DWD multiplied by DWD over the half "
+                    "dose. Worst 2.6e-4 against the reference, on that "
+                    "crystal, and 7.9e-4 against itself; the stills agree "
+                    "to 2e-15."
                 ),
                 "quantised_quantities": [
                     "dose_threshold",

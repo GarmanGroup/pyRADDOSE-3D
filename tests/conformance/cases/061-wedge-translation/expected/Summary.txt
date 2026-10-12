@@ -1,0 +1,40 @@
+Cuboid (Polyhedron) crystal of size [20, 16, 12] um [x, y, z] at a resolution of 2.00 microns per voxel edge.
+Simple DDM.
+Gaussian beam, 40.0x40.0 um with 20.00 by 20.00 FWHM (x by y) and 2.0e+12 photons per second at 12.10 keV.
+Wedge 1:
+Collecting data for a total of 10.0s from phi = 0.0 to 90.0 deg.
+Start is offset by [0.000000, 0.000000, 0.000000] um [x,y,z].
+Helical scanning is at [0.050000, 0.000000, 0.020000] um/deg in [x,y,z]
+
+Crystal coefficients calculated with RADDOSE-3D. 
+Photelectric Coefficient: 3.10e-04 /um.
+Inelastic Coefficient: 1.78e-05 /um.
+Elastic Coefficient: 2.01e-05 /um.
+Attenuation Coefficient: 3.48e-04 /um.
+Density: 1.09 g/ml.
+
+Average Diffraction Weighted Dose         : 9.427411 MGy
+Last Diffraction Weighted Dose            : 18.710691 MGy
+Elastic Yield                             : 2.58e+09 photons
+Diffraction Efficiency (Elastic Yield/DWD): 2.74e+08 photons/MGy
+Average Dose (Whole Crystal)              : 18.416701 MGy
+Average Dose (Exposed Region)             : 18.416701 MGy
+Max Dose                                  : 25.115535 MGy
+Average Dose (95.0 % of total absorbed energy threshold (13.00 MGy)): 19.086399 MGy
+Dose Contrast (Max/Threshold Av.)         : 1.32
+Used Volume                               : 100.0%
+Absorbed Energy (this Wedge)              : 7.89e-05 J.
+Dose Inefficiency (Max Dose/mJ Absorbed)  : 318375376.5 1/g
+Dose Inefficiency PE (Max Dose/mJ Deposited): 325219113.0 1/g
+Final Dose Histogram:
+Bin  1,  0.0 to  0.1 MGy:  0.0 % 
+Bin  2,  0.1 to  3.4 MGy:  0.0 % 
+Bin  3,  3.4 to  6.7 MGy:  0.0 % 
+Bin  4,  6.7 to 10.1 MGy:  1.0 % 
+Bin  5, 10.1 to 13.4 MGy:  8.3 % 
+Bin  6, 13.4 to 16.7 MGy: 22.3 % 
+Bin  7, 16.7 to 20.0 MGy: 32.3 % 
+Bin  8, 20.0 to 23.4 MGy: 27.5 % 
+Bin  9, 23.4 to 26.7 MGy:  8.5 % 
+Bin 10, 26.7 to 30.0 MGy:  0.0 % 
+Bin 11, 30.0 MGy upwards:  0.0 %

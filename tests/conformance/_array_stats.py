@@ -41,6 +41,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from pyraddose_3d.backend.summary import resolution_rde
+
 if TYPE_CHECKING:
     from pyraddose_3d.solve import Simulation
 
@@ -56,15 +58,9 @@ __all__ = [
 
 #: Quantities the Java writes that the port does not produce yet, with why.
 #: The comparison fails if one of these turns up on the port side, so a
-#: deferral cannot outlive the gap it names.
-DEFERRED: dict[tuple[str, str], str] = {
-    ("DWDs", key): (
-        "exp(-DWD/De) at fixed resolutions, plus one at the wedge's "
-        "MaxResolution; the formula and the input both land with the output "
-        "writers in Milestone 2"
-    )
-    for key in ("rde_1A", "rde_2A", "rde_3A", "rde_4A", "rde_max_res")
-}
+#: deferral cannot outlive the gap it names. Empty since the output writers
+#: landed; kept so the next gap has somewhere to go.
+DEFERRED: dict[tuple[str, str], str] = {}
 
 _QUANTILES = {"p05": 0.05, "median": 0.5, "p95": 0.95}
 
@@ -230,12 +226,25 @@ def from_simulation(simulation: Simulation) -> dict[str, Any]:
     stats["VoxelFluences"] = image_rows(_as_java_float(image_fluence))
 
     wedge, angle, dwd, volume = [], [], [], []
+    rde_columns: dict[str, list[float]] = {
+        "rde_1A": [],
+        "rde_2A": [],
+        "rde_3A": [],
+        "rde_4A": [],
+        "rde_max_res": [],
+    }
     rde_wedge, rde_angle, weighted, minimum = [], [], [], []
     for number, (exposure, angles) in enumerate(
         zip(exposures, simulation.angles, strict=True), start=1
     ):
         fluence = _numpy(exposure.images.fluence)[:, occupied]
         decay = _numpy(exposure.images.decay)[:, occupied]
+        max_resolution = simulation.experiment.wedges[number - 1].max_resolution
+        rde = _numpy(resolution_rde(_numpy(exposure.image_dwd), max_resolution))
+        for column, key in enumerate(
+            ("rde_max_res", "rde_1A", "rde_2A", "rde_3A", "rde_4A")
+        ):
+            rde_columns[key].extend(float(v) for v in rde[:, column])
         running_min = 1.0
         for index, image_angle in enumerate(angles):
             degrees = float(_numpy(image_angle)) * (180 / math.pi)
@@ -260,7 +269,9 @@ def from_simulation(simulation: Simulation) -> dict[str, Any]:
                 weighted.append(0.0)
                 minimum.append(0.0)
 
-    stats["DWDs"] = per_image_series(wedge=wedge, angle=angle, dwd=dwd, volume=volume)
+    stats["DWDs"] = per_image_series(
+        wedge=wedge, angle=angle, dwd=dwd, volume=volume, **rde_columns
+    )
     stats["RDE"] = per_image_series(
         wedge=rde_wedge, angle=rde_angle, weighted=weighted, minimum=minimum
     )
@@ -311,6 +322,10 @@ def tolerance_for(
             return "absolute", tolerances["DoseState/position_um"]
         family = "totals" if statistic in _TOTALS else "extremes"
         return "relative", tolerances[f"DoseState/{family}"]
+    if statistic.startswith("rde_"):
+        # A fraction in [0, 1] that reaches exp(-40) on absorbing crystals,
+        # where a relative comparison would weigh noise in the last bits.
+        return "absolute", tolerances["DWDs/rde"]
     return "relative", tolerances[f"{entry}/{statistic}"]
 
 
