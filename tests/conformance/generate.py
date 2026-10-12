@@ -16,45 +16,24 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import numpy as np
 import yaml
-from _array_stats import dose_state, image_rows, per_image_series
 from _cases import SEED, Case, all_cases, config_for
+from _java_files import R_TIMESTAMP, parse_summary, reduce_java_outputs
 
 from pyraddose_3d.models.experiment import Experiment
 
 HERE = Path(__file__).parent
 CASES_DIR = HERE / "cases"
 MANIFEST = HERE / "MANIFEST.yaml"
-
-#: Summary columns, in the order OutputSummaryCSV writes them.
-SUMMARY_COLUMNS = [
-    "wedge_number",
-    "average_dwd",
-    "last_dwd",
-    "elastic_yield",
-    "diffraction_efficiency",
-    "ad_wc",
-    "ad_exp_region",
-    "max_dose",
-    "dose_threshold",
-    "abs_en_threshold",
-    "tad",
-    "dose_contrast",
-    "used_volume",
-    "wedge_absorbed_energy",
-    "dose_inefficiency",
-    "dose_inefficiency_pe",
-]
 
 
 def raddose_dir() -> Path:
@@ -145,69 +124,6 @@ def resolve_paths(input_text: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def parse_summary(path: Path) -> list[dict[str, float]]:
-    """Parse out-Summary.csv into one dict per wedge."""
-    rows = []
-    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
-        if not line.strip():
-            continue
-        values = [float(v) for v in line.split(",")]
-        rows.append(dict(zip(SUMMARY_COLUMNS, values, strict=False)))
-    return rows
-
-
-def _rows(path: Path, *, skip: int) -> list[list[float]]:
-    """Numeric rows of a Java CSV, tolerating its trailing commas."""
-    rows = []
-    for line in path.read_text(encoding="utf-8").splitlines()[skip:]:
-        fields = [f.strip() for f in line.split(",") if f.strip()]
-        if fields:
-            rows.append([float(f) for f in fields])
-    return rows
-
-
-def reduce_java_outputs(out_dir: Path) -> dict[str, Any]:
-    """Reduce the Java's per-voxel and per-image files to statistics.
-
-    Each file is parsed by its actual layout, then handed to the reducers in
-    ``_array_stats`` -- the same ones the test applies to the port's arrays.
-
-    ``DoseState`` has no header: ``x,y,z,dose,fluence,elastic`` per voxel
-    inside the crystal. ``VoxelDose`` and ``VoxelFluences`` open with a row
-    of ``x_y_z`` labels, then one row per image of the last wedge, every
-    value followed by a comma. ``DWDs`` and ``RDE`` have a header and one
-    row per image of every wedge, at full double precision.
-    """
-    stats: dict[str, Any] = {}
-
-    state = np.array(_rows(out_dir / "out-DoseState.csv", skip=0))
-    stats["DoseState"] = dose_state(
-        state[:, 0:3], state[:, 3], state[:, 4], state[:, 5]
-    )
-
-    for name in ("VoxelDose", "VoxelFluences"):
-        stats[name] = image_rows(np.array(_rows(out_dir / f"out-{name}.csv", skip=1)))
-
-    dwds = np.array(_rows(out_dir / "out-DWDs.csv", skip=1))
-    stats["DWDs"] = per_image_series(
-        wedge=dwds[:, 0],
-        angle=dwds[:, 2],
-        dwd=dwds[:, 3],
-        volume=dwds[:, 4],
-        rde_1A=dwds[:, 5],
-        rde_2A=dwds[:, 6],
-        rde_3A=dwds[:, 7],
-        rde_4A=dwds[:, 8],
-        rde_max_res=dwds[:, 9],
-    )
-
-    rde = np.array(_rows(out_dir / "out-RDE.csv", skip=1))
-    stats["RDE"] = per_image_series(
-        wedge=rde[:, 0], angle=rde[:, 2], weighted=rde[:, 3], minimum=rde[:, 4]
-    )
-    return stats
-
-
 def generate_case(case: Case, root: Path, version: str) -> None:
     """Write config.yaml, metadata and reference outputs for one case."""
     case_dir = CASES_DIR / case.case_id
@@ -233,12 +149,19 @@ def generate_case(case: Case, root: Path, version: str) -> None:
             json.dumps(summary, indent=2) + "\n", encoding="utf-8"
         )
 
-        # The human-readable summary and the summary CSV are kept whole, so
-        # the port's writers can be compared with them line by line. They
-        # are a few kilobytes; the per-voxel files are megabytes, and are
-        # checked through their statistics instead, plus their first line.
+        # The human-readable summary, the summary CSV and the R script are
+        # kept whole, so the port's writers can be compared with them line by
+        # line. They are a few kilobytes; the per-voxel files are megabytes,
+        # and are checked through their statistics instead, plus their first
+        # line. The R script's timestamp is blanked, or every regeneration
+        # would rewrite every one of them.
         for name in ("Summary.txt", "Summary.csv"):
             shutil.copyfile(out_dir / f"out-{name}", expected / name)
+        script = (out_dir / "out-DoseState.R").read_text(encoding="utf-8")
+        (expected / "DoseState.R").write_text(
+            re.sub(r"^# Code generated .*$", R_TIMESTAMP, script, flags=re.MULTILINE),
+            encoding="utf-8",
+        )
         first_lines = {}
         for name in ("DWDs", "RDE", "DoseState", "VoxelDose", "VoxelFluences"):
             with (out_dir / f"out-{name}.csv").open(encoding="utf-8") as handle:
@@ -295,6 +218,7 @@ def main() -> None:
                     "tier_A_relative": 1.0e-4,
                     "tier_A_quantised_quantities_relative": 5.0e-3,
                     "tier_B_relative": 5.0e-2,
+                    "histogram_percentage_points": 1.0,
                 },
                 "array_tolerances": {
                     "DoseState/totals": 1.0e-4,
@@ -307,6 +231,7 @@ def main() -> None:
                     "DWDs/dwd": 5.0e-3,
                     "DWDs/volume": 1.0e-12,
                     "DWDs/rde": 5.0e-4,
+                    "DoseState.R/voxel": 5.0e-2,
                     "RDE/weighted": 5.0e-4,
                     "RDE/minimum": 5.0e-4,
                     "counts": 0,
@@ -339,7 +264,10 @@ def main() -> None:
                     "knife edge in the DWD multiplied by DWD over the half "
                     "dose. Worst 2.6e-4 against the reference, on that "
                     "crystal, and 7.9e-4 against itself; the stills agree "
-                    "to 2e-15."
+                    "to 2e-15. DoseState.R is compared voxel by voxel, which "
+                    "is the knife edge undiluted: worst 1.6e-2 against the "
+                    "reference and 4.6e-2 against itself, both on the "
+                    "antimony crystal, so it shares the fluence maxima's 5e-2."
                 ),
                 "quantised_quantities": [
                     "dose_threshold",
@@ -379,6 +307,14 @@ def main() -> None:
                         "Escape modelling consumes random draws in an order a "
                         "vectorised implementation cannot reproduce, so only "
                         "gross agreement is meaningful."
+                    ),
+                    "histogram_percentage_points": (
+                        "Summary.txt's dose histogram counts voxels, so a bin "
+                        "moves in steps of one voxel -- about 0.2 percentage "
+                        "points in these crystals -- whenever a voxel's dose "
+                        "sits close to a bin edge. Worst 0.40 against the "
+                        "reference (two voxels) and 0.42 against the port "
+                        "itself when every angle moves by one ulp."
                     ),
                 },
                 "notes": (

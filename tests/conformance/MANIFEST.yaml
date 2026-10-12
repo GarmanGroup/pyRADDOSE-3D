@@ -6,6 +6,7 @@ tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
   tier_B_relative: 0.05
+  histogram_percentage_points: 1.0
 array_tolerances:
   DoseState/totals: 0.0001
   DoseState/extremes: 0.005
@@ -17,6 +18,7 @@ array_tolerances:
   DWDs/dwd: 0.005
   DWDs/volume: 1.0e-12
   DWDs/rde: 0.0005
+  DoseState.R/voxel: 0.05
   RDE/weighted: 0.0005
   RDE/minimum: 0.0005
   counts: 0
@@ -38,7 +40,9 @@ array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the 
   absolutely: they are fractions of 1 that fall to exp(-40) on the antimony crystal,
   where any relative difference is the knife edge in the DWD multiplied by DWD over
   the half dose. Worst 2.6e-4 against the reference, on that crystal, and 7.9e-4 against
-  itself; the stills agree to 2e-15.'
+  itself; the stills agree to 2e-15. DoseState.R is compared voxel by voxel, which
+  is the knife edge undiluted: worst 1.6e-2 against the reference and 4.6e-2 against
+  itself, both on the antimony crystal, so it shares the fluence maxima''s 5e-2.'
 quantised_quantities:
 - dose_threshold
 - tad
@@ -62,6 +66,10 @@ tolerance_rationale:
     voxel. 5e-3 is a couple of steps.'
   tier_B_relative: Escape modelling consumes random draws in an order a vectorised
     implementation cannot reproduce, so only gross agreement is meaningful.
+  histogram_percentage_points: Summary.txt's dose histogram counts voxels, so a bin
+    moves in steps of one voxel -- about 0.2 percentage points in these crystals --
+    whenever a voxel's dose sits close to a bin edge. Worst 0.40 against the reference
+    (two voxels) and 0.42 against the port itself when every angle moves by one ulp.
 notes: Reference values are produced by the Java implementation on the JVM named above.
   The same Java code varies by ~1e-6 between JVMs, so regenerate deliberately and
   review the diff.

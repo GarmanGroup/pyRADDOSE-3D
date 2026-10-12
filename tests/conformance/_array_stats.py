@@ -36,12 +36,11 @@ reduced on its own.
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from pyraddose_3d.backend.summary import resolution_rde
+from pyraddose_3d.outputs import final_dose_state, image_series, voxel_images
 
 if TYPE_CHECKING:
     from pyraddose_3d.solve import Simulation
@@ -157,13 +156,6 @@ def _as_java_float(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=np.float32).astype(np.float64)
 
 
-def _numpy(values: Any) -> np.ndarray:
-    """Detach and convert, whichever backend produced the array."""
-    if hasattr(values, "detach"):
-        values = values.detach().cpu().numpy()
-    return np.asarray(values)
-
-
 def from_simulation(simulation: Simulation) -> dict[str, Any]:
     """Reduce a port run to the statistics the Java's files reduce to.
 
@@ -179,101 +171,44 @@ def from_simulation(simulation: Simulation) -> dict[str, Any]:
 
     Notes
     -----
-    Each entry reproduces how the corresponding Java writer chooses and
-    masks its values, because getting that wrong would look like a physics
-    error:
-
-    - ``DoseState`` is the crystal's *final* state. The Java accumulates
-      fluence and elastic yield on the crystal across every wedge, as it does
-      dose, whereas the port's exposure resets them per wedge -- so they are
-      summed here.
-    - ``VoxelDose`` and ``VoxelFluences`` cover the *last* wedge only, and a
-      voxel appears in an image's row only if it was exposed in that image.
-      The Java builds a fresh array per image and fills only the voxels it
-      observes, so an unexposed voxel reads zero rather than its dose so far.
-    - ``RDE`` records the fluence-weighted mean and the running minimum of
-      the decay model's efficiency, over exposed voxels. The minimum is reset
-      per wedge, not per image. An image with no exposed voxels is written as
-      zeros throughout, angle included.
+    Which values each Java writer chooses, and how it masks them, is defined
+    once, in the tables :mod:`pyraddose_3d.outputs` writes its files from --
+    getting that wrong would look like a physics error. This reduces those
+    tables without going through text; ``test_output_files.py`` checks that the
+    written files reduce to the same thing.
     """
-    occupied = _numpy(simulation.occupied).astype(bool)
-    coordinates = _numpy(simulation.grid.coordinates())[occupied]
-    exposures = simulation.exposures
-    voxel_volume = float(simulation.grid.volume)
-
-    for exposure in exposures:
-        if exposure.images is None:
-            raise ValueError("simulate() must be run with record_images=True")
-
-    final_dose = _numpy(exposures[-1].dose)[occupied]
-    total_fluence = sum(_numpy(e.fluence) for e in exposures)[occupied]
-    total_elastic = sum(_numpy(e.elastic) for e in exposures)[occupied]
-
+    state = final_dose_state(simulation)
     stats: dict[str, Any] = {
         "DoseState": dose_state(
-            _as_java_float(coordinates),
-            _as_java_float(final_dose),
-            _as_java_float(total_fluence),
-            _as_java_float(total_elastic),
+            _as_java_float(state["coordinates"]),
+            _as_java_float(state["dose"]),
+            _as_java_float(state["fluence"]),
+            _as_java_float(state["elastic"]),
         )
     }
 
-    last = exposures[-1].images
-    image_fluence = _numpy(last.fluence)[:, occupied]
-    image_dose = _numpy(last.dose)[:, occupied]
-    exposed = image_fluence > 0
-    stats["VoxelDose"] = image_rows(_as_java_float(np.where(exposed, image_dose, 0.0)))
-    stats["VoxelFluences"] = image_rows(_as_java_float(image_fluence))
+    voxels = voxel_images(simulation)
+    stats["VoxelDose"] = image_rows(_as_java_float(voxels["dose"]))
+    stats["VoxelFluences"] = image_rows(_as_java_float(voxels["fluence"]))
 
-    wedge, angle, dwd, volume = [], [], [], []
-    rde_columns: dict[str, list[float]] = {
-        "rde_1A": [],
-        "rde_2A": [],
-        "rde_3A": [],
-        "rde_4A": [],
-        "rde_max_res": [],
-    }
-    rde_wedge, rde_angle, weighted, minimum = [], [], [], []
-    for number, (exposure, angles) in enumerate(
-        zip(exposures, simulation.angles, strict=True), start=1
-    ):
-        fluence = _numpy(exposure.images.fluence)[:, occupied]
-        decay = _numpy(exposure.images.decay)[:, occupied]
-        max_resolution = simulation.experiment.wedges[number - 1].max_resolution
-        rde = _numpy(resolution_rde(_numpy(exposure.image_dwd), max_resolution))
-        for column, key in enumerate(
-            ("rde_max_res", "rde_1A", "rde_2A", "rde_3A", "rde_4A")
-        ):
-            rde_columns[key].extend(float(v) for v in rde[:, column])
-        running_min = 1.0
-        for index, image_angle in enumerate(angles):
-            degrees = float(_numpy(image_angle)) * (180 / math.pi)
-            lit = fluence[index] > 0
-
-            wedge.append(number)
-            angle.append(degrees)
-            dwd.append(float(_numpy(exposure.image_dwd[index])))
-            volume.append(int(lit.sum()) * voxel_volume)
-
-            rde_wedge.append(number)
-            if lit.any():
-                running_min = min(running_min, float(decay[index][lit].min()))
-                total = fluence[index][lit].sum()
-                rde_angle.append(degrees)
-                weighted.append(
-                    float((fluence[index][lit] * decay[index][lit]).sum() / total)
-                )
-                minimum.append(running_min)
-            else:
-                rde_angle.append(0.0)
-                weighted.append(0.0)
-                minimum.append(0.0)
-
+    series = image_series(simulation)
+    rde = series["rde"]
     stats["DWDs"] = per_image_series(
-        wedge=wedge, angle=angle, dwd=dwd, volume=volume, **rde_columns
+        wedge=series["wedge"],
+        angle=series["angle"],
+        dwd=series["dwd"],
+        volume=series["volume"],
+        rde_1A=rde[:, 1],
+        rde_2A=rde[:, 2],
+        rde_3A=rde[:, 3],
+        rde_4A=rde[:, 4],
+        rde_max_res=rde[:, 0],
     )
     stats["RDE"] = per_image_series(
-        wedge=rde_wedge, angle=rde_angle, weighted=weighted, minimum=minimum
+        wedge=series["wedge"],
+        angle=series["rde_angle"],
+        weighted=series["weighted"],
+        minimum=series["minimum"],
     )
     return stats
 

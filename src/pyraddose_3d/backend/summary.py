@@ -82,24 +82,15 @@ class WedgeSummary:
         dict[str, float]
             Suitable for writing to JSON or comparing against a reference.
         """
-        return {
-            "wedge_number": float(self.wedge_number),
-            "average_dwd": float(self.average_dwd),
-            "last_dwd": float(self.last_dwd),
-            "elastic_yield": float(self.elastic_yield),
-            "diffraction_efficiency": float(self.diffraction_efficiency),
-            "ad_wc": float(self.ad_wc),
-            "ad_exp_region": float(self.ad_exp_region),
-            "max_dose": float(self.max_dose),
-            "dose_threshold": float(self.dose_threshold),
-            "abs_en_threshold": float(self.abs_en_threshold),
-            "tad": float(self.tad),
-            "dose_contrast": float(self.dose_contrast),
-            "used_volume": float(self.used_volume),
-            "wedge_absorbed_energy": float(self.wedge_absorbed_energy),
-            "dose_inefficiency": float(self.dose_inefficiency),
-            "dose_inefficiency_pe": float(self.dose_inefficiency_pe),
-        }
+        names = (
+            "wedge_number", "average_dwd", "last_dwd", "elastic_yield",
+            "diffraction_efficiency", "ad_wc", "ad_exp_region", "max_dose",
+            "dose_threshold", "abs_en_threshold", "tad", "dose_contrast",
+            "used_volume", "wedge_absorbed_energy", "dose_inefficiency",
+            "dose_inefficiency_pe",
+        )  # fmt: skip
+        # Detached first: a field carrying a gradient warns when cast.
+        return {name: float(to_namespace(np, getattr(self, name))) for name in names}
 
 
 def _threshold_dose(
