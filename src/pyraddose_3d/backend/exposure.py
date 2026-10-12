@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from pyraddose_3d.backend.coefficients import MaterialCoefficients
     from pyraddose_3d.backend.voxels import VoxelGrid
 
-__all__ = ["ExposureResult", "expose", "exposure_angles", "no_decay"]
+__all__ = ["ExposureResult", "ImageRecord", "expose", "exposure_angles", "no_decay"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
@@ -60,6 +60,33 @@ _ELECTRON_REST_ENERGY_J = _ELECTRON_MASS_KG * _SPEED_OF_LIGHT_SQUARED
 #: Exposures short enough to count as still are sampled this many times, so
 #: that a still and a rotation of the same duration deposit the same energy.
 STATIC_EXPOSURE_STEPS = 100
+
+
+@dataclass(frozen=True)
+class ImageRecord:
+    """Per-voxel fields for every image of a wedge, kept only on request.
+
+    RADDOSE-3D's ``VoxelDose``, ``VoxelFluences`` and ``RDE`` outputs are per
+    image, so they cannot be reconstructed from the totals an exposure
+    otherwise returns. Holding a field per image costs ``A`` times the memory
+    of the totals, which is nothing for a test case and real for a large
+    crystal, so :func:`expose` records them only when asked.
+
+    Attributes
+    ----------
+    dose : Array
+        ``(A, N)`` cumulative dose in MGy after each image -- the crystal's
+        whole history up to that point, not the increment.
+    fluence : Array
+        ``(A, N)`` fluence each voxel received in that image alone.
+    decay : Array
+        ``(A, N)`` relative diffraction efficiency each voxel had while it
+        diffracted in that image, from the decay model.
+    """
+
+    dose: Array
+    fluence: Array
+    decay: Array
 
 
 @dataclass(frozen=True)
@@ -86,6 +113,8 @@ class ExposureResult:
         ``(N,)`` boolean, which voxels are inside the crystal. Voxels
         outside it are zero throughout, and must be excluded from averages
         rather than averaged in.
+    images : ImageRecord | None
+        Per-image fields, if :func:`expose` was asked to record them.
     """
 
     dose: Array
@@ -94,6 +123,7 @@ class ExposureResult:
     occupied: Array
     absorbed_energy: Array
     image_dwd: Array
+    images: ImageRecord | None = None
 
     @property
     def average_dose(self) -> Array:
@@ -206,6 +236,7 @@ def expose(
     off_axis: Array = 0.0,
     decay_model: Any = None,
     initial_dose: Array | None = None,
+    record_images: bool = False,
 ) -> ExposureResult:
     """Accumulate dose over a wedge.
 
@@ -246,6 +277,10 @@ def expose(
     initial_dose : Array, optional
         ``(N,)`` dose the crystal already carries, from earlier wedges.
         Zero if omitted.
+    record_images : bool, optional
+        Keep the dose, fluence and decay of every voxel after every image,
+        as :attr:`ExposureResult.images`. Off by default; see
+        :class:`ImageRecord` for why.
 
     Returns
     -------
@@ -333,6 +368,7 @@ def expose(
     elastic = xp.zeros_like(fluence)
     absorbed_energy = xp.zeros_like(fluence)
     image_dwd = []
+    recorded: tuple[list[Array], list[Array], list[Array]] = ([], [], [])
 
     for index, angle in enumerate(angles):
         shift = (
@@ -379,6 +415,13 @@ def expose(
             xp.where(empty, 0.0, numerator / xp.where(empty, 1.0, denominator))
         )
 
+        if record_images:
+            recorded[0].append(dose)
+            recorded[1].append(voxel_fluence)
+            # The decay model returns a plain 1.0 when nothing decays, which
+            # has to be spread over the grid to be stacked with the rest.
+            recorded[2].append(decay * xp.ones_like(dose))
+
         fluence = fluence + voxel_fluence
         elastic = elastic + fluence_to_elastic * voxel_fluence
         # Both channels deposit energy, and both count towards the absorbed
@@ -394,6 +437,11 @@ def expose(
         occupied=occupied,
         absorbed_energy=absorbed_energy,
         image_dwd=xp.stack(image_dwd) if image_dwd else xp.zeros_like(fluence[:0]),
+        images=(
+            ImageRecord(*(xp.stack(fields) for fields in recorded))
+            if record_images and len(angles) > 0
+            else None
+        ),
     )
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 
@@ -35,21 +36,21 @@ from pyraddose_3d.backend.composition import (
     small_molecule_composition,
     unit_cell_composition,
 )
-from pyraddose_3d.backend.exposure import expose, exposure_angles
+from pyraddose_3d.backend.exposure import ExposureResult, expose, exposure_angles
 from pyraddose_3d.backend.geometry import Mesh
 from pyraddose_3d.backend.structure_files import (
     composition_from_cif,
     composition_from_pdb,
 )
 from pyraddose_3d.backend.summary import WedgeSummary, summarise
-from pyraddose_3d.backend.voxels import occupancy, voxel_grid
+from pyraddose_3d.backend.voxels import VoxelGrid, occupancy, voxel_grid
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from pyraddose_3d.models.experiment import Experiment
 
-__all__ = ["FIXED", "TUNABLE", "crystal_mesh", "solve"]
+__all__ = ["FIXED", "TUNABLE", "Simulation", "crystal_mesh", "simulate", "solve"]
 
 #: Configuration paths whose value may be handed to :func:`solve` as a
 #: tensor, and which then carry a usable gradient. ``*`` stands for a wedge
@@ -525,6 +526,41 @@ def _namespace(value: Any) -> Any:
     return array_namespace(value)
 
 
+@dataclass(frozen=True)
+class Simulation:
+    """Everything a run produced, not just the reported numbers.
+
+    :func:`solve` returns only the summaries, which is what an optimiser
+    wants. The output files and the conformance checks need the fields the
+    summaries were reduced from -- which voxels are inside the crystal,
+    where they are, and what each received.
+
+    Attributes
+    ----------
+    grid : VoxelGrid
+        The voxel grid, in the lab frame before any rotation.
+    occupied : Array
+        ``(N,)`` boolean, which voxels are inside the crystal.
+    density : Array
+        Crystal density in g/cm^3.
+    angles : list[list[Any]]
+        The rotation angles of each wedge, in radians.
+    exposures : list[ExposureResult]
+        One per wedge. ``dose`` is cumulative over all wedges so far;
+        ``fluence``, ``elastic`` and ``absorbed_energy`` are that wedge's
+        alone, as in RADDOSE-3D's per-wedge observer.
+    summaries : list[WedgeSummary]
+        One per wedge -- what :func:`solve` returns.
+    """
+
+    grid: VoxelGrid
+    occupied: Any
+    density: Any
+    angles: list[list[Any]]
+    exposures: list[ExposureResult]
+    summaries: list[WedgeSummary]
+
+
 def solve(
     experiment: Experiment,
     overrides: Mapping[str, Any] | None = None,
@@ -571,6 +607,43 @@ def solve(
     worth carrying. :func:`~pyraddose_3d.backend._array.to_namespace`
     reconciles the two at the boundary.
     """
+    return simulate(experiment, overrides).summaries
+
+
+def simulate(
+    experiment: Experiment,
+    overrides: Mapping[str, Any] | None = None,
+    *,
+    record_images: bool = False,
+) -> Simulation:
+    """Run an experiment and keep everything it produced.
+
+    The same calculation as :func:`solve`, returning the per-voxel fields
+    alongside the summaries.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        The validated configuration.
+    overrides : Mapping[str, Any], optional
+        As for :func:`solve`.
+    record_images : bool, optional
+        Also keep every voxel's dose, fluence and decay after every image.
+        Needed for per-image outputs; off by default because it costs a
+        field per image.
+
+    Returns
+    -------
+    Simulation
+        The grid, the per-wedge exposures and the summaries.
+
+    Raises
+    ------
+    KeyError
+        If an override names a path that is not tunable.
+    NotImplementedError
+        If the configuration asks for something not ported.
+    """
     overrides = dict(overrides or {})
     check_overrides(overrides)
 
@@ -597,6 +670,8 @@ def solve(
     decay = decay_function(crystal.decay_model, crystal.decay_parameters)
 
     summaries = []
+    exposures = []
+    wedge_angles = []
     # RADDOSE-3D holds dose on the crystal, so wedge two starts where
     # wedge one left off and its summary covers the whole history.
     carried = None
@@ -655,10 +730,20 @@ def solve(
             off_axis=off_axis,
             decay_model=decay,
             initial_dose=carried,
+            record_images=record_images,
         )
         carried = result.dose
+        exposures.append(result)
+        wedge_angles.append(list(angles))
         summaries.append(
             summarise(result, grid.volume, crystal_density, wedge_number=number)
         )
 
-    return summaries
+    return Simulation(
+        grid=grid,
+        occupied=occupied,
+        density=crystal_density,
+        angles=wedge_angles,
+        exposures=exposures,
+        summaries=summaries,
+    )

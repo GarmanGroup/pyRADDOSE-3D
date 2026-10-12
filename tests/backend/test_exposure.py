@@ -115,8 +115,8 @@ REFERENCE_CASES = _load_reference()
 CASE_IDS = sorted(REFERENCE_CASES)
 
 
-def _run(case_id: str) -> tuple:
-    """Reproduce one reference case end to end."""
+def _run(case_id: str, **options: object) -> tuple:
+    """Reproduce one reference case end to end; ``options`` go to ``expose``."""
     case = REFERENCE_CASES[case_id]
     angle_p, angle_l = CRYSTAL_ANGLES.get(case_id, (0.0, 0.0))
     mesh = Mesh(
@@ -148,6 +148,7 @@ def _run(case_id: str) -> tuple:
         angles,
         seconds,
         translations=translations,
+        **options,
     )
     return case, grid, coordinates, occupied, result
 
@@ -294,6 +295,33 @@ def test_on_face_voxels_are_intrinsically_unstable() -> None:
 
 
 # --- the voxel grid -----------------------------------------------------
+
+
+def test_images_are_not_recorded_unless_asked() -> None:
+    """A field per image is A times the memory of the totals; opt in only."""
+    *_, result = _run("rotation-gauss")
+    assert result.images is None
+
+
+@pytest.mark.parametrize("case_id", CASE_IDS)
+def test_recorded_images_agree_with_the_totals(case_id: str) -> None:
+    """The per-image record is the same calculation, kept rather than summed.
+
+    So the last image's dose is the final dose, the per-image fluences add
+    up to the wedge's fluence, and recording changes nothing it records.
+    """
+    *_, plain = _run(case_id)
+    *_, recorded = _run(case_id, record_images=True)
+    images = recorded.images
+
+    assert images is not None
+    assert images.dose.shape == images.fluence.shape == images.decay.shape
+    assert images.dose.shape[0] == len(plain.image_dwd)
+    np.testing.assert_array_equal(recorded.dose, plain.dose)
+    np.testing.assert_array_equal(images.dose[-1], plain.dose)
+    np.testing.assert_allclose(images.fluence.sum(axis=0), plain.fluence, rtol=1e-12)
+    # With no decay model every voxel diffracts at full efficiency.
+    assert np.all(images.decay == 1.0)
 
 
 def test_grid_spans_the_bounding_box_inclusively() -> None:
