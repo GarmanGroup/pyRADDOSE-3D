@@ -60,6 +60,7 @@ __all__ = [
     "FIXED",
     "TUNABLE",
     "Simulation",
+    "apply_overrides",
     "crystal_mesh",
     "simulate",
     "solve",
@@ -478,6 +479,64 @@ def _setting(overrides: Mapping[str, Any], path: str, fallback: Any) -> Any:
     return overrides[path] if path in overrides else fallback
 
 
+def apply_overrides(
+    experiment: Experiment, overrides: Mapping[str, Any] | None = None
+) -> Experiment:
+    """The experiment with its overrides written in: what is actually run.
+
+    Overrides carry values as tensors so that a gradient can reach them.
+    This writes their current values back into the configuration as plain
+    numbers, so the result can be saved as YAML, run again without torch, or
+    written out as RADDOSE-3D's files -- the strategy an optimiser found, in
+    a form anything else can use.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        The configuration.
+    overrides : Mapping[str, Any], optional
+        Paths to values, as passed to :func:`solve`.
+
+    Returns
+    -------
+    Experiment
+        A validated copy with each overridden setting replaced.
+
+    Raises
+    ------
+    KeyError
+        If a path is not tunable, names a wedge the experiment does not have,
+        or tunes a collimation the beam does not have. :func:`simulate` would
+        otherwise never read such an override, and ignore it without a word.
+    pydantic.ValidationError
+        If a value is not a valid setting -- a negative flux, say.
+    """
+    overrides = dict(overrides or {})
+    check_overrides(overrides)
+    if not overrides:
+        return experiment
+
+    config = experiment.model_dump()
+    for path, value in overrides.items():
+        *parents, leaf = path.split(".")
+        node: Any = config
+        for key in parents:
+            if isinstance(node, list):
+                if int(key) >= len(node):
+                    raise KeyError(
+                        f"{path!r}: the experiment has {len(node)} wedge(s), "
+                        f"numbered from 0"
+                    )
+                node = node[int(key)]
+            else:
+                node = node[key]
+            if node is None:
+                raise KeyError(f"{path!r}: the beam has no collimation to tune")
+        plain = np.asarray(to_namespace(np, value), dtype=np.float64)
+        node[leaf] = plain.item() if plain.ndim == 0 else tuple(plain.tolist())
+    return type(experiment).model_validate(config)
+
+
 def container_transmission_at(container: Any, energy: Any) -> Any:
     """The fraction of the beam a container lets through, at an energy.
 
@@ -619,7 +678,8 @@ class Simulation:
     Attributes
     ----------
     experiment : Experiment
-        What was run.
+        What was run: the configuration with any overrides written in, as
+        :func:`apply_overrides` gives it.
     mesh : Mesh
         The crystal, with its angles applied. Its bounding box is what
         RADDOSE-3D reports as the crystal's size.
@@ -737,7 +797,7 @@ def simulate(
         If the configuration asks for something not ported.
     """
     overrides = dict(overrides or {})
-    check_overrides(overrides)
+    as_run = apply_overrides(experiment, overrides)
 
     crystal = experiment.crystal
     if crystal.escape.any_enabled:
@@ -757,7 +817,9 @@ def simulate(
     if built is None:
         coefficients = AVERAGE_COEFFICIENTS
     else:
-        coefficients = material_coefficients(built, experiment.beam.energy)
+        # The beam's energy, override included: how strongly the crystal
+        # absorbs and scatters depends on it as much as the beam does.
+        coefficients = material_coefficients(built, beam.energy)
 
     decay = decay_function(crystal.decay_model, crystal.decay_parameters)
 
@@ -835,7 +897,7 @@ def simulate(
         )
 
     return Simulation(
-        experiment=experiment,
+        experiment=as_run,
         mesh=mesh,
         coefficients=coefficients,
         grid=grid,
