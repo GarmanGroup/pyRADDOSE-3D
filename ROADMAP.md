@@ -6,7 +6,7 @@ check a claim rather than take it on trust.
 ## Where the port stands
 
 7,800 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
-RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 963 tests,
+RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 999 tests,
 42 xfail. 32 of 38 conformance cases match the Java within measured tolerances — on the sixteen
 summary numbers, on the dose field and per-image series behind them, and on the output files
 themselves; the six that do not are the five Monte Carlo escape cases (tier B by design) and
@@ -14,8 +14,9 @@ themselves; the six that do not are the five Monte Carlo escape cases (tier B by
 matching central finite differences to ~1e-10, at 0.15 s per optimiser step.
 
 It reads RADDOSE-3D's input files and writes its output files, so it can stand in for the Java;
-`programs/dose` runs it, and five executed notebooks show it. What is left is the
-differentiability's payoff, the rest of the MX path, and publication.
+`programs/dose` runs it, `programs/optimise` chooses a beam energy by gradient, and six executed
+notebooks show it. What is left is optimising several settings at once, the rest of the MX path,
+and publication.
 
 ## Three findings that set the priorities
 
@@ -218,32 +219,83 @@ without a warning and publishes the notebooks as raw `.ipynb` downloads.
 - **Python floor** unchanged at 3.11, targeting CCP4 2026.
 - **scipy** unchanged: still a dependency for `erf` alone.
 
-# Milestone 3 — Deliver the differentiability
+# Milestone 3 — Deliver the differentiability — *energy done; several settings at once open*
 
 **Why.** The capability exists; the result does not. This is what justifies the port over
 running the Java.
 
-- A thin objective layer over `solve()` — minimise peak dose subject to a diffraction-efficiency
-  floor, or maximise total diffraction under a dose budget. Keep it thin; torch has the
-  optimisers.
-- `programs/optimise/` in the same run-script style.
-- One worked example against a real published data-collection problem, showing gradient descent
-  reaching a better strategy than a parameter scan for the same compute. This is the notebook
-  and the paper figure.
-- Honest scope in the docs. `TUNABLE` and `FIXED` already encode which settings carry a gradient
-  and why the others do not. Both step discontinuities found so far — the integer image count
-  and the voxel occupancy parity test — mean an optimiser can see its objective jump; worth a
-  short note on choosing step sizes that do not straddle them. The gradients notebook has
-  the first version of that note.
+**Done when:** a notebook demonstrates a better strategy found by gradient descent than by
+scanning, with the compute budget stated. Met for one setting, the beam energy; the case that
+most needs gradients, several settings at once, is still to do.
+
+### First, a bug that made every energy gradient wrong
+
+Overriding `beam.energy` changed the photon energy in the beam but left the crystal's
+absorption and scattering coefficients at the configured energy, so the dose simply scaled with
+energy and no absorption edge appeared. The gradient tests could not see it: a finite
+difference taken through the override agrees with a gradient taken through it, both describing
+the same half-changed crystal. Fixed, and now guarded the way it should have been from the
+start — for every tunable setting, an override must give exactly what editing the
+configuration gives (`tests/test_overrides.py`). The comparison needed the configuration with
+the override written in, which became `apply_overrides()`: the experiment as run, with tensors
+turned back into numbers, which is also how an optimised strategy is saved.
+
+### Choosing the energy
+
+With the fix, diffraction efficiency behaves as the physics says: it rises with energy, because
+elastic scattering falls more slowly than photoabsorption, drops at each absorption edge, and
+turns over near 36 keV as Compton scattering takes over. On its own that says "as high as the
+beamline goes". What makes it a real optimisation is the detector: a thin silicon sensor lets
+hard photons through, so *detected* efficiency peaks — near 11.5 keV for 450 µm of silicon,
+14.5 keV for 1 mm, and with the crystal for CdTe.
+
+- **`backend/detector.py`** — the fraction a sensor absorbs, from the same McMaster
+  cross-sections the crystal uses; within 3% of NIST below 10 keV, where photoabsorption is all
+  of it. Not part of RADDOSE-3D, and an upper bound on detector efficiency.
+- **`optimise.py`** — the thin layer. Absorption edges are where a gradient fails: the slope
+  points up on both sides of the Se K edge while efficiency drops by a third, so an optimiser
+  that steps over it climbs on into worse territory. The edges are known in advance, so
+  `maximise_energy` splits the range at every edge of the crystal, its container and the
+  sensor, and in each piece bisects on the gradient's sign — each run halves the piece, with
+  no step size to tune. Adam was tried first and stalled: its memory of large early gradients
+  shrank its steps to nothing once it had overshot. `EDGE_CLEARANCE` keeps a strategy off the
+  model's sharp edges, which real ones are not.
+- **`programs/optimise/run_optimise_energy.py`** — the run script.
+- **`docs/examples/06_optimising_energy.ipynb`** — the worked example, compute stated. For
+  insulin with a silicon sensor, 15 runs against a scan's 71, at fifty times the precision,
+  in about a quarter of the time. For selenomethionine, 18 runs against a 1 keV scan's 36, and
+  a 4% better energy, because the scan never sampled the stretch just below the Se edge.
+
+A gradient run with torch turned out to cost about what a plain NumPy run does, so the
+gradient is close to free.
+
+### Still to do
+
+- **Several settings at once** — energy, beam size, exposure and translation together, under a
+  dose budget. That is where gradients beat scans by orders of magnitude rather than a factor
+  of a few, and where Adam-style optimisers, with their trouble on edges, will need the same
+  piecewise care.
+- **Photoelectron escape** (Milestone 4) changes the energy answer for small crystals: escaping
+  photoelectrons take dose with them, more so at higher energies. The energy example says so;
+  its numbers should be revisited once escape is ported.
+- **A published comparison.** The energy question is a real one with a literature; setting the
+  example against a published result would make it the paper figure.
+- **Anomalous signal** is outside diffraction efficiency, so the energy search is for native
+  data. A SAD or MAD objective would need a model of anomalous differences.
+
+### Honest scope
+
+- `TUNABLE` and `FIXED` encode which settings carry a gradient and why the others do not. The
+  integer image count and the voxel occupancy parity test are steps an optimiser cannot see;
+  the gradients notebook says so, and absorption edges are now a third, handled.
 - The two backends are not bit-identical. Torch's `cos` and `sin` can differ from NumPy's in
   the last bit, which flips face voxels like any other one-ulp change: the baseline's summary
   moves by 2e-4 between them, and even a still by 1e-3 in its maximum dose — a still has face
   voxels too, and NumPy's `cos(π/4)` happens to match Java's where torch's does not. Within the
   port's measured self-sensitivity, but above tier A's 1e-4, so the conformance claim is
-  NumPy's; worth stating alongside any optimised strategy.
-
-**Done when:** a notebook demonstrates a better strategy found by gradient descent than by
-scanning, with the compute budget stated.
+  NumPy's. It also means a gradient checked against a NumPy finite difference agrees only to
+  ~1e-3; against a torch finite difference, to 1e-10. The energy example re-runs its answer on
+  NumPy, where it agrees to 3e-4.
 
 # Milestone 4 — Completeness of the MX path
 

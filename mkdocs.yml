@@ -12,13 +12,16 @@ nav:
       - Composition: examples/03_composition.ipynb
       - Decay models: examples/04_decay_models.ipynb
       - Gradients: examples/05_gradients.ipynb
+      - Choosing the energy: examples/06_optimising_energy.ipynb
   - Programs:
       - Dose: programs/dose.md
+      - Energy optimisation: programs/optimise.md
   - Agreement with RADDOSE-3D: conformance.md
   - API Reference:
       - Experiments: api/models.md
       - Running: api/solve.md
       - Output files: api/outputs.md
+      - Optimisation: api/optimise.md
 
 theme:
   name: material

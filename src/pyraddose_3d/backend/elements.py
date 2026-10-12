@@ -167,6 +167,23 @@ class Element:
         """
         return self.atomic_weight * ATOMIC_MASS_UNIT
 
+    @property
+    def edges(self) -> tuple[float, ...]:
+        """Energies at which the photoelectric cross-section jumps, in keV.
+
+        The K, L1, L2, L3 and M edges -- every energy at which
+        :meth:`absorption_coefficients` switches polynomial or applies an
+        L-edge correction. Smooth between them, and not differentiable
+        across them, so an optimiser over energy has to treat them as walls.
+
+        Returns
+        -------
+        tuple[float, ...]
+            Ascending; edges the data leaves blank or zero are omitted.
+        """
+        candidates = (self.edge_k, self.edge_l, self.l2, self.l3, self.edge_m)
+        return tuple(sorted({edge for edge in candidates if edge}))
+
     def _bax(self, shell: str, energy: Array, log_energy: Array) -> Array:
         """Evaluate one polynomial: ``exp(sum_i c_i log(E)^i)``.
 

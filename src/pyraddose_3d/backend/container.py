@@ -27,6 +27,7 @@ implementation would do differently:
 from __future__ import annotations
 
 import functools
+import itertools
 import math
 from importlib import resources
 from typing import TYPE_CHECKING, Any
@@ -41,8 +42,10 @@ if TYPE_CHECKING:
 
 __all__ = [
     "container_transmission",
+    "elemental_edges",
     "elemental_mass_attenuation",
     "known_mixtures",
+    "mixture_edges",
     "mixture_mass_attenuation",
 ]
 
@@ -163,6 +166,50 @@ def elemental_mass_attenuation(elements: Mapping[str, float], energy: Array) -> 
     ):
         total = total + ((count * weight) / total_weight) * coefficient
     return total
+
+
+def _repeated_energies(rows: list[tuple[float, float]]) -> set[float]:
+    """The energies a table lists twice: its absorption edges."""
+    energies = [energy for energy, _ in rows]
+    return {a for a, b in itertools.pairwise(energies) if a == b}
+
+
+def mixture_edges(material: str) -> tuple[float, ...]:
+    """Absorption edges in a NIST compound's table, in keV.
+
+    Parameters
+    ----------
+    material : str
+        A name NIST tabulates.
+
+    Returns
+    -------
+    tuple[float, ...]
+        Ascending. The transmission jumps at each.
+    """
+    return tuple(sorted(_repeated_energies(_tables("nist_mixtures.tsv")[material])))
+
+
+def elemental_edges(elements: Mapping[str, float]) -> tuple[float, ...]:
+    """Absorption edges in the NIST tables of a container's elements, in keV.
+
+    Parameters
+    ----------
+    elements : Mapping[str, float]
+        Element symbol to number of atoms.
+
+    Returns
+    -------
+    tuple[float, ...]
+        Ascending. The transmission jumps at each.
+    """
+    database = element_database()
+    tables = _tables("nist_elements.tsv")
+    edges: set[float] = set()
+    for symbol in elements:
+        number = str(database.by_symbol(symbol).atomic_number)
+        edges |= _repeated_energies(tables[number])
+    return tuple(sorted(edges))
 
 
 def container_transmission(

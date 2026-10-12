@@ -1,0 +1,31 @@
+####################################################
+### Energy optimisation configuration example ###
+####################################################
+# A native protein crystal: insulin, whose zinc puts an absorption edge at
+# 9.659 keV. The format is the dose program's -- see
+# ../dose/dose_example_config.yaml for every setting -- and a RADDOSE-3D
+# .txt input works as well. The search keeps everything but the energy; the
+# energy given here is only where the experiment starts.
+crystal:
+  type: cuboid
+  dimensions: [40.0, 30.0, 20.0]  # micrometres
+  pixels_per_micron: 0.5
+  composition:
+    method: unit_cell
+    unit_cell: [78.02, 78.02, 78.02]
+    num_monomers: 24
+    num_residues: 51
+    protein_heavy_atoms:
+      Zn: 0.333
+      S: 6.0
+    solvent_heavy_conc:
+      P: 425.0
+beam:
+  type: gaussian
+  flux: 2.0e+12
+  energy: 12.1
+  fwhm: [15.0, 15.0]
+wedges:
+  - start: 0.0
+    end: 90.0
+    exposure_time: 30.0
