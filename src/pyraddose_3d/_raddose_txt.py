@@ -155,6 +155,8 @@ def _composition_lines(composition: Composition) -> list[str]:
     elif isinstance(composition, SaxsSequenceComposition):
         lines.append(f"SeqFile {composition.sequence_file}")
         lines.append(f"ProteinConc {_number(composition.protein_concentration)}")
+        if composition.num_carb:
+            lines.append(f"NumCarb {composition.num_carb}")
     elif isinstance(composition, UnitCellComposition):
         lines.append(f"NumMonomers {composition.num_monomers}")
         lines.append(f"NumResidues {composition.num_residues}")
@@ -833,20 +835,12 @@ def _composition(
             line,
             f"AbsCoefCalc {written} reads the residues from a sequence file",
         )
-        if "num_carb" in values:
-            warnings.warn(
-                RaddoseTxtWarning(
-                    f"{stream.source}, line {values['num_carb'][1]}: NumCarb has "
-                    f"no effect with AbsCoefCalc {written}: RADDOSE-3D reads it "
-                    f"and never adds the carbohydrate, and neither does this"
-                ),
-                stacklevel=5,
-            )
         return {
             "method": method,
             **cell(optional=True),
             "protein_concentration": concentration,
             "sequence_file": sequence,
+            "num_carb": counts["num_carb"],
             **shared,
         }
     if method == "sequence":
@@ -1110,9 +1104,9 @@ def _beam(
     if profile == "EXPERIMENTAL":
         raise stream.error(
             values["type"][1],
-            f"Type {written}: RADDOSE-3D cannot build this beam from an input "
-            f"file, since BeamExperimental has no property constructor; "
-            f"ExperimentalPGM reads the profile from a PGM image",
+            f"Type {written} cannot be built from an input file, and RADDOSE-3D "
+            f"refuses it too; for a beam profile read from a PGM image, use "
+            f"Type ExperimentalPGM with File and PixelSize",
         )
     if profile not in _BEAM_TYPES:
         raise stream.error(

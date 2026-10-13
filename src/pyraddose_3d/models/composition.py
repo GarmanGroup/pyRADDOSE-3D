@@ -164,9 +164,6 @@ class SaxsSequenceComposition(_CellMixin):
     :class:`SaxsComposition`, but the monomer's mass and atoms come from its
     residues, as for :class:`SequenceComposition`.
 
-    There is no ``num_carb``: RADDOSE-3D reads ``NumCarb`` here and then
-    never adds the carbohydrate, so it has no effect.
-
     Attributes
     ----------
     unit_cell : tuple[float, float, float]
@@ -176,12 +173,17 @@ class SaxsSequenceComposition(_CellMixin):
     sequence_file : str
         Path to a FASTA file, resolved relative to the working directory of
         the run.
+    num_carb : int
+        Carbohydrate residues per monomer, which a sequence cannot express.
+        They add to the monomer's mass, so to how few monomers a given
+        concentration is.
     """
 
     method: Literal["saxs_sequence"] = "saxs_sequence"
     unit_cell: tuple[float, float, float] = _SAXS_CELL
     protein_concentration: Annotated[float, Field(gt=0.0)]
     sequence_file: str
+    num_carb: Annotated[int, Field(ge=0)] = 0
     protein_heavy_atoms: ElementAmounts = Field(default_factory=dict)
     solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
     solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None

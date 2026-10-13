@@ -15,7 +15,6 @@ from __future__ import annotations
 import dataclasses
 import math
 import re
-import warnings
 from dataclasses import dataclass
 from importlib import resources
 from typing import TYPE_CHECKING, Any
@@ -437,8 +436,12 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
             volume,
             chains,
             monomers=saxs_sequence_monomer_count(
-                volume, composition.protein_concentration, chains
+                volume,
+                composition.protein_concentration,
+                chains,
+                composition.num_carb,
             ),
+            carbohydrate_residues=composition.num_carb,
             heavy_protein_atoms=composition.protein_heavy_atoms or None,
             solvent_concentrations=composition.solvent_heavy_conc or None,
             solvent_fraction=composition.solvent_fraction,
@@ -858,7 +861,7 @@ def _escape(
     energies: Any,
     overrides: Mapping[str, Any],
     seed: int,
-) -> Escape | None:
+) -> Escape:
     """Set up photoelectron and fluorescence escape, as ``Crystal.expose`` does."""
     crystal = experiment.crystal
     options = crystal.escape
@@ -867,19 +870,8 @@ def _escape(
             "escape modelling chooses each photoelectron's direction at random, "
             "so it has no gradient; run it without tensor overrides"
         )
-    if built is None:
-        if options.photoelectron:
-            raise ValueError(
-                "photoelectron escape needs the crystal's elements, and the "
-                "average composition has none; RADDOSE-3D fails with a "
-                "NullPointerException here"
-            )
-        warnings.warn(
-            "fluorescence escape needs the crystal's elements, and the average "
-            "composition has none; as in RADDOSE-3D, none is modelled",
-            stacklevel=3,
-        )
-        return None
+    # The crystal model refuses escape with the average composition.
+    assert built is not None
 
     beam_energy = float(to_namespace(np, beam.energy))
     density = float(to_namespace(np, crystal_density))

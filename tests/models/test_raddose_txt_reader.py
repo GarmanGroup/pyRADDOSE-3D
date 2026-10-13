@@ -388,10 +388,12 @@ def test_a_saxs_box_defaults_to_1000_angstroms(coefcalc: str) -> None:
     assert read(emitted) == read(text + BEAM + WEDGE)
 
 
-def test_saxs_from_a_sequence_warns_that_numcarb_does_nothing() -> None:
-    """RADDOSE-3D reads NumCarb here, and then never adds the carbohydrate."""
-    with pytest.warns(RaddoseTxtWarning, match="line 7: NumCarb has no effect"):
-        read(with_lines(SAXS_CRYSTAL, "NumCarb 4") + BEAM + WEDGE)
+def test_saxs_from_a_sequence_reads_numcarb() -> None:
+    """RADDOSE-3D used to read it here and never add the carbohydrate."""
+    text = with_lines(SAXS_CRYSTAL, "NumCarb 4") + BEAM + WEDGE
+    composition = read(text).crystal.composition
+    assert composition.num_carb == 4
+    assert read(read(text).to_raddose_txt()) == read(text)
 
 
 def test_a_pink_beam_is_read() -> None:
@@ -456,8 +458,8 @@ def test_unported_calculations_are_refused_with_the_reason(
 
 
 def test_type_experimental_is_refused() -> None:
-    """RADDOSE-3D's BeamExperimental has no constructor an input file reaches."""
-    with pytest.raises(RaddoseTxtError, match="no property constructor"):
+    """RADDOSE-3D refuses it too, pointing to ExperimentalPGM."""
+    with pytest.raises(RaddoseTxtError, match="use Type ExperimentalPGM"):
         read(CRYSTAL + BEAM.replace("Type Gaussian", "Type Experimental") + WEDGE)
 
 

@@ -26,6 +26,7 @@ binary nobody has.
 import csv
 import math
 import pathlib
+import warnings
 from collections import defaultdict
 
 import pytest
@@ -524,10 +525,25 @@ def test_any_line_ending(ending: str) -> None:
     assert parse_sequence(MIXED.replace("\n", ending)) == parse_sequence(MIXED)
 
 
-def test_residues_before_any_header_are_refused() -> None:
-    """RADDOSE-3D has no type for them, and fails on the first residue."""
-    with pytest.raises(ValueError, match=r"line 1 .* before any '>' header"):
-        parse_sequence("GIVEQ\n")
+def test_residues_before_any_header_are_protein() -> None:
+    """As RADDOSE-3D now reads them. They used to have no type at all."""
+    assert parse_sequence("GIVEQ\nCCTSV\n") == (
+        (ResidueType.PROTEIN, "GIVEQ"),
+        (ResidueType.PROTEIN, "CCTSV"),
+    )
+
+
+def test_a_nucleotide_lookalike_chain_is_reported() -> None:
+    """Every nucleotide code is an amino acid code, so a DNA chain whose
+    header lacks ISDNA reads as protein without error. A chain of ten or more
+    such residues draws a warning, as in RADDOSE-3D; a marked one does not,
+    and nor does a short peptide.
+    """
+    with pytest.warns(UserWarning, match="a chain of 16 residues was read as"):
+        parse_sequence(">chain B, DNA\nACGTACGT\nACGTACGT\n>marked ISDNA\nACGTACGT\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        parse_sequence(">peptide\nGAGAG\n>marked isdna\nACGTACGTACGTACGT\n")
 
 
 def test_a_bad_code_names_its_line() -> None:
@@ -564,6 +580,24 @@ def test_saxs_sequence_weighs_the_real_residues() -> None:
 def test_saxs_sequence_has_at_least_one_monomer() -> None:
     chains = parse_sequence(MIXED)
     assert saxs_sequence_monomer_count(1000.0, 1e-6, chains) == 1
+
+
+def test_saxs_sequence_counts_carbohydrate_in_the_monomer() -> None:
+    """At ``CoefCalcSAXS``'s 180 Da a residue, so fewer monomers."""
+    chains = parse_sequence(MIXED)
+    plain = saxs_sequence_monomer_count(SAXS_CELL_VOLUME, 10.0, chains)
+    sugary = saxs_sequence_monomer_count(SAXS_CELL_VOLUME, 10.0, chains, 40)
+    database = residue_database()
+    mass = sum(
+        database.by_letter(letter, kind).molecular_weight
+        for kind, residues in chains
+        for letter in residues
+    )
+    expected = math.floor(
+        10.0 / (mass + 180.0 * 40) * (1e-27 * SAXS_CELL_VOLUME) * 6.022e23 + 0.5
+    )
+    assert sugary == expected
+    assert sugary < plain
 
 
 def test_saxs_sequence_needs_residues() -> None:

@@ -12,6 +12,16 @@ a number matters, it was also checked against the Java itself.
 Terms: *PE* is photoelectron, *FL* fluorescence, *the surrounding* the liquid modelled around the
 crystal (`CalcSurrounding`), and *a pink beam* one with an energy spread (`EnergyFWHM`).
 
+## Status
+
+The RADDOSE-3D branches are local, stacked one on the next, and not yet pushed. Each port
+commit carries the corpus regenerated from the branch named beside it.
+
+| items | RADDOSE-3D branch | port | state |
+|---|---|---|---|
+| cases that show the defects first: 109, 110, 111 | `master` 9ad4e9d | `7edf4ce` | done |
+| 7, 8, 9, 10, 11, 13; `voxelfluences`; help text | `jd_upstream_input_fixes` | this commit | done; decisions A and B taken as recommended |
+
 ---
 
 ## Why the two must change together

@@ -11,6 +11,7 @@ crystal:
     method: saxs_sequence
     protein_concentration: 10.0
     sequence_file: tests/data/insulin_and_nucleic_acids.fasta
+    num_carb: 0
     protein_heavy_atoms: {}
     solvent_heavy_conc:
       Na: 150.0

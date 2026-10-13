@@ -27,6 +27,7 @@ optimiser can vary.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -513,6 +514,7 @@ def saxs_sequence_monomer_count(
     cell_volume: Array,
     protein_concentration: Array,
     chains: Chains,
+    carbohydrate_residues: int = 0,
 ) -> int:
     """How many monomers a SAXS sample volume contains, weighed by sequence.
 
@@ -528,6 +530,8 @@ def saxs_sequence_monomer_count(
         Concentration in grams per litre.
     chains : Chains
         The monomer's residues, as :func:`parse_sequence` returns them.
+    carbohydrate_residues : int, optional
+        Sugar residues per monomer, weighed as ``CoefCalcSAXS`` weighs them.
 
     Returns
     -------
@@ -551,6 +555,7 @@ def saxs_sequence_monomer_count(
             "SAXS from a sequence needs a monomer with mass, and the sequence "
             "file has no residues"
         )
+    molecular_weight += _SAXS_CARBOHYDRATE_MASS * carbohydrate_residues
     return _monomers_in(cell_volume, protein_concentration, molecular_weight)
 
 
@@ -574,8 +579,14 @@ def parse_sequence(text: str) -> Chains:
     Ports ``CoefCalcFromSequence.parseSequenceFile``. A line starting ``>``
     is a header, and says what the residues after it are: DNA if it contains
     ``ISDNA``, RNA if it contains ``ISRNA``, and protein otherwise, in any
-    case. A file can therefore hold several chains of different kinds. Blank
-    lines are skipped.
+    case. Residues before any header are protein. A file can therefore hold
+    several chains of different kinds. Blank lines are skipped.
+
+    Every nucleotide code is also an amino acid code, so a DNA or RNA chain
+    whose header lacks its marker reads as protein without error. As
+    RADDOSE-3D does, a chain of :data:`NUCLEOTIDE_LOOKALIKE_LENGTH` or more
+    residues read as protein but made only of A, C, G, T and U draws a
+    warning.
 
     Parameters
     ----------
@@ -590,13 +601,23 @@ def parse_sequence(text: str) -> Chains:
     Raises
     ------
     ValueError
-        If residues come before any header, or a character is not a residue
-        code of the type its header gives. RADDOSE-3D fails on both too; on
-        the first it reports the first residue as an unrecognised protein
-        code, because without a header it has no type to look it up as.
+        If a character is not a residue code of the type its header gives.
     """
     chains: list[tuple[ResidueType, str]] = []
-    residue_type: ResidueType | None = None
+    residue_type = ResidueType.PROTEIN
+    protein_chain: list[str] = []
+
+    def warn_if_nucleotides() -> None:
+        chain = "".join(protein_chain)
+        protein_chain.clear()
+        if len(chain) >= NUCLEOTIDE_LOOKALIKE_LENGTH and set(chain) <= set("ACGTU"):
+            warnings.warn(
+                f"a chain of {len(chain)} residues was read as protein, but "
+                "every residue is A, C, G, T or U; if it is DNA or RNA, put "
+                "ISDNA or ISRNA in its '>' header line",
+                stacklevel=3,
+            )
+
     # As BufferedReader.readLine: a line ends at \n, \r or \r\n.
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     for number, line in enumerate(lines, start=1):
@@ -604,6 +625,7 @@ def parse_sequence(text: str) -> Chains:
         if not line.strip(_JAVA_TRIMMED):
             continue
         if line.startswith(">"):
+            warn_if_nucleotides()
             header = line.upper()
             if "ISDNA" in header:
                 residue_type = ResidueType.DNA
@@ -612,18 +634,21 @@ def parse_sequence(text: str) -> Chains:
             else:
                 residue_type = ResidueType.PROTEIN
             continue
-        if residue_type is None:
-            raise ValueError(
-                f"line {number} of the sequence file holds residues before any "
-                "'>' header line, which would say whether they are protein, DNA "
-                "or RNA"
-            )
         try:
             sequence_residue_counts(line, residue_type)
         except ValueError as error:
             raise ValueError(f"line {number} of the sequence file: {error}") from None
+        if residue_type is ResidueType.PROTEIN:
+            protein_chain.extend(c.upper() for c in line if not c.isspace())
         chains.append((residue_type, line))
+    warn_if_nucleotides()
     return tuple(chains)
+
+
+#: ``CoefCalcFromSequence.NUCLEOTIDE_LOOKALIKE_LENGTH``: chains this long or
+#: longer, read as protein but made only of nucleotide codes, are reported.
+#: Shorter ones could well be peptides.
+NUCLEOTIDE_LOOKALIKE_LENGTH = 10
 
 
 #: The characters Java's ``String.trim`` removes: everything up to the space.

@@ -8,9 +8,9 @@ Java and are required here.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from pyraddose_3d.models._base import RD3DModel
 from pyraddose_3d.models.composition import Composition, ElementAmounts
@@ -171,6 +171,25 @@ class _CrystalBase(RD3DModel):
     decay_parameters: tuple[float, float, float] | None = None
     escape: EscapeOptions = Field(default_factory=EscapeOptions)
     container: Container | None = None
+
+    @model_validator(mode="after")
+    def _escape_needs_elements(self) -> Self:
+        """Escape modelling needs the crystal's elements, which ``average`` lacks.
+
+        RADDOSE-3D refuses this too. Photoelectron escape used to fail there
+        with a ``NullPointerException``, and fluorescence escape printed a
+        warning and modelled nothing.
+        """
+        escape = self.escape
+        if (escape.photoelectron or escape.fluorescence) and (
+            self.composition.method == "average"
+        ):
+            raise ValueError(
+                "photoelectron and fluorescence escape need the crystal's "
+                "elements, and the average composition has none; describe the "
+                "composition another way, or turn escape off"
+            )
+        return self
 
     def _first_dimension(self) -> float | None:
         """The size RADDOSE-3D bases its default resolution on."""

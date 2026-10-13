@@ -2,4 +2,4 @@ case_id: 024-beam-high-energy
 tier: A
 exercises: 20 keV
 seed: 20260917
-reference_version: 5.0.1083
+reference_version: 5.0.1086

@@ -426,11 +426,6 @@ not block 5.
 
 Found while surveying, unrelated to the port:
 
-- `OutputFactory.java:59-61` tests `"voxeldose"` twice — a copy-paste defect, so the
-  `voxelfluences` key never matches and `-o voxelfluences:...` silently does the wrong thing.
-  One-line fix.
-- `RD3D.printCommandlineHelp()` advertises module names (`Summary`, `DoseStateCSV`,
-  `SummaryCSV:SummaryCSV.csv`) that do not resolve to real classes.
 - `MicroED.getSolventFraction()` returns 0 when explicitly set, and `getBeamArea()`/
   `getExposure()` are stubs in `BeamGaussian`/`BeamExperimental` — from the earlier audit, still
   open.
@@ -468,17 +463,21 @@ in both codebases:
   elements has a tabulated L emission energy. `StrictMath.round` turns the NaN into 0, so the
   fluorescence is aimed at voxel (0, 0, 0), outside the crystal, and is lost. The printed
   fluorescence escape total is then `NaN`.
-- **Photoelectron escape with `AbsCoefCalc Average` throws a `NullPointerException`.** The port
-  refuses it, saying why. Fluorescence alone warns, as the Java does.
-- **`AbsCoefCalc SAXSSEQ` ignores `NumCarb`.** It reads the value, but never calls `setNumCarb`,
-  so `addCarbs` adds nothing. The port's reader warns.
-- **A sequence file whose residues come before any `>` header fails misleadingly.** The residues
-  have no type, and the error calls the first one "not a recognised protein residue code".
-- **`Type Experimental` cannot work.** The grammar and `BeamFactory` accept it, but
-  `BeamExperimental` has no property constructor, so the run fails in `ClassFactory`.
-- **`BeamExperimentalTest` checks nothing.** It never applies a container, so the beam's
-  attenuated flux is 0 and every intensity is 0. Its assertions are one-sided
-  (`intensity - expected < tolerance`), and 0 satisfies all of them.
+
+**Fixed, not yet merged.** These are fixed on RADDOSE-3D branches that are local and not yet
+pushed, and the port follows them. `UPSTREAM_FIXES.md`, *Status*, lists the branches and
+commits:
+
+- `-o voxelfluences` never resolved, because `OutputFactory` tested `"voxeldose"` twice.
+- The help text advertised module names that do not exist.
+- Escape modelling with `AbsCoefCalc Average` crashed, or for fluorescence alone did nothing.
+  Both are now refused.
+- `AbsCoefCalc SAXSSEQ` ignored `NumCarb`.
+- A sequence file whose residues came before any `>` header failed misleadingly. An unreadable
+  sequence file was ignored, leaving a crystal of solvent alone.
+- `Type Experimental` could never work, and failed with an unhelpful message.
+- `BeamExperimentalTest` checked nothing.
+- The user guide described `PixelSize` the other way round from the code.
 
 ## Verification, throughout
 

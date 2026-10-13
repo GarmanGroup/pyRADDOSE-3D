@@ -86,24 +86,15 @@ def test_escape_has_no_gradient(escaping: Experiment) -> None:
         solve(escaping, {"beam.flux": torch.tensor(2e12, dtype=torch.float64)})
 
 
-def test_photoelectron_escape_needs_elements(escaping: Experiment) -> None:
-    """RADDOSE-3D fails with a NullPointerException here."""
+@pytest.mark.parametrize("escape", ["photoelectron", "fluorescence"])
+def test_escape_needs_elements(escaping: Experiment, escape: str) -> None:
+    """The average composition has none, and RADDOSE-3D refuses this too.
+
+    It used to fail with a NullPointerException for photoelectron escape, and
+    to warn and model nothing for fluorescence escape.
+    """
     config = escaping.model_dump()
     config["crystal"]["composition"] = {"method": "average"}
-    with pytest.raises(ValueError, match="needs the crystal's elements"):
-        solve(Experiment.model_validate(config))
-
-
-def test_fluorescence_without_elements_is_skipped_with_a_warning(
-    escaping: Experiment,
-) -> None:
-    """As in RADDOSE-3D, which warns and applies none."""
-    config = escaping.model_dump()
-    config["crystal"]["composition"] = {"method": "average"}
-    config["crystal"]["escape"] = {"fluorescence": True}
-    fluorescing = Experiment.model_validate(config)
-    config["crystal"]["escape"] = {}
-    plain = Experiment.model_validate(config)
-    with pytest.warns(UserWarning, match="none is modelled"):
-        result = solve(fluorescing)
-    assert [s.as_dict() for s in result] == [s.as_dict() for s in solve(plain)]
+    config["crystal"]["escape"] = {escape: True}
+    with pytest.raises(ValueError, match="need the crystal's elements"):
+        Experiment.model_validate(config)

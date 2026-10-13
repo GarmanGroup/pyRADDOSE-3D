@@ -1,8 +1,8 @@
-reference_version: 5.0.1083
-reference_commit: 9ad4e9d
+reference_version: 5.0.1086
+reference_commit: 29766e0
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 53
+case_count: 54
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005

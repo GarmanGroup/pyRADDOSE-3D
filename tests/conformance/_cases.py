@@ -451,6 +451,23 @@ _CASES: list[Case] = [
             }
         },
     ),
+    # RADDOSE-3D read NumCarb here and never added the carbohydrate, until
+    # UPSTREAM_FIXES.md item 8.
+    Case(
+        "039-composition-saxs-sequence-carbohydrates",
+        "A",
+        "SAXS from a sequence, with carbohydrate residues on each monomer",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "saxs_sequence",
+                    "protein_concentration": 10.0,
+                    "sequence_file": "tests/data/insulin_and_nucleic_acids.fasta",
+                    "num_carb": 40,
+                }
+            }
+        },
+    ),
     # --- decay models -------------------------------------------------------
     Case(
         "040-ddm-linear",

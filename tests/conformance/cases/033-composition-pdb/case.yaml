@@ -2,4 +2,4 @@ case_id: 033-composition-pdb
 tier: A
 exercises: composition read from a local PDB file
 seed: 20260917
-reference_version: 5.0.1083
+reference_version: 5.0.1086
