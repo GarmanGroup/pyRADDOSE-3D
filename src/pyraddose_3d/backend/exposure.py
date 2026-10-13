@@ -402,6 +402,7 @@ def expose(
         # and silently halve the precision of everything downstream.
         steps.append(
             _EnergyStep(
+                energy=photon_energy,
                 energy_joules=beam_energy_joules,
                 attenuation=at(coefficients.attenuation, k),
                 fluence_to_dose=fluence_to_dose,
@@ -482,6 +483,7 @@ def expose(
                     exposure_seconds=float(exposure_seconds),
                     angle_count=angle_count,
                     sample=sample,
+                    photon_energy=float(step.energy),
                 )
             dose = dose + compton_dose
 
@@ -538,6 +540,7 @@ def expose(
 class _EnergyStep:
     """The conversion factors for one energy a beam is sampled at."""
 
+    energy: Array
     energy_joules: Array
     attenuation: Array
     fluence_to_dose: Array

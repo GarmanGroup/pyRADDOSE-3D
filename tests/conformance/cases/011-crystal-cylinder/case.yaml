@@ -2,4 +2,4 @@ case_id: 011-crystal-cylinder
 tier: A
 exercises: cylinder; axis along y, DIM_Z ignored
 seed: 20260917
-reference_version: 5.0.1086
+reference_version: 5.0.1087

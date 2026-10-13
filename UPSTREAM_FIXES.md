@@ -20,7 +20,8 @@ commit carries the corpus regenerated from the branch named beside it.
 | items | RADDOSE-3D branch | port | state |
 |---|---|---|---|
 | cases that show the defects first: 109, 110, 111 | `master` 9ad4e9d | `7edf4ce` | done |
-| 7, 8, 9, 10, 11, 13; `voxelfluences`; help text | `jd_upstream_input_fixes` | this commit | done; decisions A and B taken as recommended |
+| 7, 8, 9, 10, 11, 13; `voxelfluences`; help text | `jd_upstream_input_fixes` | `de87c07` | done; decisions A and B taken as recommended |
+| 1: energy accounting | `jd_upstream_escape_fixes` 4deb672 | this commit | done; physics change awaiting sign-off |
 
 ---
 

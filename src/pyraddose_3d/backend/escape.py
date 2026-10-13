@@ -45,11 +45,6 @@ report upstream rather than fixed here:
 - With a surrounding, the crystal's photoelectrons are drawn using the
   surrounding's direction weights: both share one field, and the
   surrounding's is computed last.
-- With photoelectron escape alone, the whole binding energy is taken from
-  the photoelectron but only the K-shell Auger energy is deposited, so the
-  rest of the atom's relaxation energy is lost. With fluorescence escape
-  too, the photoelectron is given what is left after the fluorescence and
-  the K-shell Auger energy, which keeps the L and M Auger energy in it.
 - The surrounding's grid is clamped to the crystal's bounding box before
   its rotations, in a frame that has already turned with the goniometer.
 
@@ -281,14 +276,6 @@ def _binding_energy(factors: np.ndarray) -> float:
     for total in totals:
         result += total
     return result
-
-
-def _auger_energy(factors: np.ndarray) -> float:
-    """``getAugerEnergy``: K-shell Auger energy per absorbed photon, joules."""
-    energy = 0.0
-    for row in factors:
-        energy += row[1] * row[2] * (1 - row[3]) * row[0]
-    return energy * KEV_TO_JOULES
 
 
 # --- the photoelectron's path ------------------------------------------------
@@ -587,8 +574,6 @@ class PhotoelectronEscape:
     ----------
     binding_energy : float
         ``EnergyToSubtractFromPE``, keV.
-    auger_energy : float
-        ``getAugerEnergy``, joules per absorbed photon.
     distances : np.ndarray
         ``PE_DISTANCES_TRAVELLED``, micrometres.
     proportion : np.ndarray
@@ -598,7 +583,6 @@ class PhotoelectronEscape:
     """
 
     binding_energy: float
-    auger_energy: float
     distances: np.ndarray
     proportion: np.ndarray
     tracks: _Tracks
@@ -646,7 +630,6 @@ def photoelectron_escape(
     weights = _polarisation_weights(factors)
     escape = PhotoelectronEscape(
         binding_energy=binding,
-        auger_energy=_auger_energy(factors),
         distances=distances,
         proportion=_dose_by_distance(distances, location, scale, pe_energy),
         tracks=_tracks(weights, vertical_goniometer),
@@ -776,7 +759,6 @@ class Surrounding:
     shape: tuple[int, int, int]
     origin: np.ndarray
     binding_energy: float
-    auger_energy: float
     distances: np.ndarray
     proportion: np.ndarray
     tracks: _Tracks
@@ -922,7 +904,6 @@ def surrounding_escape(
         shape=(shape[0], shape[1], shape[2]),
         origin=np.asarray(origin, dtype=np.float64),
         binding_energy=binding,
-        auger_energy=_auger_energy(factors),
         distances=distances,
         proportion=_dose_by_distance(distances, location, scale, pe_energy),
         tracks=_tracks(_polarisation_weights(factors), vertical_goniometer),
@@ -1040,6 +1021,7 @@ class Escape:
         exposure_seconds: float,
         angle_count: int,
         sample: int,
+        photon_energy: float,
     ) -> np.ndarray:
         """Add one angle and energy's photoelectric dose, with escape.
 
@@ -1056,12 +1038,13 @@ class Escape:
         index = np.flatnonzero(lit & (photoelectric_dose > 0))
         if len(index):
             self._crystal_step(
-                dose, index, photoelectric_dose, photons, fluence_to_dose, angle
-            )
+                dose, index, photoelectric_dose, photons, fluence_to_dose, angle,
+                photon_energy,
+            )  # fmt: skip
         if self.surrounding is not None and self.photoelectron is not None:
             self._surrounding_step(
                 dose, angle, rotated, shift, beam, off_axis, attenuation,
-                exposure_seconds, angle_count, sample,
+                exposure_seconds, angle_count, sample, photon_energy,
             )  # fmt: skip
         return dose
 
@@ -1073,25 +1056,26 @@ class Escape:
         photons: np.ndarray,
         fluence_to_dose: float,
         angle: float,
+        photon_energy: float,
     ) -> None:
-        """The lit crystal voxels, in ``i, j, k`` order."""
+        """The lit crystal voxels, in ``i, j, k`` order.
+
+        The photoelectron leaves with the photon's energy less the binding
+        energy, which the atom releases as it relaxes: as fluorescence,
+        tracked when fluorescence escape is on, and the rest locally.
+        """
         pe, fl = self.photoelectron, self.fluorescence
         image_dose = photoelectric_dose[index]
         photon_count = photons[index]
         ijk = self.ijk[index]
 
         zeros = np.zeros(len(index))
-        fl_release, auger, dose_pe = zeros, zeros, zeros
+        fl_release, relaxation, dose_pe = zeros, zeros, zeros
         if fl is not None:
             fl_release = fluence_to_dose * (fl.release * photon_count)
         if pe is not None:
-            auger = pe.auger_energy * photon_count * fluence_to_dose
-            if fl is not None:
-                dose_pe = image_dose - fl_release - auger
-            else:
-                dose_pe = (
-                    image_dose - (pe.binding_energy / self.beam_energy) * image_dose
-                )
+            relaxation = (pe.binding_energy / photon_energy) * image_dose
+            dose_pe = image_dose - relaxation
 
         # The draws, in the Java's order: voxel by voxel, a fluorescence
         # draw (taken and never used) when there is fluorescence to release,
@@ -1118,7 +1102,8 @@ class Escape:
                 np.add.at(dose, index, image_dose - fl_release)
         if pe is not None:
             if fl is not None:
-                np.add.at(dose, index, np.where(auger > 0, auger, 0.0))
+                local = relaxation - fl_release
+                np.add.at(dose, index, np.where(local > 0, local, 0.0))
             offsets = _rotated_offsets(pe.tracks, pe.distances, self.ppm, angle)
             bias = self._bias()
             first = 1 if fl is not None else 0
@@ -1134,7 +1119,7 @@ class Escape:
                 )
                 self._deposit(dose, targets, amounts)
             if fl is None:
-                np.add.at(dose, index, np.where(auger > 0, auger, 0.0))
+                np.add.at(dose, index, np.where(relaxation > 0, relaxation, 0.0))
         if pe is None and fl is None:
             np.add.at(dose, index, image_dose)
 
@@ -1196,6 +1181,7 @@ class Escape:
         exposure_seconds: float,
         angle_count: int,
         sample: int,
+        photon_energy: float,
     ) -> None:
         """``exposeAngle``'s loop over the surrounding."""
         from pyraddose_3d.backend.exposure import _place
@@ -1229,25 +1215,15 @@ class Escape:
             math.pow(surrounding.pixels_per_micron, -2) * exposure_seconds / angle_count
         )
         fluence = intensity * attenuation_factor * np.exp(depth * -attenuation)
-        beam_energy = self.beam_energy * KEV_TO_JOULES
-        photons = fluence / beam_energy
         absorbed = float(self.surrounding_absorption[sample])
         energy_per_fluence = 1 - math.exp(-1 * absorbed / surrounding.pixels_per_micron)
         energy = energy_per_fluence * fluence
         keep = energy > 0
-        energy, photons, in_crystal_grid = (
-            energy[keep],
-            photons[keep],
-            in_crystal_grid[keep],
-        )
+        energy, in_crystal_grid = energy[keep], in_crystal_grid[keep]
 
-        if self.fluorescence is None:
-            auger = surrounding.auger_energy * photons * energy_per_fluence
-            energy_pe = energy - auger
-        else:
-            energy_pe = (
-                energy - (surrounding.binding_energy / self.beam_energy) * energy
-            )
+        # The photoelectron leaves with the photon's energy less the binding
+        # energy, whether or not fluorescence escape is on.
+        energy_pe = energy - (surrounding.binding_energy / photon_energy) * energy
 
         bias = self._bias()
         draws = self.random.next_ints(

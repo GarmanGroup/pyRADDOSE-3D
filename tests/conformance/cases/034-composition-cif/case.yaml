@@ -2,4 +2,4 @@ case_id: 034-composition-cif
 tier: A
 exercises: small-molecule composition from a CIF
 seed: 20260917
-reference_version: 5.0.1086
+reference_version: 5.0.1087
