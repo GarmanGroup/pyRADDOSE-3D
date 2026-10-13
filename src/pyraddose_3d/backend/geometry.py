@@ -49,9 +49,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+
 from pyraddose_3d.backend._array import array_namespace, astype, promote, sort
 
-__all__ = ["Mesh", "find_depth", "triangle_planes"]
+__all__ = ["Mesh", "find_depth", "find_path_in_front", "triangle_planes"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
@@ -230,6 +232,73 @@ def find_depth(mesh: Mesh, voxels: Array) -> Array:
     shared triangle edge registers against both triangles, and counting it
     twice would flip the parity and wrongly report the voxel as outside.
     """
+    xp, ordered, keep = _crossings_in_front(mesh, voxels)
+
+    # depth = d0 - d1 + d2 - d3 + ..., which is the Java's
+    # "first crossing, then every other gap" written without the loop.
+    rank = xp.cumsum(astype(keep, ordered.dtype), axis=1) - 1
+    sign = xp.where(rank % 2 == 0, 1.0, -1.0)
+    depth = xp.sum(xp.where(keep, sign * ordered, 0.0), axis=1)
+
+    crossings = xp.sum(astype(keep, ordered.dtype), axis=1)
+    inside = (crossings % 2) == 1
+    return xp.where(inside, depth, 0.0)
+
+
+def find_path_in_front(mesh: Mesh, points: np.ndarray) -> np.ndarray:
+    """Path length through the crystal between each point and the source.
+
+    ``CrystalPolyhedron.findPathInFront``. As :func:`find_depth` for a point
+    inside the crystal; for one outside, the segments inside the crystal
+    between it and the source, summed pair by pair in the Java's order. A
+    point upstream of the crystal has none, one downstream the whole chord.
+    NumPy only: it serves escape modelling, which has no gradient.
+
+    Parameters
+    ----------
+    mesh : Mesh
+        The crystal, already rotated into the frame of the exposure.
+    points : np.ndarray
+        ``(N, 3)`` positions in micrometres.
+
+    Returns
+    -------
+    np.ndarray
+        ``(N,)`` path lengths in micrometres.
+    """
+    points = np.asarray(points, dtype=np.float64)
+    _, ordered, keep = _crossings_in_front(mesh, points)
+    ordered, keep = np.asarray(ordered), np.asarray(keep)
+    # The kept crossings of each point, packed to the front of its row.
+    rank = np.cumsum(keep, axis=1) - 1
+    packed = np.zeros_like(ordered)
+    rows, columns = np.nonzero(keep)
+    packed[rows, rank[rows, columns]] = ordered[rows, columns]
+    if packed.shape[1] % 2:
+        packed = np.concatenate([packed, np.zeros((len(packed), 1))], axis=1)
+    # (d1 - d0) + (d3 - d2) + ..., accumulated left to right as the Java
+    # does; pairs past a row's last crossing are 0 - 0 and add nothing.
+    pairs = packed[:, 1::2] - packed[:, 0::2]
+    outside = np.cumsum(pairs, axis=1)[:, -1] if pairs.shape[1] else np.zeros(0)
+    inside = (keep.sum(axis=1) % 2) == 1
+    if not inside.any():
+        return outside
+    depth = np.asarray(find_depth(mesh, points[inside]))
+    result = outside.copy()
+    result[inside] = depth
+    return result
+
+
+def _crossings_in_front(mesh: Mesh, voxels: Array) -> tuple[Any, Array, Array]:
+    """Where a ray from each point towards the source crosses the surface.
+
+    Returns
+    -------
+    tuple
+        The array namespace; the crossing distances of each point, sorted,
+        with 0 in place of a miss; and which of them count -- a hit, and not
+        a repeat of the one before.
+    """
     xp, (vertices, voxels) = promote(mesh.vertices, voxels)
     mesh = Mesh(vertices=vertices, triangles=mesh.triangles)
 
@@ -279,13 +348,4 @@ def find_depth(mesh: Mesh, voxels: Array) -> Array:
     # A ray through a shared edge hits both triangles at the same distance.
     same_as_previous = ordered[:, 1:] == ordered[:, :-1]
     keep = xp.concatenate([counted[:, :1], counted[:, 1:] & ~same_as_previous], axis=1)
-
-    # depth = d0 - d1 + d2 - d3 + ..., which is the Java's
-    # "first crossing, then every other gap" written without the loop.
-    rank = xp.cumsum(astype(keep, ordered.dtype), axis=1) - 1
-    sign = xp.where(rank % 2 == 0, 1.0, -1.0)
-    depth = xp.sum(xp.where(keep, sign * ordered, 0.0), axis=1)
-
-    crossings = xp.sum(astype(keep, ordered.dtype), axis=1)
-    inside = (crossings % 2) == 1
-    return xp.where(inside, depth, 0.0)
+    return xp, ordered, keep

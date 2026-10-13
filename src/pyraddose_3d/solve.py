@@ -896,7 +896,7 @@ def _escape(
     if options.fluorescence:
         fluorescence = fluorescence_escape(factors, high - low, options.fl_resolution)
 
-    surrounding = surrounding_absorption = clamp = None
+    surrounding = surrounding_absorption = None
     if options.surrounding and photoelectron is not None:
         assert bins is not None
         oil_density = options.surrounding_density
@@ -935,10 +935,6 @@ def _escape(
         surrounding_absorption = np.array(
             [float(material_coefficients(cell, e).absorption) for e in at]
         )
-        # minimumDimensions: the crystal's box before its P and L rotations.
-        raw = crystal_mesh(crystal.model_copy(update={"angle_p": 0.0, "angle_l": 0.0}))
-        raw_vertices = np.asarray(raw.vertices)
-        clamp = (raw_vertices.min(axis=0), raw_vertices.max(axis=0))
 
     return Escape(
         JavaRandom(seed),
@@ -951,7 +947,6 @@ def _escape(
         fluorescence,
         surrounding,
         surrounding_absorption,
-        clamp,
     )
 
 

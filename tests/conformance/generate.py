@@ -145,7 +145,7 @@ def resolve_paths(input_text: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def generate_case(case: Case, root: Path, version: str) -> None:
+def generate_case(case: Case, root: Path, version: str, commit: str) -> None:
     """Write config.yaml, metadata and reference outputs for one case."""
     case_dir = CASES_DIR / case.case_id
     expected = case_dir / "expected"
@@ -209,6 +209,7 @@ def generate_case(case: Case, root: Path, version: str) -> None:
                 "exercises": case.exercises,
                 "seed": SEED,
                 "reference_version": version,
+                "reference_commit": commit,
             },
             sort_keys=False,
         ),
@@ -217,13 +218,40 @@ def generate_case(case: Case, root: Path, version: str) -> None:
     print(f"  {case.case_id:38s} tier {case.tier}  {len(summary)} wedge(s)")
 
 
-def main() -> None:
-    """Regenerate every case."""
+def main(argv: list[str] | None = None) -> None:
+    """Regenerate every case, or those named.
+
+    ``--only`` and ``--skip`` take case-id prefixes. A skipped case keeps
+    the outputs it has, and its ``case.yaml`` keeps the RADDOSE-3D commit
+    they came from -- so a partial run is visible as one.
+
+    The JVM must be the one the manifest records: the same Java code gives
+    different face-voxel depths on different JVMs, and so a different
+    corpus. ``--new-jvm`` accepts a deliberate change. (An older JVM fails
+    in another way too: NIST refuses Java 8's requests, so the container
+    cases cannot run on it.)
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--only", nargs="+", default=None, metavar="PREFIX")
+    parser.add_argument("--skip", nargs="+", default=[], metavar="PREFIX")
+    parser.add_argument("--new-jvm", action="store_true")
+    options = parser.parse_args(argv)
+
     root = raddose_dir()
     version = reference_version(root)
+    commit = reference_commit(root)
     java = subprocess.run(
         ["java", "-version"], capture_output=True, text=True
     ).stderr.splitlines()[0]
+
+    recorded = yaml.safe_load(MANIFEST.read_text("utf-8")).get("jvm")
+    if recorded and java != recorded and not options.new_jvm:
+        raise SystemExit(
+            f"java is {java!r}, but the corpus was generated with {recorded!r}. "
+            f"Put that JVM first on PATH, or pass --new-jvm to change it."
+        )
 
     print(f"reference: RADDOSE-3D {version}")
     print(f"jvm:       {java}")
@@ -231,13 +259,17 @@ def main() -> None:
 
     cases = all_cases()
     for case in cases:
-        generate_case(case, root, version)
+        wanted = options.only is None or case.case_id.startswith(tuple(options.only))
+        if wanted and not case.case_id.startswith(tuple(options.skip)):
+            generate_case(case, root, version, commit)
+        else:
+            print(f"  {case.case_id:38s} skipped")
 
     MANIFEST.write_text(
         yaml.safe_dump(
             {
                 "reference_version": version,
-                "reference_commit": reference_commit(root),
+                "reference_commit": commit,
                 "jvm": java,
                 "seed": SEED,
                 "case_count": len(cases),

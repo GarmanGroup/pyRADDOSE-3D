@@ -20,6 +20,7 @@ from pyraddose_3d.backend.geometry import (
     Mesh,
     _crosses_triangle,
     find_depth,
+    find_path_in_front,
     triangle_planes,
 )
 
@@ -180,6 +181,28 @@ def test_a_voxel_outside_the_crystal_has_no_depth() -> None:
         ]
     )
     np.testing.assert_array_equal(np.asarray(find_depth(mesh, outside)), 0.0)
+
+
+def test_the_path_in_front_is_measured_outside_the_crystal_too() -> None:
+    """``findPathInFront``: what the surrounding's attenuation needs.
+
+    The beam runs along +z, so a point beyond the -z face has no crystal in
+    front of it, one beyond the +z face the whole thickness, and one beside
+    the crystal none. Inside, it is :func:`find_depth`.
+    """
+    mesh = cuboid(z=20.0)
+    points = np.array(
+        [
+            [5.0, 5.0, -30.0],
+            [5.0, 5.0, 30.0],
+            [50.0, 5.0, 30.0],
+            [5.0, 5.0, 4.0],
+        ]
+    )
+    path = find_path_in_front(mesh, points)
+    assert path[:3].tolist() == [0.0, 20.0, 0.0]
+    assert path[3] == float(find_depth(mesh, points[3:])[0])
+    assert path[3] == pytest.approx(14.0)
 
 
 def test_depth_at_the_entry_face_is_zero_and_at_the_exit_face_is_full() -> None:

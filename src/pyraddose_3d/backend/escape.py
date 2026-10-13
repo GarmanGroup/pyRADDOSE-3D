@@ -32,14 +32,6 @@ could disagree on whether the beam reaches it, would shift the stream, and
 from then on the realisation would differ while staying statistically the
 same.
 
-Quirks reproduced
------------------
-Each is marked where it happens, and listed in the roadmap as a defect to
-report upstream rather than fixed here:
-
-- The surrounding's grid is clamped to the crystal's bounding box before
-  its rotations, in a frame that has already turned with the goniometer.
-
 Not differentiable: the directions are integer draws and the deposition
 lands in whole voxels.
 """
@@ -945,9 +937,6 @@ class Escape:
         With photoelectron escape, the medium around the crystal.
     surrounding_absorption : np.ndarray | None
         The surrounding's photoelectric coefficient at each sampled energy.
-    clamp : tuple[np.ndarray, np.ndarray] | None
-        ``minimumDimensions`` and ``maximumDimensions``: the crystal's
-        bounding box before its P and L rotations.
     """
 
     def __init__(
@@ -962,7 +951,6 @@ class Escape:
         fluorescence: FluorescenceEscape | None,
         surrounding: Surrounding | None = None,
         surrounding_absorption: np.ndarray | None = None,
-        clamp: tuple[np.ndarray, np.ndarray] | None = None,
     ) -> None:
         self.random = random
         self.shape = shape
@@ -974,7 +962,6 @@ class Escape:
         self.fluorescence = fluorescence
         self.surrounding = surrounding
         self.surrounding_absorption = surrounding_absorption
-        self.clamp = clamp
         nx, ny, nz = shape
         grid = np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz), indexing="ij")
         self.ijk = np.stack([g.reshape(-1) for g in grid], axis=-1)
@@ -1173,12 +1160,12 @@ class Escape:
     ) -> None:
         """``exposeAngle``'s loop over the surrounding."""
         from pyraddose_3d.backend.exposure import _place
-        from pyraddose_3d.backend.geometry import find_depth
+        from pyraddose_3d.backend.geometry import find_path_in_front
 
         surrounding = self.surrounding
         pe = self.photoelectron
         assert surrounding is not None and pe is not None
-        assert self.surrounding_absorption is not None and self.clamp is not None
+        assert self.surrounding_absorption is not None
         # Where the surrounding is, how much beam reaches it and through how
         # much crystal depend on the angle alone, so a pink beam's energies
         # share them.
@@ -1188,8 +1175,8 @@ class Escape:
             intensity = np.asarray(beam.intensity(placed[:, 0], placed[:, 1], off_axis))
             lit = intensity > 0
             placed, intensity = placed[lit], intensity[lit]
-            low, high = self.clamp
-            depth = np.asarray(find_depth(rotated, np.clip(placed, low, high)))
+            # How much crystal the beam crossed to get here.
+            depth = find_path_in_front(rotated, placed)
             offsets = _rotated_offsets(
                 pe.tracks, surrounding.distances, self.ppm, angle
             )

@@ -24,7 +24,8 @@ commit carries the corpus regenerated from the branch named beside it.
 | 1: energy accounting | `jd_upstream_escape_fixes` 4deb672 | `687e7e2` | done; physics change awaiting sign-off |
 | 5: NaN L-shell fluorescence | `jd_upstream_escape_fixes` ce1c0b6 | `8d5544d` | done |
 | 2: fluorescence direction | `jd_upstream_escape_fixes` 31fdb9b | `81afd79` | done; physics change awaiting sign-off |
-| 3: separate direction tables | `jd_upstream_escape_fixes` 8ee300b | this commit | done |
+| 3: separate direction tables | `jd_upstream_escape_fixes` 8ee300b | `07bfc7b` | done |
+| 4: path in front of the surrounding | `jd_upstream_escape_fixes` 7322e36 | this commit | done |
 
 ---
 
