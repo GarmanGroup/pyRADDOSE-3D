@@ -44,6 +44,7 @@ import numpy as np
 
 from pyraddose_3d._java_format import java_double, java_e, java_f, java_float
 from pyraddose_3d.backend._array import to_namespace
+from pyraddose_3d.backend.microed import lacking_bindings_warning
 from pyraddose_3d.backend.summary import resolution_rde
 
 if TYPE_CHECKING:
@@ -818,15 +819,11 @@ def microed_csv(result: MicroEDResult) -> str:
 
 
 def microed_slices_csv(result: MicroEDResult) -> str:
-    """``outputMicroED_slices.csv``: each 5 nm slice's dose.
-
-    The depth column assumes 5 nm slices, as RADDOSE-3D's does, although a
-    crystal whose thickness is not a multiple of 5 nm is cut into slices of
-    its thickness over their number.
-    """
+    """``outputMicroED_slices.csv``: each slice's dose, by where it starts."""
     lines = ["Slice Number,Slice Depth (nm),Slice Dose (MGy)\n"]
     for i, dose in enumerate(result.slice_doses, start=1):
-        lines.append(f"{i},{java_f((i - 1) * 5.0, 4)},{java_e(dose, 8)}\n")
+        depth = (i - 1) * result.slice_width
+        lines.append(f"{i},{java_f(depth, 4)},{java_e(dose, 8)}\n")
     return "".join(lines)
 
 
@@ -843,8 +840,19 @@ def _decimal_format(value: float, places: int) -> str:
 def microed_report(result: MicroEDResult) -> str:
     """What ``MicroED.CalculateEM`` prints to the console."""
     two = _decimal_format
+    warning = ""
+    best = (
+        f"\nThe optimal accelerating voltage is: {two(result.best_energy, 0)} kV\n"
+        f"The optimal thickness is: {two(result.best_thickness, 0)} nm\n"
+    )
+    if result.lacking_bindings:
+        warning = f"Warning: {lacking_bindings_warning(result.lacking_bindings)}\n"
+        best = (
+            "\nThe optimal accelerating voltage and thickness need the "
+            "inelastic model, so were not searched for.\n"
+        )
     return (
-        f"The density is: {java_e(result.density, 2)}\n"
+        warning + f"The density is: {java_e(result.density, 2)}\n"
         f"Elastic Lambda: {java_double(result.elastic_mean_free_path)}\n"
         f"GOS Inelastic Lambda: {java_double(result.inelastic_mean_free_path)}\n"
         f"\nThe Dose in the exposed area by stopping power: "
@@ -855,9 +863,7 @@ def microed_report(result: MicroEDResult) -> str:
         f"Number Inelastic events: {two(result.inelastic, 2)}\n"
         f"Number productive events: {two(result.productive, 2)}\n"
         f"Information Coefficient (productive/MGy): "
-        f"{two(result.information_coefficient, 2)}\n"
-        f"\nThe optimal accelerating voltage is: {two(result.best_energy, 0)} kV\n"
-        f"The optimal thickness is: {two(result.best_thickness, 0)} nm\n"
+        f"{two(result.information_coefficient, 2)}\n" + best
     )
 
 

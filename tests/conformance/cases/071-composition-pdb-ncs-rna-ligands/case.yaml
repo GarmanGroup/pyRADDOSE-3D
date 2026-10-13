@@ -2,5 +2,5 @@ case_id: 071-composition-pdb-ncs-rna-ligands
 tier: A
 exercises: 'PDB 1A34: 14 NCS operators to apply, RNA chains, partly occupied ligands'
 seed: 20260917
-reference_version: 5.0.1086
-reference_commit: 167fb7a
+reference_version: 5.0.1087
+reference_commit: 11d03e5

@@ -1,5 +1,6 @@
+Warning: the element tables have no binding energy for one or more of the subshells of NA, which the inelastic (GOS) model needs. The inelastic and productive counts, the information coefficient and the optimal voltage and thickness are reported as NaN. The dose and the elastic counts are unaffected.
 The density is: 1.09e+00
-Elastic Lambda: 515.8068125831054
+Elastic Lambda: 515.8068125831055
 GOS Inelastic Lambda: NaN
 
 The Dose in the exposed area by stopping power: 3.6790e+00 MGy
@@ -11,5 +12,4 @@ Number Inelastic events: NaN
 Number productive events: NaN
 Information Coefficient (productive/MGy): NaN
 
-The optimal accelerating voltage is: 1990 kV
-The optimal thickness is: 1995 nm
+The optimal accelerating voltage and thickness need the inelastic model, so were not searched for.

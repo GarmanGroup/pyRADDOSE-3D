@@ -40,7 +40,8 @@ TOLERANCES = manifest()["microed_tolerances"]
 def run(case_dir: Path) -> MicroEDResult:
     experiment = Experiment.from_yaml(case_dir / "config.yaml")
     with warnings.catch_warnings():
-        # Case 127's sodium: a NaN inelastic path, reproduced with a warning.
+        # Sodium and aluminium, which the GOS model has no binding energies
+        # for: a NaN inelastic path, reported with a warning.
         warnings.simplefilter("ignore", UserWarning)
         return microed(experiment)
 
@@ -56,7 +57,7 @@ def _close(java: float, port: float, relative: float) -> bool:
 
 
 def test_there_are_microed_cases() -> None:
-    assert len(MICROED_PARAMS) >= 8
+    assert len(MICROED_PARAMS) >= 14
 
 
 @pytest.mark.parametrize("case_dir", MICROED_PARAMS)
@@ -103,7 +104,7 @@ def test_report_matches_java(case_dir: Path) -> None:
         "GOS Inelastic Lambda": TOLERANCES["inelastic_mean_free_path_relative"],
     }
     for expected_line, got_line in zip(java, port, strict=True):
-        if ": " not in expected_line:
+        if ": " not in expected_line or expected_line.startswith("Warning: "):
             assert got_line == expected_line
             continue
         label, expected = expected_line.split(": ", 1)

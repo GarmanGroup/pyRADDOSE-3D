@@ -918,10 +918,6 @@ _CASES: list[Case] = [
             "crystal": {**_microed_crystal(), "angle_p": 30.0, "angle_l": 10.0},
         },
     ),
-    # No PDB case: RADDOSE-3D's PDB route never multiplies its electron
-    # scattering atoms by the molecules in the cell, so its MicroED counts
-    # are for one asymmetric unit (UPSTREAM_FIXES.md). The port uses the
-    # whole cell, and cannot match until RADDOSE-3D is fixed.
     # RADDOSE-3D's own example input, ED_input.txt.
     Case(
         "126-microed-small-molecule",
@@ -946,7 +942,7 @@ _CASES: list[Case] = [
     Case(
         "127-microed-sodium-nan",
         "A",
-        "MicroED: sodium, whose zero binding energy makes the inelastic path NaN",
+        "MicroED: sodium, which the GOS model has no binding energy for",
         {
             **MICROED,
             "crystal": _microed_crystal(
@@ -956,6 +952,92 @@ _CASES: list[Case] = [
                 }
             ),
         },
+    ),
+    # The composition routes other than the unit cell's. Until RADDOSE-3D
+    # 11d03e5 its electron calculations kept their own count of the atoms,
+    # which the PDB route never multiplied by the molecules in the cell, and
+    # the sequence and CIF routes never filled.
+    Case(
+        "128-microed-pdb",
+        "A",
+        "MicroED: composition from PDB 3I40",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    "method": "pdb",
+                    "pdb": "tests/data/3I40.pdb",
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            ),
+        },
+    ),
+    Case(
+        "129-microed-pdb-ncs-ligands",
+        "A",
+        "MicroED: composition from PDB 1A34, NCS operators and ligands",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    "method": "pdb",
+                    "pdb": "tests/data/1A34.pdb",
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            ),
+        },
+    ),
+    Case(
+        "130-microed-sequence",
+        "A",
+        "MicroED: composition from a sequence file",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    "method": "sequence",
+                    "unit_cell": [78.02, 78.02, 78.02],
+                    "num_monomers": 24,
+                    "sequence_file": "tests/data/insulin_and_nucleic_acids.fasta",
+                    "protein_heavy_atoms": {"Zn": 0.333},
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            ),
+        },
+    ),
+    Case(
+        "131-microed-cif",
+        "A",
+        "MicroED: composition from a CIF, urea",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    "method": "cif",
+                    "cif": "tests/data/COD-1008775-urea.cif",
+                }
+            ),
+        },
+    ),
+    Case(
+        "132-microed-aluminium-nan",
+        "A",
+        "MicroED: aluminium, whose blank M1 binding energy crashed RADDOSE-3D",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    **BASELINE_COMPOSITION,
+                    "protein_heavy_atoms": {"Al": 1.0, "S": 6.0},
+                }
+            ),
+        },
+    ),
+    Case(
+        "133-microed-thinner-than-a-slice",
+        "A",
+        "MicroED: 4 nm thick, less than one 5 nm slice",
+        {**MICROED, "crystal": _microed_crystal(dimensions=[2.0, 2.0, 0.004])},
     ),
 ]
 

@@ -38,7 +38,7 @@ A crystal with `subprogram: microed` (`Subprogram EMED` in a `.txt` input) and a
 | file | contents |
 |---|---|
 | `outputMicroED.CSV` | the beam energy, dose, scattering counts, information coefficient, and best voltage and thickness |
-| `outputMicroED_slices.csv` | the dose in each 5 nm slice through the crystal |
+| `outputMicroED_slices.csv` | the dose in each slice through the crystal, about 5 nm thick |
 
 MicroED ignores the wedges, escape, the container and the decay model. The calculation is deterministic and takes well under a second.
 

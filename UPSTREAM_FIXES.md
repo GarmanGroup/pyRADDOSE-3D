@@ -23,6 +23,14 @@ changes needing sign-off came last. All three were merged on 2026-10-13:
 | [#37](https://github.com/GarmanGroup/RADDOSE-3D/pull/37) | `jd_upstream_beam_wedge_fixes`, onto #36 | 6, 12; the wedge image count | merged as `fca1682` |
 | [#38](https://github.com/GarmanGroup/RADDOSE-3D/pull/38) | `jd_upstream_escape`, onto #37 | 1, 5, 2, 3, 4; item 3's slowdown undone | merged as `167fb7a` |
 
+MicroED's defects followed, found porting it (*MicroED*, below):
+
+| PR | branch, onto | items | state |
+|---|---|---|---|
+| [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | open at `11d03e5`, awaiting sign-off on two physics changes |
+
+The corpus is generated from `11d03e5`, so until #40 merges it follows a branch, not `master`.
+
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
 `reference_commit` exists upstream. As expected, no number moved.
@@ -623,34 +631,39 @@ These were found before Milestone 4. The first three are now fixed: the first tw
 | the help text advertises `Summary`, `SummaryCSV:…` and `DoseStateCSV`, which are not modules | `RD3D.java:399–401` | **fixed** |
 | a 0–30° wedge at 2° per image takes 15 images, not 16: the count is computed in radians and truncated | `Crystal.java:891–893` | **fixed**, with the reversed wedge's count and step; only case 066 moved, plus new case 067 |
 | characters the lexer does not know are skipped with a message, not refused | the generated parser | refuse, as #34 did for parser errors. The port warns today. |
-| `MicroED.getSolventFraction()`, and the `getBeamArea()`/`getExposure()` stubs | MicroED, `BeamGaussian.java:298–306` | the stubs: see *MicroED* below. `getSolventFraction` is read only by MicroED's disabled charge model. |
+| `MicroED.getSolventFraction()`, and the `getBeamArea()`/`getExposure()` stubs | MicroED, `BeamGaussian.java:298–306` | MicroED now refuses any beam but TopHat, so the stubs are never read: see *MicroED* below. `getSolventFraction` is read only by MicroED's disabled charge model. |
 
 ---
 
 ## MicroED: found porting it
 
 Found porting `Subprogram EMED` (`backend/microed.py`), against RADDOSE-3D `master` at
-`167fb7a`. None is fixed in RADDOSE-3D yet. "Run" means seen in a Java run; "read" means found
-in the source.
+`167fb7a`. "Run" means seen in a Java run; "read" means found in the source. All but the last
+two are fixed on RADDOSE-3D's `jd_microed_fixes` (`11d03e5`), [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40),
+and the corpus follows that commit.
 
-| defect | where | effect | the port |
+| defect | where | effect | fix, in both |
 |---|---|---|---|
-| Every subprogram crashes in the summary writer once its own files are written | `Crystal.expose` returns without exposing the wedge; `OutputSummaryCSV.publishWedge` reads a null elastic yield | the run exits with an error, after a half-written `Summary.csv` (run) | writes MicroED's two files and nothing else |
-| The PDB route never multiplies its electron-scattering atoms by the molecules in the cell, and gives them no ligands | `CoefCalcFromPDB:381–394`; `multiplyAtomsEM` is never called | the elastic mean free path is far too long -- 45% for 3I40 -- and the counts and grid searches with it (run) | uses the whole cell, and so differs; no corpus case until fixed |
-| The sequence, SAXS-sequence and CIF routes give the electron physics no macromolecule at all | no `...OccurrenceEM` calls in those classes | as above, worse (read) | as above |
-| The CIF route counts its molecular weight twice | `calculateDensity` called twice (`CoefCalcFromCIF:37`); it adds to `molecularWeight` | wrong mass fractions in the stopping power, so the dose too (read) | counts it once |
-| Eight elements have a zero binding energy for their outermost subshell, and aluminium a blank one | `MuCalcConstants.txt`; `getShellBindingSubshell` | Na, Ca, Sc, Ti, V, Cr, Ga, Ge: a NaN inelastic mean free path, so NaN counts and a grid search that ends on 1990 kV and 1995 nm (run, Na). Al: a crash (read) | reproduces the NaN, with a warning; refuses Al |
-| A Gaussian beam gives MicroED no exposure | `BeamGaussian.getExposure` is a stub returning 0 | a dose of zero, NaN, 1990 kV and 1995 nm (run) | refuses it |
-| An experimental beam has no size | `BeamExperimental.getBeamX` returns null | a crash (read) | refuses it |
-| The distant-collision integral mixes two shell models | `integrateDist`, `getpDisW` use `getShellBinding`, everything else `getShellBindingSubshell` | the inelastic mean free path is 7.5% shorter than the subshell model alone gives, for protein at 300 keV (run) | reproduces it |
-| Elements from Z = 35 have no inner subshells in the GOS model | `getNumValenceElectronsSubshells` | every electron counted as valence (read) | reproduces it |
-| A third `Dimensions` value makes a cylinder a cuboid | `Crystal:310–328` | MicroED takes 0.001 nm off a cylinder's thickness only when it has two dimensions (run) | always takes it off |
-| The slice file's depth column assumes 5 nm slices | `MicroED.CalculateEM` | a thickness not a multiple of 5 nm is cut into wider slices than the depths say (read) | reproduces it |
-| A crystal thinner than 5 nm has no slices | `EMStoppingPowerWay` | division by zero, NaN (read) | refuses it |
-| MicroED's class cannot load without Selenium, which only its commented-out NIST lookup uses | `MicroED.java:14–25` | Selenium and its dependencies, 9 MB of the 53 MB jar, are needed to run MicroED at all (run) | needs nothing |
+| Every subprogram crashes in the summary writer once its own files are written | `Crystal.expose` returns without exposing the wedge; `OutputSummaryCSV.publishWedge` reads a null elastic yield | the run exits with an error, after a half-written `Summary.csv` (run) | `Experiment` publishes no wedge for a subprogram; the port writes MicroED's two files and nothing else |
+| The PDB route never multiplies its electron-scattering atoms by the molecules in the cell, and gives them no ligands | `CoefCalcFromPDB:381–394`; `multiplyAtomsEM` is never called | the elastic mean free path is far too long -- 45% for 3I40 -- and the counts and grid searches with it (run) | the electron physics reads the one composition; cases 128 and 129 |
+| The sequence, SAXS-sequence and CIF routes give the electron physics no macromolecule at all | no `...OccurrenceEM` calls in those classes | as above, worse (run) | as above; cases 130 and 131 |
+| The distant-collision integral mixes two shell models | `integrateDist`, `getpDisW` read `getShellBinding(i)`, whose index counts shells (K, L1, M1), so the L2 integral started at the M1 edge | the inelastic mean free path is 7.5% shorter than the subshell model gives: 234.20 nm for insulin at 300 keV, where it is 253.15 (run) | both read `getShellBindingSubshell`. **A physics change, for sign-off.** |
+| Eight elements have a zero binding energy for a subshell the GOS model reads, and aluminium a blank one | `MuCalcConstants.txt`; `getShellBindingSubshell` | Na, Ca, Sc, Ti, V, Cr, Ga, Ge: a NaN inelastic mean free path, so NaN counts and grid searches that end on 1990 kV and 1995 nm (run, Na). Al: `NullPointerException` (read) | a warning, NaN for everything the inelastic model feeds, and no search; cases 127 and 132. Real binding energies are a question for the group. |
+| A Gaussian beam gives MicroED no exposure | `BeamGaussian.getExposure` is a stub returning 0 | a dose of zero, NaN, 1990 kV and 1995 nm (run) | refused, as is any beam but TopHat |
+| An experimental beam has no size | `BeamExperimental.getBeamX` returns null | a crash (read) | refused |
+| A TopHat beam without `Exposure` | `BeamTophat.getExposure` unboxes null | `NullPointerException` (read) | refused |
+| A crystal thinner than 5 nm has no slices | `EMStoppingPowerWay` | a dose of 0/0, NaN (read) | one slice; case 133 |
+| The slice file's depth column assumes 5 nm slices | `MicroED.CalculateEM` | a thickness not a multiple of 5 nm is cut into wider slices than the depths say (read) | the depths step by the real width; cases 122 and 124 |
+| MicroED's class cannot load without Selenium, which only its commented-out NIST lookup uses | `MicroED.java:14–25` | Selenium and its dependencies, 9 MB of the 53 MB jar, are needed to run MicroED at all (run) | the lookup and the library are gone |
+| Elements from Z = 35 have no inner subshells in the GOS model | `getNumValenceElectronsSubshells` | every electron counted as valence (read) | open; the port reproduces it |
+| A third `Dimensions` value makes a cylinder a cuboid | `Crystal:310–328` | MicroED takes 0.001 nm off a cylinder's thickness only when it has two dimensions (run) | open; the port always takes it off |
 
-The defects that move numbers want the group's sign-off, as #38 did: the electron-scattering
-composition, the shell models, and the binding energies.
+An earlier version of this table said the CIF route counts its molecular weight twice. It does
+not: `CoefCalcFromCIF` calls `calculateDensity` once.
+
+With the shell models made one, the port's inelastic mean free path agrees with the Java's to
+2 ulp. The 3e-9 it differed by before came from the mixing: whether an integral took its last
+point turned on the last bit of an energy computed from the other shell model.
 
 ## Monte Carlo and XFEL: found surveying them
 

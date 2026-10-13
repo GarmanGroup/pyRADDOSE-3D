@@ -1,4 +1,5 @@
 crystal:
+  subprogram: rd3d
   pixels_per_micron: null
   angle_p: 30.0
   angle_l: 20.0

@@ -10,17 +10,18 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
 
 **It does what RADDOSE-3D's MX calculation and its MicroED engine do, value for value.**
 
-- 12,700 lines of Python in `src/` and 10,600 in `tests/`. 1,383 tests, none expected to fail.
+- 12,700 lines of Python in `src/` and 10,600 in `tests/`. 1,422 tests, none expected to fail.
 - Every input RADDOSE-3D's MX calculation accepts is ported, except two that cannot be:
   `AbsCoefCalc RDV2`/`RDV3` run the original Fortran RADDOSE as an external program, and
   `Type Experimental` cannot be built from an input file by RADDOSE-3D either.
-- 67 conformance cases, generated from RADDOSE-3D, match it within measured tolerances. They
+- 73 conformance cases, generated from RADDOSE-3D, match it within measured tolerances. They
   cover the sixteen summary numbers, the dose field and per-image series behind them, and the
   output files themselves. Photoelectron and fluorescence escape are included, value by value.
 - **MicroED** (`Subprogram EMED`) is ported: the dose to a thin crystal in an electron beam,
   slice by slice, the scattering counts, and the grid search for the best voltage and
-  thickness. Its eight cases agree with RADDOSE-3D to the last printed digit, but for the
-  inelastic mean free path, within 3e-9. It needs no new dependency and 0.37 MB of data.
+  thickness. Its fourteen cases agree with RADDOSE-3D to the last printed digit or two, against
+  RADDOSE-3D with its MicroED fixes (#40, step 4). It needs no new dependency and 0.37 MB of
+  data.
 - It reads RADDOSE-3D's `.txt` input files as well as YAML, and writes the same eight output
   files RADDOSE-3D writes.
 - `solve()` is differentiable end to end, apart from escape, which is Monte Carlo. Ten tunable
@@ -173,6 +174,7 @@ These decide what happens after step 2, and none of them is code.
 | Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | CCP4, and nothing else |
 | Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | step 2's last item; the CLI |
 | A remote for the repository, even a private one | the author | CI on Linux and Windows; the notebooks in CI |
+| Sign-off on #40's two MicroED physics changes, and real binding energies for the nine elements MicroED reports NaN for (step 4) | the group | merging #40, and the corpus following `master` again |
 | Sign-off on fixing Monte Carlo and XFEL's physics defects in RADDOSE-3D (step 6) | the group | porting them faithfully |
 
 The licence itself is settled: AGPL-3.0-only, as RADDOSE-3D is (`HISTORY.md`, Milestone 0).
@@ -190,7 +192,21 @@ The fixes the port found are merged into RADDOSE-3D, as #36, #37 and #38 on 2026
   dose by 3.5% for protein and by 20% for SeMet above the Se K edge. Its fluorescence-direction
   fix moves doses by under 0.1%.
 
-The corpus is regenerated from `master` at `167fb7a`, and no number moved.
+The MicroED fixes are [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40), from
+`jd_microed_fixes` at `11d03e5`, awaiting sign-off. The corpus is regenerated from that commit, so
+for now it follows a branch rather than `master`. The MX numbers moved by at most 3e-14, from
+the order a `HashSet` sums elements in. #40:
+
+- ends the `NullPointerException` that every XFEL, MicroED and Monte Carlo run ended in;
+- gives the electron physics the whole crystal for PDB, sequence and CIF compositions. It used to
+  see one molecule's protein, the solvent alone, or nothing;
+- makes the distant-collision integral use one shell model, which lengthens insulin's inelastic
+  mean free path at 300 keV from 234.20 to 253.15 nm (a physics change, for sign-off);
+- reports NaN for Na, Al, Ca, Sc, Ti, V, Cr, Ga and Ge, whose tables lack a binding energy the
+  GOS model reads, with a warning and no grid search. Al used to crash, and the others' grid
+  searches reported 1990 kV and 1995 nm;
+- gives a crystal thinner than 5 nm one slice, steps slice depths by the real width, refuses
+  beams without an exposure, and removes Selenium, 9 MB of the 53 MB jar.
 
 **Still open in the Java:**
 
@@ -202,18 +218,8 @@ The corpus is regenerated from `master` at `167fb7a`, and no number moved.
 - An NMR or EM model given to `AbsCoefCalc EXP` gets a dose for a cell of water. With no
   `REMARK 290`, `CoefCalcFromPDB` has no symmetry operators, so no macromolecule. The port
   refuses such files.
-- MicroED, found porting it, with how the port handles each (`UPSTREAM_FIXES.md`):
-  - every subprogram run crashes in the summary writer once its own files are written, so it
-    exits with an error;
-  - the electron-scattering composition is incomplete for PDB files (one asymmetric unit, no
-    ligands), and empty for sequence, SAXS-sequence and CIF compositions, so their scattering
-    counts and grid searches are wrong -- the port uses the whole cell, and differs;
-  - eight elements, sodium and calcium among them, give a NaN inelastic mean free path, and
-    aluminium crashes it -- reproduced with a warning, and refused;
-  - a Gaussian beam gives no exposure, a dose of zero, and an experimental one crashes -- the
-    port refuses both;
-  - the Selenium library, 9 MB of the 53 MB jar, is needed only to load code that is
-    commented out.
+- MicroED, beyond #40: elements from Z = 35 have no inner subshells in the GOS model, and a
+  third `Dimensions` value makes a cylinder a cuboid (`UPSTREAM_FIXES.md`).
 - `MicroED.getSolventFraction()` returns 0 when explicitly set; it is read only by MicroED's
   disabled charge model.
 - Monte Carlo and XFEL's physics defects, step 6.
@@ -287,9 +293,9 @@ optimisation. Submission to CCP4 goes through Working Group 2, once the licence 
 ## Verification, throughout
 
 - Every change keeps the conformance corpus identical unless it deliberately changes a number,
-  and a changed expectation is a reviewable diff. The baseline is 67 of 67. The worst deviation
-  is 2.0e-4 (`102-escape-pe-fl`, `dose_threshold`, a quantised quantity), and 6.5e-5 for the
-  rest. `pytest tests/conformance` prints the per-case table.
+  and a changed expectation is a reviewable diff. The baseline is 73 of 73. The worst deviation
+  is 1.3e-4 (`063-wedge-full-rotation`, `dose_threshold`, a quantised quantity), and 5.0e-5 for
+  the rest. `pytest tests/conformance` prints the per-case table.
 - New readers and writers are checked against RADDOSE-3D's own output for the same input,
   through `generate.py`, never against hand-written expectations.
 - `solve()` with no overrides stays pure NumPy. `test_no_overrides_stays_on_numpy` and the

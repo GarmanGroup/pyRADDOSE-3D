@@ -445,7 +445,7 @@ def test_errors_name_the_file_and_line() -> None:
         ("beam", "PulseEnergy 1", "XFEL"),
         ("crystal", "Subprogram MonteCarlo", "Monte Carlo engine"),
         ("crystal", "Subprogram XFEL", "XFEL engine"),
-        ("crystal", "Subprogram EMSP", "MicroED engine"),
+        ("crystal", "Subprogram EMSP", "MicroED needs a TopHat beam"),
         ("crystal", "Runs 3", "Monte Carlo"),
         ("crystal", "AbsCoefCalc RDV2", "Fortran"),
     ],
@@ -719,8 +719,8 @@ def test_a_microed_beam_may_come_before_its_crystal() -> None:
 @pytest.mark.parametrize(
     ("profile", "why"),
     [
-        ("Type Gaussian\nFWHM 2 2", "no exposure"),
-        ("Type ExperimentalPGM\nFile beam.pgm\nPixelSize 1 1", "crashes it"),
+        ("Type Gaussian\nFWHM 2 2", "this beam is Gaussian"),
+        ("Type ExperimentalPGM\nFile beam.pgm\nPixelSize 1 1", "needs a TopHat beam"),
     ],
 )
 def test_microed_takes_its_exposure_from_a_tophat_only(profile: str, why: str) -> None:
@@ -730,7 +730,7 @@ def test_microed_takes_its_exposure_from_a_tophat_only(profile: str, why: str) -
 
 
 def test_microed_needs_an_exposure() -> None:
-    """RADDOSE-3D crashes without one."""
+    """RADDOSE-3D refuses a TopHat beam without one too."""
     beam = "Beam\nType TopHat\nEnergy 300\nCollimation Rectangular 4 4\n"
     with pytest.raises(RaddoseTxtError, match="Exposure is required"):
         read(MICROED_CRYSTAL + beam + WEDGE)

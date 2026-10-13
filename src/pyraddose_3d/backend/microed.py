@@ -8,9 +8,10 @@ are both commented out in the Java and so are not here either.
 
 What it computes, for a thin crystal in an electron beam:
 
-- **The dose**, by stopping power. The crystal is cut into 5 nm slices along
-  the beam. Each slice takes the stopping power at the energy its electrons
-  enter with, and the dose reported is the mean over the slices.
+- **The dose**, by stopping power. The crystal is cut along the beam into as
+  many 5 nm slices as fit, at least one, which share its thickness equally.
+  Each slice takes the stopping power at the energy its electrons enter with,
+  and the dose reported is the mean over the slices.
 - **How many electrons scatter**: elastically, exactly once elastically, and
   inelastically, from the elastic mean free path (ELSEPA cross-sections) and
   the inelastic one (a generalised oscillator strength, GOS, model). An
@@ -26,26 +27,20 @@ included -- some methods take the speed of light as 3e8 and others as
 iterates a ``HashSet``, so the two can differ in the last bit; nothing else
 should differ.
 
-What RADDOSE-3D gets wrong
---------------------------
-- **The distant-collision integral mixes two shell models.** Its upper limit
-  comes from the subshell binding energies the rest of the GOS model uses,
-  but it starts from, and takes its distribution from, ``getShellBinding``'s
-  coarser K, L1 and M1 edges, and zero beyond. Reproduced.
-- **An element whose outermost subshell has a zero binding energy** in the
-  tables -- Na, Ca, Sc, Ti, V, Cr, Ga and Ge -- makes the close-collision
-  integral divide by zero, so the inelastic mean free path is NaN, and with it
-  the inelastic and productive counts and the information coefficient. The
-  grid searches then never stop, and report 1990 kV and 1995 nm. The dose is
-  unaffected. Reproduced, with a warning.
-- **Aluminium**, whose M1 binding energy is blank, crashes RADDOSE-3D. Refused.
-- **A crystal thinner than one 5 nm slice** divides by zero slices. Refused.
+Elements the tables have no binding energies for
+-------------------------------------------------
+The GOS model reads every subshell's binding energy up to the valence one,
+and RADDOSE-3D's tables give zero for one of them for Na, Ca, Sc, Ti, V, Cr,
+Ga and Ge, and leave aluminium's M1 blank. For a crystal containing any of
+them, RADDOSE-3D reports NaN for the inelastic mean free path and everything
+it feeds -- the inelastic and productive counts, the information coefficient
+and the best voltage and thickness -- and warns. The dose and the elastic
+counts are unaffected. So does this port.
 
-Whether a distant-collision integral takes its last point can turn on the
-last bit of a resonance energy, which depends on the order the elements are
-summed in. RADDOSE-3D's order is a ``HashSet``'s, which no other program can
-reproduce. On the baseline crystal one zinc subshell then differs by 6e-5,
-and the inelastic mean free path by 3e-9.
+This follows RADDOSE-3D with its MicroED fixes, ``jd_microed_fixes`` at
+``11d03e5``. Before them, the distant-collision integral mixed two shell
+models, and the electron physics saw part of the crystal, or none of it, for
+PDB, sequence and CIF compositions (``UPSTREAM_FIXES.md``).
 """
 
 from __future__ import annotations
@@ -387,11 +382,6 @@ def electron_material(composition: Composition, density: Any) -> ElectronMateria
     ElectronMaterial
         The material, with each element's tables attached.
 
-    Raises
-    ------
-    ValueError
-        If an element present has a blank binding energy the GOS model
-        reads, which crashes RADDOSE-3D.
     """
     shells = _shell_table()
     elsepa = _elsepa()
@@ -409,7 +399,6 @@ def electron_material(composition: Composition, density: Any) -> ElectronMateria
                 elastic=elsepa[z],
             )
         )
-    _refuse_missing_bindings(atoms)
 
     cell_volume = float(composition.cell_volume)
     molecular_weight = 0.0
@@ -435,32 +424,32 @@ def electron_material(composition: Composition, density: Any) -> ElectronMateria
         plasma_energy=plasma,
         total_charge=total_charge,
     )
+    if lacking_bindings(material):
+        return material
     return dataclasses.replace(material, sternheimer_a=_sternheimer_a(material))
 
 
-def _refuse_missing_bindings(atoms: list[_Atom]) -> None:
-    """Refuse what crashes RADDOSE-3D: a blank binding energy the GOS model reads."""
-    for atom in atoms:
-        if atom.count <= 0:
-            continue
-        _, inner = atom.valence
-        if None in atom.shells.subshells[: inner + 1]:
-            raise ValueError(
-                f"RADDOSE-3D's tables have no binding energy for one of "
-                f"{atom.symbol}'s subshells, and its MicroED inelastic model "
-                f"crashes reading it. MicroED cannot be run for a crystal "
-                f"containing {atom.symbol}."
-            )
+def lacking_bindings(material: ElectronMaterial) -> tuple[str, ...]:
+    """``getElementsLackingBindingEnergies``: what the GOS model cannot use.
 
+    Parameters
+    ----------
+    material : ElectronMaterial
+        The crystal.
 
-def _unbound(material: ElectronMaterial) -> list[str]:
-    """Elements whose outermost subshell has a zero binding energy."""
-    unbound = []
-    for atom in material.atoms:
+    Returns
+    -------
+    tuple[str, ...]
+        The elements present, in atomic-number order, for which the tables
+        give a zero or blank binding energy for a subshell up to the valence
+        one. Empty when the GOS model has every binding energy it reads.
+    """
+    lacking = []
+    for atom in sorted(material.atoms, key=lambda atom: atom.z):
         _, inner = atom.valence
-        if atom.count > 0 and atom.shells.subshells[inner] == 0.0:
-            unbound.append(atom.symbol)
-    return unbound
+        if any(b is None or b <= 0 for b in atom.shells.subshells[: inner + 1]):
+            lacking.append(atom.symbol)
+    return tuple(lacking)
 
 
 # --- Stopping power -------------------------------------------------------
@@ -751,39 +740,33 @@ def _close_integral(energy: float, uk: float, qak: float) -> float:
     return _close_analytical(w_max, energy, a) - _close_analytical(qak, energy, a)
 
 
-def _distant_integral(energy: float, uk: float, wk: float, shell: float) -> float:
+def _distant_integral(energy: float, binding: float, wk: float) -> float:
     """``integrateDist`` for n = 0: distant collisions, by the trapezium rule.
 
-    Two binding energies meet here, as in the Java. The upper limit, W_dis,
-    comes from the subshell's binding energy ``uk``, in eV, as everywhere
-    else in the GOS model. But ``integrateDist`` starts W at, and
-    ``getpDisW`` builds its distribution from, ``getShellBinding`` -- the
-    coarser shell model's K, L1 or M1 edge, and zero beyond -- given here as
-    ``shell``, in keV. Reproduced.
-
-    The Java walks W from the start in steps of W_dis / 1000 while W does not
-    exceed W_dis, adding as it goes. The steps are accumulated and the
-    trapezia summed in the same order, so the sums are the Java's.
+    The distribution, ``getpDisW``, is a triangle from the subshell's binding
+    energy, ``binding`` in keV, to W_dis. The Java walks W from the binding
+    energy in steps of W_dis / 1000 while W does not exceed W_dis, adding as
+    it goes. The steps are accumulated and the trapezia summed in the same
+    order, so the sums are the Java's.
     """
+    uk = binding * 1000
     wak = _wak(energy, wk, uk)
     w_dis = ((3 * wak - 2 * uk) / 1000) * KEV_TO_JOULES
     step = w_dis / (_W_BINS)
-    w_start = shell * KEV_TO_JOULES
+    w_start = binding * KEV_TO_JOULES
     if not w_start <= w_dis:
         return 0.0
     count = int((w_dis - w_start) / step) + 3
     w = np.add.accumulate(np.concatenate(([w_start], np.full(count, step))))
     w = w[w <= w_dis]
 
-    # getpDisW: the distribution, from the shell model's binding energy.
-    shell_uk = shell * 1000
-    shell_wak = _wak(energy, wk, shell_uk)
-    shell_w_dis = ((3 * shell_wak - 2 * shell_uk) / 1000) * KEV_TO_JOULES
-    shell_uk_j = (shell_uk / 1000) * KEV_TO_JOULES
-    inside = (w >= shell_uk_j) & (w < shell_w_dis)
+    # getpDisW, which converts the binding energy by way of eV, so its lower
+    # limit can be an ulp away from the walk's start.
+    uk_j = (uk / 1000) * KEV_TO_JOULES
+    inside = (w >= uk_j) & (w < w_dis)
     density = np.where(
         inside,
-        (2 / math.pow(shell_w_dis - shell_uk_j, 2)) * (shell_w_dis - w),
+        (2 / math.pow(w_dis - uk_j, 2)) * (w_dis - w),
         0.0,
     )
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -812,8 +795,11 @@ def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float
     Returns
     -------
     float
-        The mean free path in nm.
+        The mean free path in nm; NaN for a crystal containing an element
+        in :func:`lacking_bindings`.
     """
+    if lacking_bindings(material):
+        return math.nan
     a = material.sternheimer_a
     m = _ELECTRON_MASS
     csquared = _SPEED_OF_LIGHT * _SPEED_OF_LIGHT
@@ -845,7 +831,7 @@ def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float
             wak = _wak(energy, wk, uk)
             qak = _qak(energy, wk, uk)
             q_minus = _q_minus(energy, wak)
-            integral = _distant_integral(energy, uk, wk, atom.shell_binding(index))
+            integral = _distant_integral(energy, atom.subshell_binding(index), wk)
             if energy * 1000 > uk and uk >= _FCB_CUTOFF:
                 longitudinal = 0.0
                 if qak > 0 and q_minus > 0:
@@ -903,8 +889,11 @@ class MicroEDResult:
     dose : float
         Mean dose over the slices of the exposed volume, in MGy.
     slice_doses : tuple[float, ...]
-        Dose of each 5 nm slice, from the entrance face, in MGy. Slices after
-        the electrons have stopped are zero.
+        Dose of each slice, from the entrance face, in MGy. The slices share
+        the thickness equally, at least 5 nm each, and there is always at
+        least one. Slices after the electrons have stopped are zero.
+    slice_width : float
+        Their width, in nm.
     elastic, single_elastic, inelastic, productive : float
         Electrons scattered elastically at least once, exactly once,
         inelastically, and productive: once elastically, never inelastically.
@@ -920,11 +909,15 @@ class MicroEDResult:
         At the beam energy, in nm.
     csda_range : float
         Continuous-slowing-down range at the beam energy, in nm.
+    lacking_bindings : tuple[str, ...]
+        The elements the inelastic model has no binding energies for. When
+        there are any, every value the inelastic model feeds is NaN.
     """
 
     energy: float
     dose: float
     slice_doses: tuple[float, ...]
+    slice_width: float
     elastic: float
     single_elastic: float
     inelastic: float
@@ -936,6 +929,7 @@ class MicroEDResult:
     elastic_mean_free_path: float
     inelastic_mean_free_path: float
     csda_range: float
+    lacking_bindings: tuple[str, ...] = ()
 
 
 def _exposed_area(
@@ -1079,30 +1073,12 @@ def microed(
     -------
     MicroEDResult
         The dose, the scattering counts and the grid searches.
-
-    Raises
-    ------
-    ValueError
-        If the crystal is thinner than one 5 nm slice.
     """
+    lacking = lacking_bindings(material)
+    if lacking:
+        warnings.warn(lacking_bindings_warning(lacking), stacklevel=2)
     thickness = dimensions_nm[2]
-    slices = int(thickness / _SLICE_THICKNESS)
-    if slices < 1:
-        raise ValueError(
-            f"the crystal is {thickness:g} nm thick, thinner than RADDOSE-3D's "
-            f"5 nm slice; it would divide by zero slices and report NaN"
-        )
-
-    unbound = _unbound(material)
-    if unbound:
-        warnings.warn(
-            f"{', '.join(unbound)} has a zero binding energy for its outermost "
-            f"subshell in RADDOSE-3D's tables, so the inelastic mean free path is "
-            f"NaN, as RADDOSE-3D reports it. The dose is unaffected; the inelastic "
-            f"and productive counts, the information coefficient and the best "
-            f"voltage and thickness are meaningless.",
-            stacklevel=2,
-        )
+    slices = max(1, int(thickness / _SLICE_THICKNESS))
 
     range_nm = csda_range(material, energy)
 
@@ -1142,15 +1118,20 @@ def microed(
     dose = total / slices
 
     information = productive / dose
-    best_energy = _best_energy(
-        material, electrons, _exposed_mass(material, area, thickness), thickness
-    )
-    best_thickness = _best_thickness(material, electrons, area, energy)
+    # Both searches stop where the information coefficient falls, which a NaN
+    # never does, so without the inelastic model there is nothing to search.
+    best_energy = best_thickness = math.nan
+    if not lacking:
+        best_energy = _best_energy(
+            material, electrons, _exposed_mass(material, area, thickness), thickness
+        )
+        best_thickness = _best_thickness(material, electrons, area, energy)
 
     return MicroEDResult(
         energy=energy,
         dose=dose,
         slice_doses=tuple(slice_doses),
+        slice_width=thickness / slices,
         elastic=elastic,
         single_elastic=single_elastic,
         inelastic=inelastic,
@@ -1162,4 +1143,19 @@ def microed(
         elastic_mean_free_path=elastic_lambda,
         inelastic_mean_free_path=inelastic_lambda,
         csda_range=range_nm,
+        lacking_bindings=lacking,
+    )
+
+
+def lacking_bindings_warning(lacking: tuple[str, ...]) -> str:
+    """What RADDOSE-3D prints for elements in :func:`lacking_bindings`.
+
+    It follows ``Warning: `` in RADDOSE-3D's output.
+    """
+    return (
+        f"the element tables have no binding energy for one or more "
+        f"of the subshells of {', '.join(lacking)}, which the inelastic (GOS) "
+        f"model needs. The inelastic and productive counts, the information "
+        f"coefficient and the optimal voltage and thickness are reported as "
+        f"NaN. The dose and the elastic counts are unaffected."
     )

@@ -1210,17 +1210,12 @@ def _electron_beam(
     written = _require(
         stream, values, "type", "Type", line, "RADDOSE-3D needs the beam profile"
     )
-    profile = written.upper()
-    if profile != "TOPHAT":
-        why = {
-            "GAUSSIAN": "it gives a Gaussian beam no exposure, so a dose of zero "
-            "and an information coefficient of NaN",
-            "EXPERIMENTALPGM": "an experimental beam has no size and crashes it",
-        }.get(profile, f"{written!r} is not a beam profile")
+    if written.upper() != "TOPHAT":
         raise stream.error(
             values["type"][1],
-            f"RADDOSE-3D's MicroED engine takes its exposure from a TopHat beam "
-            f"only: {why}",
+            f"MicroED needs a TopHat beam with an Exposure in electrons per "
+            f"square Angstrom, and this beam is {written}; RADDOSE-3D refuses "
+            f"it too",
         )
     beam: dict[str, Any] = {
         "type": "electron",

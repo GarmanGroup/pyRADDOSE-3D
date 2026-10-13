@@ -1,0 +1,6 @@
+case_id: 133-microed-thinner-than-a-slice
+tier: A
+exercises: 'MicroED: 4 nm thick, less than one 5 nm slice'
+seed: 20260917
+reference_version: 5.0.1087
+reference_commit: 11d03e5

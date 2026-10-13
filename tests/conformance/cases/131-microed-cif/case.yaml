@@ -1,0 +1,6 @@
+case_id: 131-microed-cif
+tier: A
+exercises: 'MicroED: composition from a CIF, urea'
+seed: 20260917
+reference_version: 5.0.1087
+reference_commit: 11d03e5

@@ -124,12 +124,6 @@ def run_reference(root: Path, input_text: str, out_dir: Path) -> None:
             )
 
 
-#: What RADDOSE-3D prints on stderr when it falls over after a subprogram:
-#: ``Crystal.expose`` returns without exposing the wedge, and the summary
-#: writer then reads the wedge's elastic yield, which is null. MicroED has
-#: written its own files by then.
-SUBPROGRAM_CRASH = "ExposureSummary.getWedgeElastic()"
-
 #: The files MicroED writes, under fixed names, to the working directory.
 MICROED_FILES = ("outputMicroED.CSV", "outputMicroED_slices.csv")
 
@@ -138,22 +132,16 @@ def run_microed_reference(root: Path, input_text: str, out_dir: Path) -> str:
     """Run the reference on a MicroED input, returning what it printed.
 
     MicroED writes its files to the working directory rather than under the
-    output prefix, so it runs in ``out_dir``. And RADDOSE-3D crashes after
-    every subprogram, once its files are written; that crash, and only
-    that one, is let through.
+    output prefix, so it runs in ``out_dir``.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     input_path = out_dir / "input.txt"
     input_path.write_text(input_text, encoding="utf-8")
-    # MicroED.java imports Selenium for its NIST lookup, which is commented
-    # out, but the class does not load without it.
-    selenium = sorted((root / "lib" / "selenium").rglob("*.jar"))
-    classpath = os.pathsep.join([java_classpath(root), *map(str, selenium)])
     result = subprocess.run(
         [
             "java",
             "-cp",
-            classpath,
+            java_classpath(root),
             "se.raddo.raddose3D.RD3D",
             "--seed",
             str(SEED),
@@ -168,21 +156,27 @@ def run_microed_reference(root: Path, input_text: str, out_dir: Path) -> str:
         stdin=subprocess.DEVNULL,
     )
     written = all((out_dir / name).is_file() for name in MICROED_FILES)
-    if result.returncode != 0 and not (written and SUBPROGRAM_CRASH in result.stderr):
+    if result.returncode != 0 or not written:
         raise RuntimeError(
             f"reference run failed:\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}"
         )
     return result.stdout
 
 
+#: The first line ``MicroED.CalculateEM`` prints: a warning, if the GOS
+#: model lacks binding energies, and otherwise the density.
+REPORT_STARTS = ("Warning: the element tables", "The density is")
+
+#: Its last: the optimal thickness, or that there was no search.
+REPORT_ENDS = ("The optimal thickness", "The optimal accelerating voltage and")
+
+
 def microed_report(stdout: str) -> str:
-    """The lines ``MicroED.CalculateEM`` prints, from the density to the
+    """The lines ``MicroED.CalculateEM`` prints, from the first to the
     optimal thickness."""
     lines = stdout.splitlines()
-    start = next(i for i, line in enumerate(lines) if line.startswith("The density is"))
-    end = next(
-        i for i, line in enumerate(lines) if line.startswith("The optimal thickness")
-    )
+    start = next(i for i, line in enumerate(lines) if line.startswith(REPORT_STARTS))
+    end = next(i for i, line in enumerate(lines) if line.startswith(REPORT_ENDS))
     return "\n".join(lines[start : end + 1]) + "\n"
 
 
@@ -377,24 +371,21 @@ def main(argv: list[str] | None = None) -> None:
                     "angle_degrees": 1.0e-9,
                 },
                 "microed_tolerances": {
-                    "counts_relative": 5.0e-8,
-                    "inelastic_mean_free_path_relative": 1.0e-8,
-                    "elastic_mean_free_path_relative": 1.0e-12,
-                    "slice_dose_relative": 1.0e-9,
+                    "counts_relative": 1.0e-12,
+                    "inelastic_mean_free_path_relative": 1.0e-13,
+                    "elastic_mean_free_path_relative": 1.0e-13,
+                    "slice_dose_relative": 1.0e-12,
                 },
                 "microed_tolerance_rationale": (
-                    "MicroED is deterministic. The dose, every slice and the "
-                    "elastic mean free path agree with the Java at full printed "
-                    "precision. The inelastic mean free path does not quite: "
-                    "whether a distant-collision integral takes its last point "
-                    "turns on the last bit of a resonance energy, which depends "
-                    "on the order elements are summed in, and the Java's is a "
-                    "HashSet's. That moves the path by at most 3.1e-9 (case "
-                    "125). The productive count and the information coefficient "
-                    "go as exp(-thickness / path), which multiplies that by the "
-                    "thickness over the path: 1.0e-8 in case 125, a 765 nm "
-                    "plate. The tolerances allow 3x or more. The grid searches' "
-                    "answers must be exact."
+                    "MicroED is deterministic, and the port agrees with the "
+                    "Java to the last printed digit or two: the productive "
+                    "count to 3.1e-14 (case 131), the inelastic mean free "
+                    "path to 5.9e-15, the elastic to 4.0e-16, and every slice "
+                    "exactly. What remains comes from summing the elements in "
+                    "atomic-number order, where the Java iterates a HashSet. "
+                    "The tolerances allow 15x or more, for other platforms' "
+                    "maths libraries. The grid searches' answers must be "
+                    "exact."
                 ),
                 "array_tolerance_rationale": (
                     "Set by the same rule as the summary tolerances: the "

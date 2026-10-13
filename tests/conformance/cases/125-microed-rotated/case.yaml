@@ -2,5 +2,5 @@ case_id: 125-microed-rotated
 tier: A
 exercises: 'MicroED: a rotated plate, sized by its rotated extent'
 seed: 20260917
-reference_version: 5.0.1086
-reference_commit: 167fb7a
+reference_version: 5.0.1087
+reference_commit: 11d03e5

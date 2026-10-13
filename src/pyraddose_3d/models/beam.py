@@ -131,8 +131,7 @@ class ElectronBeam(RD3DModel):
 
     In a ``.txt`` input, a ``Type TopHat`` beam with ``Exposure`` in an
     experiment whose crystal has ``Subprogram EMED``. RADDOSE-3D's MicroED
-    takes its exposure from a top-hat beam only: a Gaussian beam's is zero,
-    and an experimental one crashes it.
+    refuses any other beam type: only a top-hat beam carries an exposure.
 
     Attributes
     ----------

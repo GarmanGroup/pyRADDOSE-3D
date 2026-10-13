@@ -1,6 +1,6 @@
 case_id: 127-microed-sodium-nan
 tier: A
-exercises: 'MicroED: sodium, whose zero binding energy makes the inelastic path NaN'
+exercises: 'MicroED: sodium, which the GOS model has no binding energy for'
 seed: 20260917
-reference_version: 5.0.1086
-reference_commit: 167fb7a
+reference_version: 5.0.1087
+reference_commit: 11d03e5

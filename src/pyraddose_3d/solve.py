@@ -817,9 +817,8 @@ def microed(experiment: Experiment) -> MicroEDResult:
     Raises
     ------
     ValueError
-        If the experiment is not a MicroED one; if its composition is the
-        average one, which has no elements to scatter from; or if the crystal
-        is thinner than one 5 nm slice.
+        If the experiment is not a MicroED one, or if its composition is the
+        average one, which has no elements to scatter from.
     """
     crystal = experiment.crystal
     beam = experiment.beam

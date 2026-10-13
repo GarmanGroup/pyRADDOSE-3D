@@ -48,9 +48,8 @@ class Experiment(RD3DModel):
         if microed and not electron:
             raise ValueError(
                 "MicroED needs an electron beam (type: electron, with an exposure "
-                "in electrons per square Angstrom). RADDOSE-3D's MicroED takes its "
-                "exposure from a top-hat beam only: a Gaussian beam gives it none, "
-                "and an experimental beam crashes it"
+                "in electrons per square Angstrom): in RADDOSE-3D, a TopHat beam "
+                "with an Exposure, and it refuses any other"
             )
         if electron and not microed:
             raise ValueError(
