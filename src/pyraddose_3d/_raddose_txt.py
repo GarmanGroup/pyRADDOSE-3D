@@ -45,6 +45,7 @@ from pyraddose_3d.models.composition import (
     CifComposition,
     PdbComposition,
     SaxsComposition,
+    SaxsSequenceComposition,
     SequenceComposition,
     SmallMoleculeComposition,
     UnitCellComposition,
@@ -78,12 +79,16 @@ _ABSCOEFCALC = {
     "unit_cell": "RD3D",
     "small_molecule": "SmallMole",
     "saxs": "SAXS",
+    "saxs_sequence": "SAXSSEQ",
     "sequence": "Sequence",
     # The token named PDB matches the literal "EXP"; see PdbComposition.
     "pdb": "EXP",
     # Likewise the token named CIF matches "EXPSM".
     "cif": "EXPSM",
 }
+
+#: ``CoefCalcSAXS.UNIT_CELL_LENGTH`` on each side, the SAXS models' default.
+_SAXS_CELL = (1000.0, 1000.0, 1000.0)
 
 _DECAY_MODEL = {
     "simple": "Simple",
@@ -132,7 +137,10 @@ def _composition_lines(composition: Composition) -> list[str]:
     cell_text = " ".join(_number(v) for v in cell)
     if composition.unit_cell_angles is not None:
         cell_text += " " + " ".join(_number(v) for v in composition.unit_cell_angles)
-    lines.append(f"UnitCell {cell_text}")
+    saxs = isinstance(composition, (SaxsComposition, SaxsSequenceComposition))
+    # A SAXS box left at its default is left out, so RADDOSE-3D applies its own.
+    if not (saxs and cell == _SAXS_CELL and composition.unit_cell_angles is None):
+        lines.append(f"UnitCell {cell_text}")
 
     if isinstance(composition, SmallMoleculeComposition):
         lines.append(f"SmallMoleAtoms {_elements(composition.atoms)}")
@@ -144,6 +152,9 @@ def _composition_lines(composition: Composition) -> list[str]:
         lines.append(f"NumMonomers {composition.num_monomers}")
         if composition.num_carb:
             lines.append(f"NumCarb {composition.num_carb}")
+    elif isinstance(composition, SaxsSequenceComposition):
+        lines.append(f"SeqFile {composition.sequence_file}")
+        lines.append(f"ProteinConc {_number(composition.protein_concentration)}")
     elif isinstance(composition, UnitCellComposition):
         lines.append(f"NumMonomers {composition.num_monomers}")
         lines.append(f"NumResidues {composition.num_residues}")
@@ -627,6 +638,7 @@ _COEFCALC = {
     "EXP": "pdb",
     "PDB": "pdb",
     "SAXS": "saxs",
+    "SAXSSEQ": "saxs_sequence",
     "SEQUENCE": "sequence",
     "SMALLMOLE": "small_molecule",
     "EXPSM": "cif",
@@ -636,7 +648,6 @@ _COEFCALC_REFUSED = {
     "RDV": "runs the original Fortran RADDOSE as an external program",
     "RDV2": "runs the original Fortran RADDOSE as an external program",
     "RDV3": "runs the original Fortran RADDOSE as an external program",
-    "SAXSSEQ": "the SAXS-from-sequence calculation is not ported",
 }
 
 _SUBPROGRAMS = {
@@ -731,7 +742,10 @@ def _composition(
     def get(key: str, default: Any = None) -> Any:
         return values[key][0] if key in values else default
 
-    def cell() -> dict[str, Any]:
+    def cell(optional: bool = False) -> dict[str, Any]:
+        if optional and "unit_cell" not in values:
+            # CoefCalcSAXS's default box of solution, which the model holds.
+            return {}
         edges = _require(
             stream,
             values,
@@ -779,7 +793,7 @@ def _composition(
             **counts,
             **shared,
         }
-    if method == "saxs":
+    if method in ("saxs", "saxs_sequence"):
         concentration = _require(
             stream,
             values,
@@ -788,11 +802,37 @@ def _composition(
             line,
             "a SAXS sample's monomer count comes from its concentration",
         )
+    if method == "saxs":
         return {
             "method": method,
-            **cell(),
+            **cell(optional=True),
             "protein_concentration": concentration,
             **counts,
+            **shared,
+        }
+    if method == "saxs_sequence":
+        sequence = _require(
+            stream,
+            values,
+            "seq_file",
+            "SeqFile",
+            line,
+            f"AbsCoefCalc {written} reads the residues from a sequence file",
+        )
+        if "num_carb" in values:
+            warnings.warn(
+                RaddoseTxtWarning(
+                    f"{stream.source}, line {values['num_carb'][1]}: NumCarb has "
+                    f"no effect with AbsCoefCalc {written}: RADDOSE-3D reads it "
+                    f"and never adds the carbohydrate, and neither does this"
+                ),
+                stacklevel=5,
+            )
+        return {
+            "method": method,
+            **cell(optional=True),
+            "protein_concentration": concentration,
+            "sequence_file": sequence,
             **shared,
         }
     if method == "sequence":

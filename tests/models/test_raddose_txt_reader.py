@@ -361,6 +361,39 @@ def test_escape_and_the_surrounding_are_read() -> None:
     assert escape.surrounding_density == 0.85
 
 
+SAXS_CRYSTAL = """Crystal
+Type Cuboid
+Dimensions 20 16 12
+AbsCoefCalc SAXSSEQ
+SeqFile insulin.fasta
+ProteinConc 10
+"""
+
+
+def test_saxs_from_a_sequence_is_read() -> None:
+    composition = read(SAXS_CRYSTAL + BEAM + WEDGE).crystal.composition
+    assert composition.method == "saxs_sequence"
+    assert composition.sequence_file == "insulin.fasta"
+    assert composition.protein_concentration == 10.0
+
+
+@pytest.mark.parametrize("coefcalc", ["SAXS", "SAXSSEQ"])
+def test_a_saxs_box_defaults_to_1000_angstroms(coefcalc: str) -> None:
+    """As CoefCalcSAXS, which takes 1000 for any edge not given."""
+    text = SAXS_CRYSTAL.replace("SAXSSEQ", coefcalc) + "NumResidues 51\n"
+    composition = read(text + BEAM + WEDGE).crystal.composition
+    assert composition.unit_cell == (1000.0, 1000.0, 1000.0)
+    emitted = read(text + BEAM + WEDGE).to_raddose_txt()
+    assert "UnitCell" not in emitted
+    assert read(emitted) == read(text + BEAM + WEDGE)
+
+
+def test_saxs_from_a_sequence_warns_that_numcarb_does_nothing() -> None:
+    """RADDOSE-3D reads NumCarb here, and then never adds the carbohydrate."""
+    with pytest.warns(RaddoseTxtWarning, match="line 7: NumCarb has no effect"):
+        read(with_lines(SAXS_CRYSTAL, "NumCarb 4") + BEAM + WEDGE)
+
+
 def test_a_pink_beam_is_read() -> None:
     assert (
         read(CRYSTAL + with_lines(BEAM, "EnergyFWHM 0.1") + WEDGE).beam.energy_fwhm
@@ -410,7 +443,6 @@ def test_errors_name_the_file_and_line() -> None:
         ("crystal", "Subprogram EMSP", "MicroED engine"),
         ("crystal", "Runs 3", "Monte Carlo"),
         ("crystal", "AbsCoefCalc RDV2", "Fortran"),
-        ("crystal", "AbsCoefCalc SAXSSEQ", "not ported"),
     ],
 )
 def test_unported_calculations_are_refused_with_the_reason(

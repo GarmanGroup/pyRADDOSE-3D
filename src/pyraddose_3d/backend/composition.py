@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pyraddose_3d.backend._array import array_namespace, promote
@@ -35,16 +36,20 @@ from pyraddose_3d.backend.elements import ATOMIC_MASS_UNIT, element_database
 from pyraddose_3d.backend.residues import ResidueType, residue_database
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from pyraddose_3d.backend.elements import Element
 
 __all__ = [
+    "Chains",
     "Composition",
     "Macromolecule",
     "estimate_solvent_fraction",
+    "parse_sequence",
     "protein_density",
+    "read_sequence_file",
     "saxs_monomer_count",
+    "saxs_sequence_monomer_count",
     "sequence_composition",
     "sequence_residue_counts",
     "small_molecule_composition",
@@ -53,6 +58,9 @@ __all__ = [
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
+
+Chains = tuple[tuple[ResidueType, str], ...]
+"""A sequence file's residues: each line of codes, with what kind they are."""
 
 # --- constants, transcribed from CoefCalcCompute.java -------------------
 AVOGADRO = 6.022e23
@@ -109,10 +117,6 @@ _SAXS_AMINO_ACID_MASS = 110.0
 _SAXS_RNA_MASS = 339.5
 _SAXS_DNA_MASS = 327.0
 _SAXS_CARBOHYDRATE_MASS = 180.0
-
-#: Default edge length for a SAXS "unit cell", which is a box of solution
-#: rather than a crystallographic cell.
-SAXS_DEFAULT_CELL_LENGTH = 1000.0
 
 _ANGSTROM_CUBED_TO_LITRE = 1e-27
 
@@ -502,10 +506,144 @@ def saxs_monomer_count(
             "carbohydrate_residues to a non-zero value."
         )
 
+    return _monomers_in(cell_volume, protein_concentration, molecular_weight)
+
+
+def saxs_sequence_monomer_count(
+    cell_volume: Array,
+    protein_concentration: Array,
+    chains: Chains,
+) -> int:
+    """How many monomers a SAXS sample volume contains, weighed by sequence.
+
+    Ports ``CoefCalcFromSequenceSAXS.calculateNumMonomers``. As
+    :func:`saxs_monomer_count`, but the monomer's mass is the sum of its
+    residues' real masses rather than a count times an average.
+
+    Parameters
+    ----------
+    cell_volume : Array
+        Volume of the box in cubic Angstroms.
+    protein_concentration : Array
+        Concentration in grams per litre.
+    chains : Chains
+        The monomer's residues, as :func:`parse_sequence` returns them.
+
+    Returns
+    -------
+    int
+        Monomers in the box, never fewer than one.
+
+    Raises
+    ------
+    ValueError
+        If the sequence has no residues, and so the monomer no mass.
+    """
+    database = residue_database()
+    molecular_weight = 0.0
+    for residue_type, residues in chains:
+        for character in residues:
+            if not character.isspace():
+                residue = database.by_letter(character, residue_type)
+                molecular_weight += residue.molecular_weight
+    if molecular_weight <= 0:
+        raise ValueError(
+            "SAXS from a sequence needs a monomer with mass, and the sequence "
+            "file has no residues"
+        )
+    return _monomers_in(cell_volume, protein_concentration, molecular_weight)
+
+
+def _monomers_in(
+    cell_volume: Array, protein_concentration: Array, molecular_weight: float
+) -> int:
+    """Molecules of a given mass in a box of solution, at least one.
+
+    Rounded half up, as ``Math.round``; Python's ``round`` would take a half
+    to the even neighbour.
+    """
     molarity = protein_concentration / molecular_weight
     volume_litres = _ANGSTROM_CUBED_TO_LITRE * cell_volume
-    count = round(float(molarity * volume_litres * AVOGADRO))
+    count = math.floor(float(molarity * volume_litres * AVOGADRO) + 0.5)
     return max(count, 1)
+
+
+def parse_sequence(text: str) -> Chains:
+    """Split a sequence file into lines of residue codes, each with its type.
+
+    Ports ``CoefCalcFromSequence.parseSequenceFile``. A line starting ``>``
+    is a header, and says what the residues after it are: DNA if it contains
+    ``ISDNA``, RNA if it contains ``ISRNA``, and protein otherwise, in any
+    case. A file can therefore hold several chains of different kinds. Blank
+    lines are skipped.
+
+    Parameters
+    ----------
+    text : str
+        The file's contents.
+
+    Returns
+    -------
+    Chains
+        One entry per line of residues, in file order.
+
+    Raises
+    ------
+    ValueError
+        If residues come before any header, or a character is not a residue
+        code of the type its header gives. RADDOSE-3D fails on both too; on
+        the first it reports the first residue as an unrecognised protein
+        code, because without a header it has no type to look it up as.
+    """
+    chains: list[tuple[ResidueType, str]] = []
+    residue_type: ResidueType | None = None
+    # As BufferedReader.readLine: a line ends at \n, \r or \r\n.
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for number, line in enumerate(lines, start=1):
+        # String.trim, which strips every character up to the space.
+        if not line.strip(_JAVA_TRIMMED):
+            continue
+        if line.startswith(">"):
+            header = line.upper()
+            if "ISDNA" in header:
+                residue_type = ResidueType.DNA
+            elif "ISRNA" in header:
+                residue_type = ResidueType.RNA
+            else:
+                residue_type = ResidueType.PROTEIN
+            continue
+        if residue_type is None:
+            raise ValueError(
+                f"line {number} of the sequence file holds residues before any "
+                "'>' header line, which would say whether they are protein, DNA "
+                "or RNA"
+            )
+        try:
+            sequence_residue_counts(line, residue_type)
+        except ValueError as error:
+            raise ValueError(f"line {number} of the sequence file: {error}") from None
+        chains.append((residue_type, line))
+    return tuple(chains)
+
+
+#: The characters Java's ``String.trim`` removes: everything up to the space.
+_JAVA_TRIMMED = "".join(chr(code) for code in range(33))
+
+
+def read_sequence_file(path: str | Path) -> Chains:
+    """Read a sequence file; see :func:`parse_sequence`.
+
+    Parameters
+    ----------
+    path : str | Path
+        A FASTA-style file of single-letter residue codes.
+
+    Returns
+    -------
+    Chains
+        One entry per line of residues, in file order.
+    """
+    return parse_sequence(Path(path).read_text("ascii"))
 
 
 def sequence_residue_counts(
@@ -549,16 +687,24 @@ def sequence_residue_counts(
         except KeyError:
             raise ValueError(
                 f"{character!r} at position {position} of the sequence is not "
-                f"a recognised {residue_type.name.lower()} residue code."
+                f"a recognised {_TYPE_NAMES[residue_type]} residue code."
             ) from None
         for symbol, number in residue.atoms.items():
             counts[symbol] = counts.get(symbol, 0.0) + number
     return counts
 
 
+#: ``CoefCalcFromSequence.residueTypeName``, for error messages.
+_TYPE_NAMES = {
+    ResidueType.PROTEIN: "protein",
+    ResidueType.RNA: "RNA",
+    ResidueType.DNA: "DNA",
+}
+
+
 def sequence_composition(
     cell_volume: Array,
-    sequence: str,
+    sequence: str | Chains,
     *,
     residue_type: ResidueType = ResidueType.PROTEIN,
     monomers: int = 1,
@@ -577,10 +723,12 @@ def sequence_composition(
     ----------
     cell_volume : Array
         Unit cell volume in cubic Angstroms.
-    sequence : str
-        Single-letter residue codes. Whitespace is ignored.
+    sequence : str | Chains
+        Single-letter residue codes, whitespace ignored, or a sequence file's
+        chains as :func:`parse_sequence` returns them.
     residue_type : ResidueType, optional
-        Whether the sequence is protein, RNA or DNA.
+        Whether a ``str`` sequence is protein, RNA or DNA. Chains carry their
+        own.
     monomers : int, optional
         Copies per unit cell.
     heavy_protein_atoms : Mapping[str, Array], optional
@@ -611,7 +759,11 @@ def sequence_composition(
     estimate saw zero however many were specified; fixed in both.
     """
     database = element_database()
-    residue_counts = sequence_residue_counts(sequence, residue_type)
+    chains = ((residue_type, sequence),) if isinstance(sequence, str) else sequence
+    residue_counts: dict[str, float] = {}
+    for kind, codes in chains:
+        for symbol, number in sequence_residue_counts(codes, kind).items():
+            residue_counts[symbol] = residue_counts.get(symbol, 0.0) + number
 
     per_monomer: dict[str, Array] = {}
 
@@ -627,7 +779,7 @@ def sequence_composition(
         if carbohydrate_residues:
             add_macromolecular(symbol, per_one * carbohydrate_residues)
 
-    residues = _residue_totals(sequence, residue_type, monomers, carbohydrate_residues)
+    residues = _residue_totals(chains, monomers, carbohydrate_residues)
     if solvent_fraction is None:
         solvent_fraction = estimate_solvent_fraction(cell_volume, residues)
 
@@ -657,8 +809,7 @@ def sequence_composition(
 
 
 def _residue_totals(
-    sequence: str,
-    residue_type: ResidueType,
+    chains: Sequence[tuple[ResidueType, str]],
     monomers: int,
     carbohydrate_residues: int = 0,
 ) -> Macromolecule:
@@ -670,10 +821,13 @@ def _residue_totals(
     ``addCarbs``, which ran after the estimate had already been made; fixed in
     both.
     """
-    length = sum(1 for c in sequence if not c.isspace())
-    counts = {"monomers": monomers, "carbohydrate_residues": carbohydrate_residues}
-    if residue_type is ResidueType.PROTEIN:
-        return Macromolecule(amino_acids=length, **counts)
-    if residue_type is ResidueType.RNA:
-        return Macromolecule(rna_nucleotides=length, **counts)
-    return Macromolecule(dna_nucleotides=length, **counts)
+    lengths = dict.fromkeys(ResidueType, 0)
+    for residue_type, residues in chains:
+        lengths[residue_type] += sum(1 for c in residues if not c.isspace())
+    return Macromolecule(
+        monomers=monomers,
+        amino_acids=lengths[ResidueType.PROTEIN],
+        rna_nucleotides=lengths[ResidueType.RNA],
+        dna_nucleotides=lengths[ResidueType.DNA],
+        carbohydrate_residues=carbohydrate_residues,
+    )

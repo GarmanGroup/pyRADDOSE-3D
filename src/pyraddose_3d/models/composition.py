@@ -8,8 +8,9 @@ load time rather than part way through a run.
 A field has a default only where RADDOSE-3D has one, and it is RADDOSE-3D's.
 The Java's residue counts are uninitialised ``int`` fields, so an omitted
 count is zero; the unit cell and the monomer count have no usable default and
-are required. These used to default to insulin's values, so a configuration
-that left out ``num_residues`` was silently insulin.
+are required, except that a SAXS sample's "cell" is a box of solution and
+defaults to 1000 A on a side. These used to default to insulin's values, so a
+configuration that left out ``num_residues`` was silently insulin.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ __all__ = [
     "Composition",
     "PdbComposition",
     "SaxsComposition",
+    "SaxsSequenceComposition",
     "SequenceComposition",
     "SmallMoleculeComposition",
     "UnitCellComposition",
@@ -33,6 +35,9 @@ __all__ = [
 
 #: Element symbol paired with a count or concentration.
 ElementAmounts = dict[str, float]
+
+#: ``CoefCalcSAXS.UNIT_CELL_LENGTH``: a SAXS sample's box of solution, in A.
+_SAXS_CELL = (1000.0, 1000.0, 1000.0)
 
 
 class _CellMixin(RD3DModel):
@@ -108,6 +113,8 @@ class SaxsComposition(_CellMixin):
 
     Attributes
     ----------
+    unit_cell : tuple[float, float, float]
+        The box of solution the monomers are counted in, in Angstroms.
     protein_concentration : float
         Protein concentration in grams per litre.
     num_residues : int
@@ -118,6 +125,7 @@ class SaxsComposition(_CellMixin):
     """
 
     method: Literal["saxs"] = "saxs"
+    unit_cell: tuple[float, float, float] = _SAXS_CELL
     protein_concentration: Annotated[float, Field(gt=0.0)]
     num_residues: Annotated[int, Field(ge=0)] = 0
     num_rna: Annotated[int, Field(ge=0)] = 0
@@ -144,6 +152,36 @@ class SequenceComposition(_CellMixin):
     sequence_file: str
     num_monomers: Annotated[int, Field(gt=0)]
     num_carb: Annotated[int, Field(ge=0)] = 0
+    protein_heavy_atoms: ElementAmounts = Field(default_factory=dict)
+    solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
+    solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
+
+
+class SaxsSequenceComposition(_CellMixin):
+    """A SAXS sample, its monomer read from a sequence file (``AbsCoefCalc SAXSSEQ``).
+
+    The monomer count follows from the concentration, as for
+    :class:`SaxsComposition`, but the monomer's mass and atoms come from its
+    residues, as for :class:`SequenceComposition`.
+
+    There is no ``num_carb``: RADDOSE-3D reads ``NumCarb`` here and then
+    never adds the carbohydrate, so it has no effect.
+
+    Attributes
+    ----------
+    unit_cell : tuple[float, float, float]
+        The box of solution the monomers are counted in, in Angstroms.
+    protein_concentration : float
+        Protein concentration in grams per litre.
+    sequence_file : str
+        Path to a FASTA file, resolved relative to the working directory of
+        the run.
+    """
+
+    method: Literal["saxs_sequence"] = "saxs_sequence"
+    unit_cell: tuple[float, float, float] = _SAXS_CELL
+    protein_concentration: Annotated[float, Field(gt=0.0)]
+    sequence_file: str
     protein_heavy_atoms: ElementAmounts = Field(default_factory=dict)
     solvent_heavy_conc: ElementAmounts = Field(default_factory=dict)
     solvent_fraction: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
@@ -200,6 +238,7 @@ Composition = Annotated[
     | CifComposition
     | SmallMoleculeComposition
     | SaxsComposition
+    | SaxsSequenceComposition
     | SequenceComposition,
     Field(discriminator="method"),
 ]

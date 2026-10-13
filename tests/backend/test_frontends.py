@@ -11,7 +11,8 @@ arithmetic, which ``test_coefficients.py`` already covers.
 | ``Default`` / ``RD3D`` | ``CoefCalcFromParams`` | ``test_composition.py`` |
 | ``RDV2`` / ``RDV3`` | ``CoefCalcRaddose`` | not ported -- see below |
 | ``EXP`` | ``CoefCalcFromPDB`` | ``test_structure_files.py`` |
-| ``SAXS`` / ``SAXSSEQ`` | ``CoefCalcSAXS`` | here |
+| ``SAXS`` | ``CoefCalcSAXS`` | here |
+| ``SAXSSEQ`` | ``CoefCalcFromSequenceSAXS`` | here |
 | ``Sequence`` | ``CoefCalcFromSequence`` | here |
 | ``SmallMole`` | ``CoefCalcSmallMolecules`` | here |
 | ``EXPSM`` | ``CoefCalcFromCIF`` | ``test_structure_files.py`` |
@@ -23,6 +24,7 @@ binary nobody has.
 """
 
 import csv
+import math
 import pathlib
 from collections import defaultdict
 
@@ -38,7 +40,10 @@ from pyraddose_3d.backend.coefficients import (
 from pyraddose_3d.backend.composition import (
     Composition,
     Macromolecule,
+    parse_sequence,
+    read_sequence_file,
     saxs_monomer_count,
+    saxs_sequence_monomer_count,
     sequence_composition,
     sequence_residue_counts,
     small_molecule_composition,
@@ -372,9 +377,9 @@ def test_the_same_letter_means_different_residues_by_type() -> None:
 
 
 def test_unknown_sequence_letter_is_reported() -> None:
-    """The Java prints "could not identify the sequence in the file" and then
-    dereferences the null on the next line, so the real symptom is a
-    ``NullPointerException``. Raising here says what went wrong.
+    """RADDOSE-3D used to print "could not identify the sequence in the
+    file" and then dereference the null, so the symptom was a
+    ``NullPointerException``. Both now say what went wrong.
 
     ``O`` (pyrrolysine) and ``U`` (selenocysteine) are the only two letters
     with no protein residue behind them.
@@ -460,3 +465,107 @@ def test_selenomethionine_carries_selenium() -> None:
 def test_unknown_residue_key_is_reported() -> None:
     with pytest.raises(KeyError, match="no residue keyed"):
         residue_database().by_key("ZZZ")
+
+
+# --- Sequence files -----------------------------------------------------
+
+MIXED = """>insulin A chain
+GIVEQCCTSICSLYQLENYCN
+>a DNA strand, marked isDNA
+GAGTTA
+
+>an RNA strand, marked ISRNA
+AAUU
+>back to protein, since this header names neither
+CCTSV
+"""
+
+
+def test_each_header_says_what_its_residues_are() -> None:
+    """``ISDNA`` and ``ISRNA`` anywhere in a header, in any case, as the Java."""
+    assert parse_sequence(MIXED) == (
+        (ResidueType.PROTEIN, "GIVEQCCTSICSLYQLENYCN"),
+        (ResidueType.DNA, "GAGTTA"),
+        (ResidueType.RNA, "AAUU"),
+        (ResidueType.PROTEIN, "CCTSV"),
+    )
+
+
+def test_a_dna_strand_is_not_read_as_protein() -> None:
+    """The port used to drop headers and read everything as protein. ``GATC``
+    is valid protein too -- glycine, alanine, threonine, cysteine -- so the
+    only symptom was a wrong answer.
+    """
+    volume = unit_cell_volume(60.0, 60.0, 120.0, 90.0, 90.0, 120.0)
+    as_file = sequence_composition(
+        volume, parse_sequence(">isDNA\n" + DNA_SEQUENCE), monomers=2
+    )
+    as_dna = sequence_composition(
+        volume, DNA_SEQUENCE, residue_type=ResidueType.DNA, monomers=2
+    )
+    assert _counts(as_file) == _counts(as_dna)
+    assert "P" in _counts(as_file)
+
+
+def test_chains_add_up_to_one_monomer() -> None:
+    volume = unit_cell_volume(78.02, 78.02, 78.02)
+    chains = parse_sequence(MIXED)
+    together = _counts(sequence_composition(volume, chains, solvent_fraction=0.5))
+    solvent = _counts(sequence_composition(volume, (), solvent_fraction=0.5))
+    for kind, residues in chains:
+        for symbol, n in sequence_residue_counts(residues, kind).items():
+            solvent[symbol] = solvent.get(symbol, 0.0) + n
+    assert together == pytest.approx(solvent)
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+def test_any_line_ending(ending: str) -> None:
+    """As ``BufferedReader.readLine``."""
+    assert parse_sequence(MIXED.replace("\n", ending)) == parse_sequence(MIXED)
+
+
+def test_residues_before_any_header_are_refused() -> None:
+    """RADDOSE-3D has no type for them, and fails on the first residue."""
+    with pytest.raises(ValueError, match=r"line 1 .* before any '>' header"):
+        parse_sequence("GIVEQ\n")
+
+
+def test_a_bad_code_names_its_line() -> None:
+    with pytest.raises(ValueError, match=r"line 4 .* 'X' at position 3 .* DNA"):
+        parse_sequence(">protein\nGIVEQ\n>isdna\nGAX\n")
+
+
+def test_reads_a_file(tmp_path: pathlib.Path) -> None:
+    path = tmp_path / "mixed.fasta"
+    path.write_text(MIXED, encoding="ascii")
+    assert read_sequence_file(path) == parse_sequence(MIXED)
+
+
+# --- SAXS from a sequence -----------------------------------------------
+
+
+def test_saxs_sequence_weighs_the_real_residues() -> None:
+    """``CoefCalcFromSequenceSAXS.calculateNumMonomers``, by hand: grams per
+    litre over the summed residue masses, times the box in litres, times
+    Avogadro's number as the Java spells it, rounded half up.
+    """
+    database = residue_database()
+    chains = parse_sequence(MIXED)
+    mass = sum(
+        database.by_letter(letter, kind).molecular_weight
+        for kind, residues in chains
+        for letter in residues
+    )
+    expected = math.floor(10.0 / mass * (1e-27 * SAXS_CELL_VOLUME) * 6.022e23 + 0.5)
+    assert saxs_sequence_monomer_count(SAXS_CELL_VOLUME, 10.0, chains) == expected
+    assert expected > 1
+
+
+def test_saxs_sequence_has_at_least_one_monomer() -> None:
+    chains = parse_sequence(MIXED)
+    assert saxs_sequence_monomer_count(1000.0, 1e-6, chains) == 1
+
+
+def test_saxs_sequence_needs_residues() -> None:
+    with pytest.raises(ValueError, match="no residues"):
+        saxs_sequence_monomer_count(SAXS_CELL_VOLUME, 10.0, ())

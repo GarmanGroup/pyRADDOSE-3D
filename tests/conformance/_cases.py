@@ -384,6 +384,42 @@ _CASES: list[Case] = [
             }
         },
     ),
+    # Insulin's two chains, then a DNA and an RNA strand. Each header says
+    # what follows it; the port used to drop headers and read every residue
+    # as protein, which ACGU, all valid amino acid codes, did not reveal.
+    Case(
+        "037-composition-sequence",
+        "A",
+        "residues from a sequence file of protein, DNA and RNA chains",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "sequence",
+                    "unit_cell": [78.02, 78.02, 78.02],
+                    "num_monomers": 24,
+                    "sequence_file": "tests/data/insulin_and_nucleic_acids.fasta",
+                    "protein_heavy_atoms": {"Zn": 0.333},
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            }
+        },
+    ),
+    # No unit cell: CoefCalcSAXS's 1000 A box of solution.
+    Case(
+        "038-composition-saxs-sequence",
+        "A",
+        "SAXS sample whose monomer is read from a sequence file",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "saxs_sequence",
+                    "protein_concentration": 10.0,
+                    "sequence_file": "tests/data/insulin_and_nucleic_acids.fasta",
+                    "solvent_heavy_conc": {"Na": 150.0},
+                }
+            }
+        },
+    ),
     # --- decay models -------------------------------------------------------
     Case(
         "040-ddm-linear",

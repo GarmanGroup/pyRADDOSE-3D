@@ -35,7 +35,9 @@ from pyraddose_3d.backend.coefficients import (
 )
 from pyraddose_3d.backend.composition import (
     Macromolecule,
+    read_sequence_file,
     saxs_monomer_count,
+    saxs_sequence_monomer_count,
     sequence_composition,
     small_molecule_composition,
     unit_cell_composition,
@@ -428,10 +430,23 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
             solvent_concentrations=composition.solvent_heavy_conc or None,
             solvent_fraction=composition.solvent_fraction,
         )
+    elif method == "saxs_sequence":
+        volume = _cell_volume(composition)
+        chains = read_sequence_file(composition.sequence_file)
+        built = sequence_composition(
+            volume,
+            chains,
+            monomers=saxs_sequence_monomer_count(
+                volume, composition.protein_concentration, chains
+            ),
+            heavy_protein_atoms=composition.protein_heavy_atoms or None,
+            solvent_concentrations=composition.solvent_heavy_conc or None,
+            solvent_fraction=composition.solvent_fraction,
+        )
     elif method == "sequence":
         built = sequence_composition(
             _cell_volume(composition),
-            _read_sequence(composition.sequence_file),
+            read_sequence_file(composition.sequence_file),
             monomers=composition.num_monomers,
             carbohydrate_residues=composition.num_carb,
             heavy_protein_atoms=composition.protein_heavy_atoms or None,
@@ -449,17 +464,6 @@ def crystal_material(composition: Any) -> tuple[Any, Any]:
         raise NotImplementedError(f"composition method {method!r} is not ported")
 
     return built, density(built)
-
-
-def _read_sequence(path: str) -> str:
-    """Read a FASTA file, dropping its comment lines."""
-    from pathlib import Path
-
-    return "".join(
-        line.strip()
-        for line in Path(path).read_text("ascii").splitlines()
-        if not line.startswith(">")
-    )
 
 
 def wedge_resolution(start: float, end: float, requested: float | None) -> float:
@@ -892,7 +896,7 @@ def _escape(
         oil_density = options.surrounding_density
         oil_elements = options.surrounding_elements
         container = crystal.container
-        if crystal.composition.method == "saxs":
+        if crystal.composition.method in ("saxs", "saxs_sequence"):
             # The SAXS routes take the oil from the container when it is not
             # given, as the grammar does.
             if oil_density is None and container is not None:
