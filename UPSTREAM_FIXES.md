@@ -23,7 +23,8 @@ commit carries the corpus regenerated from the branch named beside it.
 | 7, 8, 9, 10, 11, 13; `voxelfluences`; help text | `jd_upstream_input_fixes` | `de87c07` | done; decisions A and B taken as recommended |
 | 1: energy accounting | `jd_upstream_escape_fixes` 4deb672 | `687e7e2` | done; physics change awaiting sign-off |
 | 5: NaN L-shell fluorescence | `jd_upstream_escape_fixes` ce1c0b6 | `8d5544d` | done |
-| 2: fluorescence direction | `jd_upstream_escape_fixes` 31fdb9b | this commit | done; physics change awaiting sign-off |
+| 2: fluorescence direction | `jd_upstream_escape_fixes` 31fdb9b | `81afd79` | done; physics change awaiting sign-off |
+| 3: separate direction tables | `jd_upstream_escape_fixes` 8ee300b | this commit | done |
 
 ---
 

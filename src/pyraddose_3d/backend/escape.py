@@ -37,9 +37,6 @@ Quirks reproduced
 Each is marked where it happens, and listed in the roadmap as a defect to
 report upstream rather than fixed here:
 
-- With a surrounding, the crystal's photoelectrons are drawn using the
-  surrounding's direction weights: both share one field, and the
-  surrounding's is computed last.
 - The surrounding's grid is clamped to the crystal's bounding box before
   its rotations, in a frame that has already turned with the goniometer.
 
@@ -1001,19 +998,6 @@ class Escape:
         flat, inside = self._inside(targets)
         np.add.at(dose, flat[inside], amounts[inside])
 
-    def _bias(self) -> np.ndarray:
-        """The draw table in force: the surrounding's if there is one.
-
-        ``findVoxelsReachedByPE`` runs for the crystal and then for the
-        surrounding, and both write one field, so the crystal's
-        photoelectrons are drawn with the surrounding's weights.
-        """
-        source = (
-            self.surrounding if self.surrounding is not None else self.photoelectron
-        )
-        assert source is not None
-        return source.tracks.bias
-
     def expose_step(
         self,
         *,
@@ -1099,7 +1083,7 @@ class Escape:
                 bounds[:, 0] = np.where(fl_release > 0, fl.tracks, -1)
                 column = 1
             if pe is not None:
-                bounds[:, column:] = len(self._bias())
+                bounds[:, column:] = len(pe.tracks.bias)
             order = bounds.reshape(-1)
             draws = np.full(order.shape, -1, dtype=np.int64)
             wanted = order > 0
@@ -1115,7 +1099,7 @@ class Escape:
                 local = relaxation - fl_release
                 np.add.at(dose, index, np.where(local > 0, local, 0.0))
             offsets = _rotated_offsets(pe.tracks, pe.distances, self.ppm, angle)
-            bias = self._bias()
+            bias = pe.tracks.bias
             first = 1 if fl is not None else 0
             for q in range(PE_ANGLE_RESOLUTION**2):
                 tracks = bias[draws[:, first + q]]
@@ -1229,7 +1213,7 @@ class Escape:
         # energy, whether or not fluorescence escape is on.
         energy_pe = energy - (surrounding.binding_energy / photon_energy) * energy
 
-        bias = self._bias()
+        bias = surrounding.tracks.bias
         draws = self.random.next_ints(
             np.full(len(energy) * PE_ANGLE_RESOLUTION**2, len(bias), dtype=np.int64)
         ).reshape(len(energy), PE_ANGLE_RESOLUTION**2)

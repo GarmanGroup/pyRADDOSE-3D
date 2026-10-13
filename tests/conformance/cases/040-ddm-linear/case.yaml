@@ -2,4 +2,4 @@ case_id: 040-ddm-linear
 tier: A
 exercises: linear diffraction decay model
 seed: 20260917
-reference_version: 5.0.1089
+reference_version: 5.0.1090
