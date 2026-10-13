@@ -26,6 +26,6 @@ Efficiency often peaks right below an edge. The model's edges are sharp steps; r
 ## What it leaves out
 
 - **Anomalous signal.** Diffraction efficiency counts elastically scattered photons, not the anomalous differences a SAD or MAD experiment needs. For those the energy is set by the edge, whatever the efficiency.
-- **Photoelectron escape**, not yet ported. From a crystal of a few micrometres, a photoelectron can carry its energy out before depositing it, more so at higher energies; leaving that out understates what high energies offer small crystals.
+- **Photoelectron escape.** From a crystal of a few micrometres, a photoelectron can carry its energy out before depositing it, more so at higher energies; leaving that out understates what high energies offer small crystals. Escape is modelled, as RADDOSE-3D models it, but by Monte Carlo, which has no gradient -- a configuration with escape on is refused here. Run the chosen energy through `programs/dose` with `escape: {photoelectron: true}` to see how much it changes.
 - **The detector's real efficiency.** The sensor model is the fraction of photons absorbed in it, an upper bound that ignores charge sharing, fluorescence escape, counting thresholds and dead area.
 - **The beamline's flux.** It does not matter: with no decay model, flux and exposure time scale the elastic yield and the dose together, so the efficiency is the same whatever the flux at each energy.

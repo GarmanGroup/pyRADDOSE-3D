@@ -1,8 +1,10 @@
 """The exposure loop: how much dose each voxel receives.
 
-Ports the deterministic path through ``Crystal.expose`` and
-``Crystal.exposeAngle`` -- the MX calculation, with photoelectron and
-fluorescence escape off. Those are Monte Carlo and are not ported.
+Ports ``Crystal.expose`` and ``Crystal.exposeAngle`` -- the MX calculation.
+Photoelectron and fluorescence escape, when on, replace step 4's local
+deposition of the photoelectric dose; they are Monte Carlo, and live in
+:mod:`~pyraddose_3d.backend.escape`. A pink beam repeats step 4 for each of
+its energies, sharing the angle's exposure between them.
 
 What happens, per rotation angle
 --------------------------------
@@ -27,7 +29,8 @@ This is the function the port exists for. Dose is differentiable in beam
 flux, photon energy, beam widths, collimation, exposure time, crystal
 dimensions and rotation angle -- everything a data-collection strategy can
 choose. The gradient is piecewise, inheriting the steps at collimation edges
-and crystal silhouettes from the beam and geometry modules.
+and crystal silhouettes from the beam and geometry modules. Escape modelling
+has none: it chooses each electron's direction at random.
 """
 
 from __future__ import annotations

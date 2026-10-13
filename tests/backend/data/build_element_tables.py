@@ -165,7 +165,7 @@ HEADERS: dict[str, str] = {
 # average_*     the shell's weighted mean emission energy
 # yield_*       probability that a vacancy in that shell fills radiatively
 #
-# Used by the Monte Carlo fluorescence-escape paths, which are not ported.
+# Read by escape modelling, for the fluorescence each absorbed photon emits.
 """,
     "edge_ratios.tsv": """\
 # Absorption edge jump ratios: the factor by which the cross-section rises
@@ -185,7 +185,7 @@ HEADERS: dict[str, str] = {
 # b_k_*, c_k_*                     fitted constants for each range
 # mean_ionisation_potential*       overall, then the L1, M1 and N1 shells
 #
-# Used by the Monte Carlo electron-transport paths, which are not ported.
+# Used by the Monte Carlo subprogram's electron transport, which is not ported.
 """,
     "elsepa_elastic.tsv": """\
 # ELSEPA elastic scattering cross-sections, by electron energy in eV.
@@ -193,7 +193,7 @@ HEADERS: dict[str, str] = {
 # Zero for most elements: the table was populated only where the Monte Carlo
 # paths needed it.
 #
-# Used by the Monte Carlo paths, which are not ported.
+# Used by the Monte Carlo subprogram, which is not ported.
 """,
 }
 

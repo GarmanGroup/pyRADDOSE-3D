@@ -3,7 +3,7 @@
 # Zero for most elements: the table was populated only where the Monte Carlo
 # paths needed it.
 #
-# Used by the Monte Carlo paths, which are not ported.
+# Used by the Monte Carlo subprogram, which is not ported.
 
 z	symbol	ev_50	ev_100	ev_150	ev_200	ev_250	ev_300
 1	H	6.42034e-06	3.63747e-06	2.71686e-06	2.26104e-06	1.9907e-06	1.8128e-06

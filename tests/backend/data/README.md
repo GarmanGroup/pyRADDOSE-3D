@@ -14,12 +14,13 @@ is the right length, and gadolinium's is not -- it carries 82 fields.
 | `elements.tsv` | weight, mass, density | yes |
 | `absorption_edges.tsv` | K, L1-L3, M1-M5 | yes |
 | `cross_section_coefficients.tsv` | one row per element per shell | yes |
-| `fluorescence.tsv` | line energies and yields | not yet |
-| `edge_ratios.tsv` | edge jump ratios | not yet |
+| `fluorescence.tsv` | line energies and yields | yes, by escape modelling |
+| `edge_ratios.tsv` | edge jump ratios | yes, by escape modelling |
 | `electron_ionisation.tsv` | K-shell ionisation, ionisation potentials | not yet |
 | `elsepa_elastic.tsv` | elastic cross-sections by energy | not yet |
 
-The four marked "not yet" belong to the Monte Carlo paths. They ship because
+The two marked "not yet" belong to the Monte Carlo subprogram's electron
+transport. They ship because
 throwing away data that is hard to re-derive is not a saving, and
 `test_elements.py` reads all seven so none can rot unnoticed.
 

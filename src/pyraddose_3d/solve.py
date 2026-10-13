@@ -798,8 +798,8 @@ def solve(
         rejected explicitly: autograd returns a number for it and the number
         is wrong, because the occupancy test is a boolean parity count.
     NotImplementedError
-        If the configuration asks for something not ported -- escape
-        modelling, the Leal decay model, or a polyhedron from a file.
+        If escape modelling is asked for with tensor overrides: it is Monte
+        Carlo, and has no gradient.
 
     Notes
     -----
@@ -977,7 +977,7 @@ def simulate(
     KeyError
         If an override names a path that is not tunable.
     NotImplementedError
-        If the configuration asks for something not ported.
+        If escape modelling is asked for with tensor overrides.
     """
     overrides = dict(overrides or {})
     as_run = apply_overrides(experiment, overrides)

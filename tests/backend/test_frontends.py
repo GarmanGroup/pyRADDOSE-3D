@@ -10,11 +10,11 @@ arithmetic, which ``test_coefficients.py`` already covers.
 | ``Dummy`` / ``Average`` | ``CoefCalcAverage`` | here |
 | ``Default`` / ``RD3D`` | ``CoefCalcFromParams`` | ``test_composition.py`` |
 | ``RDV2`` / ``RDV3`` | ``CoefCalcRaddose`` | not ported -- see below |
-| ``EXP`` | ``CoefCalcFromPDB`` | not yet ported |
+| ``EXP`` | ``CoefCalcFromPDB`` | ``test_structure_files.py`` |
 | ``SAXS`` / ``SAXSSEQ`` | ``CoefCalcSAXS`` | here |
 | ``Sequence`` | ``CoefCalcFromSequence`` | here |
 | ``SmallMole`` | ``CoefCalcSmallMolecules`` | here |
-| ``EXPSM`` | ``CoefCalcFromCIF`` | not yet ported |
+| ``EXPSM`` | ``CoefCalcFromCIF`` | ``test_structure_files.py`` |
 
 ``CoefCalcRaddose`` is deliberately not ported: it writes an input file, runs
 an external RADDOSE v2 binary that this project does not ship, and scrapes

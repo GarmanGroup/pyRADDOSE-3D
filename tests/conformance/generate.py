@@ -293,10 +293,10 @@ def main() -> None:
                         "face can go either way, and a crystal face aligned "
                         "with the voxel grid puts a whole plane of them in "
                         "that position. Moving every mesh vertex by one ulp "
-                        "moves the reported sums by 1.7e-5 (rotation-anglep-45) "
-                        "to 9.3e-2 (baseline) -- one to four orders of "
-                        "magnitude more than the port's disagreement with the "
-                        "reference, which is at worst 5e-5. Java cannot "
+                        "moves the reported sums by as much as 9.3e-2 "
+                        "(baseline); the port's disagreement with the "
+                        "reference is at worst 6.5e-5 (composition-cif, "
+                        "diffraction_efficiency). Java cannot "
                         "reproduce itself to better than this either: "
                         "Math.cos and Math.sin are not required to be "
                         "bit-reproducible across JVMs."
@@ -314,9 +314,11 @@ def main() -> None:
                         "couple of steps."
                     ),
                     "tier_B_relative": (
-                        "Escape modelling consumes random draws in an order a "
-                        "vectorised implementation cannot reproduce, so only "
-                        "gross agreement is meaningful."
+                        "For a calculation the port cannot reproduce draw for "
+                        "draw, where only gross agreement is meaningful. No "
+                        "case uses it: escape modelling draws from "
+                        "java.util.Random in the Java's order, so its cases "
+                        "are tier A."
                     ),
                     "histogram_percentage_points": (
                         "Summary.txt's dose histogram counts voxels, so a bin "

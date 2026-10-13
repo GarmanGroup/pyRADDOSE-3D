@@ -40,20 +40,20 @@ behaviour rather than a difference in input.
 The port also reads `.txt` files (`Experiment.from_raddose_txt`), so existing
 inputs keep working. Every case survives the round trip YAML to `.txt` and
 back -- all but the seed, which RADDOSE-3D takes from its command line --
-which tests the reader against the emitter on 38 configurations.
+which tests the reader against the emitter on 45 configurations.
 
 ## The two tiers
 
-**Tier A — deterministic.** No escape modelling, so the calculation is
-reproducible without matching the reference's random number stream. Compared
-field by field. This is the differentiable core and where nearly all the value
-is.
+**Tier A — reproducible.** Compared field by field. Every case is tier A,
+including the eight with photoelectron or fluorescence escape. Escape is Monte
+Carlo, but `java.util.Random` is exactly specified, and the port draws from it
+in the Java's order -- one fluorescence draw, then the photoelectron draws, for
+each lit voxel in turn -- so with the case's seed it reproduces the Java's dose
+value by value rather than only its statistics.
 
-**Tier B — Monte Carlo.** Photoelectron or fluorescence escape is enabled.
-`java.util.Random` is exactly specified and so *could* be reproduced in Python,
-but that is not sufficient: a vectorised implementation does not consume random
-draws in the same order as the reference's scalar loops. These cases therefore
-only ever get loose, statistical agreement, and exist to catch gross error.
+**Tier B — statistical.** For a calculation the port cannot reproduce draw for
+draw, compared loosely. No case uses it at present; the Monte Carlo, XFEL and
+MicroED subprograms would, if ported.
 
 ## Regenerating
 
@@ -76,4 +76,4 @@ baseline, plus interaction cases chosen because they correspond to defects
 actually found in the reference implementation. A new case should produce a
 result distinct from every existing one — otherwise it is not exercising what
 it claims to. `test_conformance.py` checks the corpus's own integrity
-(tiering, wedge counts, emitter determinism) independently of the port.
+(seeds, wedge counts, emitter determinism) independently of the port.

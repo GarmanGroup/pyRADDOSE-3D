@@ -4,7 +4,7 @@
 # average_*     the shell's weighted mean emission energy
 # yield_*       probability that a vacancy in that shell fills radiatively
 #
-# Used by the Monte Carlo fluorescence-escape paths, which are not ported.
+# Read by escape modelling, for the fluorescence each absorbed photon emits.
 
 z	symbol	line_k_alpha_kev	line_k_beta_kev	line_l_alpha_kev	line_l_beta_kev	average_k_kev	average_l_kev	yield_k	yield_l1	yield_l2	yield_l3	yield_m1	yield_m2	yield_m3	yield_m4	yield_m5
 1	H					0.0	0.0	0.0	0.0	0.0	0.0					

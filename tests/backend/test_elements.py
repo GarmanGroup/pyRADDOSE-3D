@@ -372,14 +372,14 @@ def test_both_backends_agree(db: ElementDatabase) -> None:
 # at all, and nothing checked that a row was the right length -- gadolinium's
 # had 82 fields.
 
-#: Every table, and whether this module reads it. The four it does not are
-#: the rest of the original 80 columns, waiting for the Monte Carlo paths.
+#: Every table, and whether the port reads it. The two it does not are the
+#: rest of the original 80 columns, waiting for the Monte Carlo subprogram.
 ALL_TABLES = {
     "elements.tsv": True,
     "absorption_edges.tsv": True,
     "cross_section_coefficients.tsv": True,
-    "fluorescence.tsv": False,
-    "edge_ratios.tsv": False,
+    "fluorescence.tsv": True,
+    "edge_ratios.tsv": True,
     "electron_ionisation.tsv": False,
     "elsepa_elastic.tsv": False,
 }
@@ -389,9 +389,9 @@ ALL_TABLES = {
 def test_every_table_is_well_formed(table: str) -> None:
     """Reading it at all is the check: ``read_table`` raises on a bad row.
 
-    Including the four nothing reads yet. Data that no test touches is data
-    that can rot silently, and these carry the fluorescence yields and
-    elastic cross-sections the escape modelling will need.
+    Including the two nothing reads yet. Data that no test touches is data
+    that can rot silently, and these carry the electron-impact ionisation and
+    elastic cross-sections the Monte Carlo subprogram would need.
     """
     rows = read_table(table)
     assert rows, f"{table} has no data rows"

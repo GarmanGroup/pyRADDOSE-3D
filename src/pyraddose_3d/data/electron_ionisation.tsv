@@ -4,7 +4,7 @@
 # b_k_*, c_k_*                     fitted constants for each range
 # mean_ionisation_potential*       overall, then the L1, M1 and N1 shells
 #
-# Used by the Monte Carlo electron-transport paths, which are not ported.
+# Used by the Monte Carlo subprogram's electron transport, which is not ported.
 
 z	symbol	e_min_low_kev	e_max_low_kev	b_k_low	c_k_low	e_min_high_kev	b_k_high	c_k_high	mean_ionisation_potential	mean_ionisation_potential_l1	mean_ionisation_potential_m1	mean_ionisation_potential_n1
 1	H	0.0	0.0	0.0	0.0	0.0	0.0	0.0	19.2			

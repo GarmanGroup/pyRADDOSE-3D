@@ -18,11 +18,13 @@ module needs:
 ``cross_section_coefficients.tsv``
     One row per element per shell, four coefficients each.
 
-The other four -- ``fluorescence.tsv``, ``edge_ratios.tsv``,
-``electron_ionisation.tsv`` and ``elsepa_elastic.tsv`` -- carry the rest of
-the original 80 columns and are read by nothing yet; they belong to the
-Monte Carlo paths. ``tests/backend/data/build_element_tables.py`` is the
-script that produced all seven, kept so the derivation is auditable.
+Two more, ``fluorescence.tsv`` and ``edge_ratios.tsv``, are read by escape
+modelling (:mod:`~pyraddose_3d.backend.escape`). The last two,
+``electron_ionisation.tsv`` and ``elsepa_elastic.tsv``, carry the rest of the
+original 80 columns and are read by nothing yet; they belong to the Monte
+Carlo subprogram's electron transport.
+``tests/backend/data/build_element_tables.py`` is the script that produced
+all seven, kept so the derivation is auditable.
 
 Energies are in keV and cross-sections in Barns/Atom throughout, matching the
 Java.
