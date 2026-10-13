@@ -44,6 +44,10 @@ def main() -> None:
     print(summary_text(simulation), end="")
     print(f"Dose calculation wall time: {elapsed_time}")
 
+    if experiment.seed is None and simulation.seed is not None:
+        # As RADDOSE-3D does: escape is Monte Carlo, and this repeats it.
+        print(f"Escape modelling used seed {simulation.seed}; set seed to repeat it")
+
     for path in write_outputs(simulation, prefix=OUTPUT_PREFIX):
         print(f"Wrote {path}")
 

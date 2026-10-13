@@ -50,15 +50,18 @@ Or edit and run [`programs/dose/run_dose.py`](programs/dose.md). The
 
 ## Agreement with RADDOSE-3D
 
-Every number is checked against RADDOSE-3D itself, on a corpus of 38
+Every number is checked against RADDOSE-3D itself, on a corpus of 50
 experiments, with each tolerance measured and justified rather than chosen;
 the output files are compared with the Java's line by line. See
 [Agreement with RADDOSE-3D](conformance.md).
 
-Not yet ported: photoelectron and fluorescence escape, the Leal et al.
-decay model, crystals read from `.obj` files, pink beams, and the Monte
-Carlo, XFEL and MicroED subprograms. Asking for any of them is an error, not
-a silently different answer.
+The whole MX calculation is ported, photoelectron and fluorescence escape
+included: escape is Monte Carlo, and the port draws its random numbers in
+the Java's order, so given RADDOSE-3D's seed it gives RADDOSE-3D's answer.
+Not ported: the Monte Carlo, XFEL and MicroED subprograms, and
+`AbsCoefCalc RDV2`/`RDV3`, which run the original Fortran RADDOSE as an
+external program. Asking for any of them is an error, not a silently
+different answer.
 
 ## Licence
 

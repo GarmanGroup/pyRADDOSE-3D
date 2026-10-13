@@ -29,14 +29,16 @@ The summary is printed, as RADDOSE-3D prints it, and the output files are writte
 
 The last four are written only with `PER_IMAGE_FILES = True`.
 
-## What is not supported yet
+## Escape modelling and the seed
 
-Input that asks for something not yet ported is refused with a message saying what -- when the input is read, or at the latest when the calculation starts -- rather than ignored:
+Photoelectron and fluorescence escape are Monte Carlo, so two runs give slightly different doses. Set `seed` in the YAML -- RADDOSE-3D's `--seed` -- to repeat a run exactly. The port draws its random numbers in RADDOSE-3D's order, so with the same seed it gives the same dose RADDOSE-3D does. With no seed one is chosen, and the script prints it.
 
-- photoelectron and fluorescence escape, and the surrounding material
-- the Leal et al. decay model
-- crystals from `.obj` files
-- pink beams (`EnergyFWHM`)
-- the Monte Carlo, XFEL and MicroED subprograms
+## What is not supported
+
+Input that asks for something not ported is refused with a message saying what -- when the input is read, or at the latest when the calculation starts -- rather than ignored:
+
+- the Monte Carlo, XFEL and MicroED subprograms (`Subprogram`)
+- `AbsCoefCalc RDV2` and `RDV3`, which run the original Fortran RADDOSE as an external program
+- `Type Experimental`, which RADDOSE-3D cannot build from an input file either; `Type ExperimentalPGM` works
 
 See `ROADMAP.md` at the top of the repository for when.

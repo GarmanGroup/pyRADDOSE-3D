@@ -37,7 +37,7 @@ write_outputs(simulation)  # output-Summary.txt, output-DoseState.csv, ...
 ```
 
 The notebooks in [`docs/examples`](docs/examples) walk through crystals and
-beams, composition, decay models and gradients.
+beams, composition, decay models, gradients and choosing a beam energy.
 
 ## Optimising a strategy
 
@@ -67,6 +67,11 @@ leaving the crystal -- it returns a confident number that is 20% wrong. The
 end of a wedge is refused for a different reason: it sets the number of
 images and nothing else, so its derivative is zero wherever it exists. See
 `TUNABLE` and `FIXED` in `pyraddose_3d.solve`.
+
+Photoelectron and fluorescence escape are the exception to all of this. They
+are Monte Carlo, with each electron's direction drawn at random, so they have
+no gradient and run on NumPy only. They do reproduce RADDOSE-3D exactly, given
+its seed.
 
 ## Licence
 

@@ -9,12 +9,12 @@
 # file means what leaving it out of a .txt input means. The .txt keyword for
 # each setting is given in brackets.
 crystal:
-  type: cuboid                    # [Type] cuboid, spherical or cylinder
+  type: cuboid                    # [Type] cuboid, spherical, cylinder or polyhedron
   dimensions: [100.0, 100.0, 100.0]  # [Dimensions] x, y, z in micrometres
   pixels_per_micron: 0.1          # [PixelsPerMicron] default 10 voxels across x
   # angle_p: 0.0                  # [AngleP] rotation in the plane of the loop, degrees
   # angle_l: 0.0                  # [AngleL] bend of the loop, degrees
-  # decay_model: simple           # [DDM] simple, linear or bfactor
+  # decay_model: simple           # [DDM] simple, linear, bfactor or leal
   composition:                    # [AbsCoefCalc RD3D]
     method: unit_cell
     unit_cell: [78.02, 78.02, 78.02]  # [UnitCell] a, b, c in Angstroms
@@ -26,8 +26,11 @@ crystal:
     solvent_heavy_conc:           # [SolventHeavyConc] mmol/l
       P: 425.0
     solvent_fraction: 0.64        # [SolventFraction] computed if left out
+  # escape:                       # Monte Carlo, so see seed below
+  #   photoelectron: true         # [CalculatePEEscape] electrons leaving the crystal
+  #   fluorescence: true          # [CalculateFLEscape] and fluorescence photons
 beam:
-  type: gaussian                  # [Type] gaussian or tophat
+  type: gaussian                  # [Type] gaussian, tophat or experimental
   flux: 2.0e+12                   # [Flux] photons per second
   energy: 12.1                    # [Energy] keV
   fwhm: [20.0, 70.0]              # [FWHM] x, y in micrometres
@@ -43,3 +46,4 @@ wedges:                           # one per [Wedge] block, exposed in order
   - start: 90.0
     end: 180.0
     exposure_time: 10.0
+# seed: 20260917                  # [--seed] escape's random numbers; chosen if left out

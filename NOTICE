@@ -18,11 +18,27 @@ WHAT IS DERIVED
       including several of its known quirks, each marked in the source.
 
   Element data
-      Everything in src/pyraddose_3d/data/ derives from RADDOSE-3D's
+      The element tables in src/pyraddose_3d/data/ -- elements.tsv,
+      absorption_edges.tsv, cross_section_coefficients.tsv,
+      fluorescence.tsv, edge_ratios.tsv, electron_ionisation.tsv and
+      elsepa_elastic.tsv -- derive from RADDOSE-3D's
       constants/MuCalcConstants.txt, which holds Pathikrit Bandyopadhyay's
       parameterisation of the McMaster tables of X-ray cross-sections. The
       values are unmodified; only the layout differs. See
       tests/backend/data/build_element_tables.py and the README.
+
+  Photoelectron energy deposition
+      src/pyraddose_3d/data/pe_energy_low.csv, pe_energy_medium.csv and
+      pe_energy_high.csv are RADDOSE-3D's constants/EnergyCoefsLow.txt,
+      EnergyCoefsMed.txt and EnergyCoefsHigh.txt, unmodified below a header
+      saying so. Escape modelling reads them.
+
+  BEST intensity curve
+      src/pyraddose_3d/data/best_intensity.tsv is the average intensity
+      against resolution from the BEST program (Popov, A. N. and Bourenkov,
+      G. P. (2003). Acta Cryst. D59, 1145-1153), copied verbatim from
+      RADDOSE-3D's DDMLeal.java by tests/backend/data/build_best_table.py.
+      The Leal et al. decay model integrates over it.
 
   NIST attenuation tables
       src/pyraddose_3d/data/nist_elements.tsv and nist_mixtures.tsv hold

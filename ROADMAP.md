@@ -5,18 +5,20 @@ check a claim rather than take it on trust.
 
 ## Where the port stands
 
-7,800 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
-RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 999 tests,
-42 xfail. 32 of 38 conformance cases match the Java within measured tolerances — on the sixteen
-summary numbers, on the dose field and per-image series behind them, and on the output files
-themselves; the six that do not are the five Monte Carlo escape cases (tier B by design) and
-`041-ddm-leal`. `solve()` is differentiable end to end — ten tunable settings carry gradients
-matching central finite differences to ~1e-10, at 0.15 s per optimiser step.
+11,000 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
+RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 1,190 tests,
+none expected to fail. All 50 conformance cases match the Java within measured tolerances — on
+the sixteen summary numbers, on the dose field and per-image series behind them, and on the
+output files themselves — photoelectron and fluorescence escape included, value by value. The
+MX path is complete: every input RADDOSE-3D's MX calculation accepts is ported, except two that
+cannot be (Milestone 4). `solve()` is differentiable end to end apart from escape, which is
+Monte Carlo — ten tunable settings carry gradients matching central finite differences to
+~1e-10, at 0.15 s per optimiser step.
 
 It reads RADDOSE-3D's input files and writes its output files, so it can stand in for the Java;
 `programs/dose` runs it, `programs/optimise` chooses a beam energy by gradient, and six executed
-notebooks show it. What is left is optimising several settings at once, the rest of the MX path,
-and publication.
+notebooks show it. What is left is optimising several settings at once, publication, and — if
+anyone wants them — the other three subprograms.
 
 ## Three findings that set the priorities
 
@@ -151,8 +153,8 @@ reading of the manual: case-insensitive, not line-based, every keyword alias, th
 styles, and the lexer's habit of *skipping* a character it does not recognise, with a message,
 rather than failing — a warning here. Every corpus case survives YAML → `.txt` → YAML
 (all but the seed, which RADDOSE-3D takes from its command line), and eight of the thirteen
-example inputs RADDOSE-3D ships are read; the other five ask for something unported and are
-refused, saying what.
+example inputs RADDOSE-3D ships are read. Of the other five, three ask for the MicroED or Monte
+Carlo engines and two are malformed, and each is refused saying why.
 
 Defaults now mirror the Java's, and what the Java requires is required. That changed the models:
 a crystal's `PixelsPerMicron` defaults to ten voxels across its first dimension, no
@@ -275,9 +277,10 @@ gradient is close to free.
   dose budget. That is where gradients beat scans by orders of magnitude rather than a factor
   of a few, and where Adam-style optimisers, with their trouble on edges, will need the same
   piecewise care.
-- **Photoelectron escape** (Milestone 4) changes the energy answer for small crystals: escaping
-  photoelectrons take dose with them, more so at higher energies. The energy example says so;
-  its numbers should be revisited once escape is ported.
+- **Photoelectron escape** changes the energy answer for small crystals: escaping
+  photoelectrons take dose with them, more so at higher energies. Escape is ported now
+  (Milestone 4), but it is Monte Carlo and has no gradient, so the search cannot include it.
+  The energy example should be re-checked by running its chosen energies with escape on.
 - **A published comparison.** The energy question is a real one with a literature; setting the
   example against a published result would make it the paper figure.
 - **Anomalous signal** is outside diffraction efficiency, so the energy search is for native
@@ -297,20 +300,72 @@ gradient is close to free.
   ~1e-3; against a torch finite difference, to 1e-10. The energy example re-runs its answer on
   NumPy, where it agrees to 3e-4.
 
-# Milestone 4 — Completeness of the MX path
+# Milestone 4 — Completeness of the MX path — *done*
 
-Finishes what the port already claims to cover. In value order, none urgent.
+**Why.** To finish what the port claims to cover: anything RADDOSE-3D's MX calculation accepts,
+the port runs and gets the Java's answer for.
 
-- **`DDMLeal`** (496 lines) — closes the last deterministic conformance case, `041-ddm-leal`.
-- **`.obj` polyhedron reader** — the only unported crystal type. `ModelFile` and `WireframeType`
-  already exist in the models; `crystal_mesh` raises for them.
-- **Photoelectron and fluorescence escape** — the machinery inside `Crystal.java`
-  (`addDoseAfterPE`, `addDoseAfterFL`, `escapeFactor`) that the five tier-B conformance cases
-  exercise. Monte Carlo, so comparable only statistically: match the generator, then compare
-  means over N seeds against the observed standard error, as the corpus already anticipates.
-  Closing this takes conformance from 32/38 to 37/38.
-- **Pink beams** (`EnergyFWHM`) — the Java samples the spectrum at 200 energies and changes the
-  MX dose, so the reader refuses the keyword rather than ignore it.
+**Done when** every MX input is ported or refused for a reason that is not "not ported yet", and
+every conformance case passes. Both hold: 50 of 50 cases, no xfails.
+
+### What was ported
+
+| feature | Java | corpus |
+|---|---|---|
+| Leal et al. decay model | `DDMLeal` | `041` |
+| crystals from `.obj` files, and the default resolution's million-voxel cap | `ImportWireframeObj`, `getDefaultLimitedResolution` | `013`, `014` |
+| pink beams (`EnergyFWHM`) | `SampleNormalEnergyDistribution`, `Crystal.expose` | `028`, `029`, `105` |
+| photoelectron and fluorescence escape, and the surrounding | `Crystal.java`, `CrystalPolyhedron.java` | `100`–`108` |
+| SAXS from a sequence (`AbsCoefCalc SAXSSEQ`) | `CoefCalcFromSequenceSAXS` | `038` |
+| measured beam profiles (`Type ExperimentalPGM`) | `BeamExperimental`, `BeamExperimentalpgm` | `080`, `081`, `108` |
+
+Two inputs are refused for good: `AbsCoefCalc RDV2`/`RDV3` run the original Fortran RADDOSE as
+an external program and scrape its output, and `Type Experimental` cannot be built from an input
+file by RADDOSE-3D either — `BeamExperimental` has no property constructor, so only
+`ExperimentalPGM` works there.
+
+### Escape is tier A, not tier B — the plan above was wrong
+
+The plan said escape could only be compared statistically, because "a vectorised
+implementation cannot consume random draws in the Java's order". It can.
+`java.util.Random` is specified exactly, and `backend/java_random.py` reproduces it. What makes
+the vectorised version possible is that the Java's draws are predictable in advance. Each lit
+voxel, in index order, takes a fluorescence draw if it has fluorescence to release, then a fixed
+number of photoelectron draws, all bounded `nextInt`s. The generator can therefore jump ahead
+to produce every draw for an angle at once. The rare draw that `nextInt` rejects is replayed in
+order.
+
+So with RADDOSE-3D's seed the port gives RADDOSE-3D's escape result value by value: the nine
+escape cases agree to between 3e-7 and 2e-4 on the summary, the largest on quantised
+quantities. Tier B is now unused.
+
+Escape is the one part of the MX path with no gradient. The direction of each photoelectron is
+drawn at random, so `solve()` raises if escape is asked for with tensor overrides. Pink beams
+stay differentiable.
+
+### Port bugs found on the way
+
+- **The default resolution was only half ported.** RADDOSE-3D caps the rotated crystal's bounding
+  box at a million voxels, and the port never applied the cap. Only a thin plate or a needle
+  reaches it.
+- **Sequence files lost their chain types.** The reader dropped FASTA headers and read every
+  residue as protein, so a chain marked `ISDNA` or `ISRNA` was silently wrong. A, C, G and T are
+  valid amino acid codes, so nothing failed. Case `037` now covers protein, DNA and RNA chains in
+  one file, and reading everything as protein fails it.
+- **SAXS required a unit cell.** RADDOSE-3D defaults to a 1000 Å box of solution, and both SAXS
+  routes now do too.
+
+### The Java's quirks, reproduced and marked
+
+Faithfulness means reproducing what RADDOSE-3D does, not what it meant to do. Each of these is
+marked in the source and listed under *Upstream* below:
+
+- fluorescence deposits along +z only;
+- the crystal's photoelectron tracks use the surrounding's draw table;
+- the photoelectron-plus-fluorescence branch skips the binding-energy subtraction;
+- the cryo clamp uses the unrotated crystal;
+- pink beams report the volume ×200 and only the last energy's fluences;
+- phosphorus and sulphur L-shell fluorescence goes to voxel (0, 0, 0).
 
 # Milestone 5 — Publication and CCP4
 
@@ -343,24 +398,26 @@ sequence has to be: characterise the Java first, then port.
    MX. This is a scope decision for the group, not a technical one, and it should be made
    before any code — porting 14,000 lines nobody asked for would be the single largest way to
    waste this effort.
-2. **Build a tier-B corpus** for whichever is chosen, the way `tests/conformance` was built for
-   MX: cases first, generated from the Java, statistical comparison over N seeds.
+2. **Build a corpus** for whichever is chosen, the way `tests/conformance` was built for MX:
+   cases first, generated from the Java. Escape showed that Monte Carlo need not mean
+   statistical comparison. If the draws can be predicted, reproduce `java.util.Random` and
+   compare value by value (tier A). Fall back to statistics over N seeds (tier B) only where
+   they cannot.
 3. **Fix the Java's own coverage gap** as a by-product. Characterising these to write a corpus
    will find defects — it did for every MX module — and those are worth upstreaming whether or
    not the port proceeds.
 4. **Port**, reusing `backend/_array.py`, the element tables and the geometry that already
    exist. The crystal, mesh, voxel grid and composition layers are shared; it is the transport
    physics that is new.
-5. **Differentiability is explicitly out of scope** here, consistent with the decision taken
-   for escape modelling: these are Monte Carlo, and a vectorised implementation cannot consume
-   random draws in the Java's order.
+5. **Differentiability is explicitly out of scope** here, as it is for escape: a randomly drawn
+   track has no gradient.
 
 **Known defects already logged against these**, to be fixed as part of any port:
 `MicroED.getSolventFraction()` returns 0 when explicitly set; `getBeamArea()` and
 `getExposure()` are stubs in `BeamGaussian`/`BeamExperimental`.
 
-Milestones 4, 5 and 6 are not strictly ordered — 6 in particular could start at any point once
-someone wants it, and does not block the others.
+Milestones 5 and 6 are not ordered: 6 could start at any point once someone wants it, and does
+not block 5.
 
 ---
 
@@ -383,11 +440,43 @@ Found while surveying, unrelated to the port:
 - A wedge from 0° to 30° at 2° per image takes 15 images, not 16: the count is computed in
   radians, where 30°/2° comes to 14.999999999999998, and truncated. The port reproduces it.
 
+Found porting Milestone 4. The port reproduces each, marked in its source, so fixing one means
+changing both together:
+
+- **Fluorescence escape deposits along +z only.** `addDoseAfterFL` draws a direction and never
+  uses it.
+- **With a surrounding, the crystal's photoelectrons use the surrounding's track table**
+  (`trackNumberBias`).
+- **With both escapes on, the photoelectron energy keeps the binding energy.** The
+  photoelectron-plus-fluorescence branch skips the subtraction that the photoelectron-only
+  branch makes.
+- **The cryo region is clamped to the unrotated crystal's box** (`minimumDimensions`), not the
+  rotated one.
+- **Pink beams have several problems.**
+  - The surrounding's attenuation is not divided over the 200 energy samples.
+  - The summary's volume is 200 times too large.
+  - `VoxelFluences.csv` holds only the last sample.
+  - The coefficients printed are those of the last sample, not the mean energy.
+- **Phosphorus and sulphur L-shell fluorescence energies give NaN distances.** `StrictMath.round`
+  turns these into 0, so that fluorescence lands on voxel (0, 0, 0).
+- **Photoelectron escape with `AbsCoefCalc Average` throws a `NullPointerException`.** The port
+  refuses it, saying why. Fluorescence alone warns, as the Java does.
+- **`AbsCoefCalc SAXSSEQ` ignores `NumCarb`.** It reads the value, but never calls `setNumCarb`,
+  so `addCarbs` adds nothing. The port's reader warns.
+- **A sequence file whose residues come before any `>` header fails misleadingly.** The residues
+  have no type, and the error calls the first one "not a recognised protein residue code".
+- **`Type Experimental` cannot work.** The grammar and `BeamFactory` accept it, but
+  `BeamExperimental` has no property constructor, so the run fails in `ClassFactory`.
+- **`BeamExperimentalTest` checks nothing.** It never applies a container, so the beam's
+  attenuated flux is 0 and every intensity is 0. Its assertions are one-sided
+  (`intensity - expected < tolerance`), and 0 satisfies all of them.
+
 ## Verification, throughout
 
 - Every step keeps the conformance corpus bit-identical unless it deliberately changes a number,
-  and a changed expectation is a reviewable diff. Baseline is 32/38, worst deviation 1.94e-3
-  (`011-crystal-cylinder`, `tad`); `pytest tests/conformance` prints the per-case table.
+  and a changed expectation is a reviewable diff. Baseline is 50/50. The worst deviation is
+  2.0e-4 (`102-escape-pe-fl`, `dose_threshold`, a quantised quantity), and 6.5e-5 for the rest;
+  `pytest tests/conformance` prints the per-case table.
 - New output writers are checked against the Java's own files for the same case through
   `generate.py`, not against hand-written expectations.
 - `solve()` with no overrides stays pure NumPy — `test_no_overrides_stays_on_numpy` and the
