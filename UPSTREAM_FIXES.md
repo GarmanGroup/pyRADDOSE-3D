@@ -14,20 +14,18 @@ crystal (`CalcSurrounding`), and *a pink beam* one with an energy spread (`Energ
 
 ## Status
 
-The RADDOSE-3D fixes are up as three stacked PRs. They were reordered for review so that the
-two physics changes awaiting sign-off come last, and the uncontroversial fixes need not wait for
-them:
+The RADDOSE-3D fixes went up as three stacked PRs, reordered for review so that the two physics
+changes needing sign-off came last. All three were merged on 2026-10-13:
 
 | PR | branch, onto | items | state |
 |---|---|---|---|
-| [#36](https://github.com/GarmanGroup/RADDOSE-3D/pull/36) | `jd_upstream_input_fixes`, onto `master` | 7–11, 13; `voxelfluences`; help text | open |
-| [#37](https://github.com/GarmanGroup/RADDOSE-3D/pull/37) | `jd_upstream_beam_wedge_fixes`, onto #36 | 6, 12; the wedge image count | open |
-| [#38](https://github.com/GarmanGroup/RADDOSE-3D/pull/38) | `jd_upstream_escape`, onto #37 | 1, 5, 2, 3, 4; item 3's slowdown undone | draft: items 1 and 2 await sign-off |
+| [#36](https://github.com/GarmanGroup/RADDOSE-3D/pull/36) | `jd_upstream_input_fixes`, onto `master` | 7–11, 13; `voxelfluences`; help text | merged as `b5a53b3` |
+| [#37](https://github.com/GarmanGroup/RADDOSE-3D/pull/37) | `jd_upstream_beam_wedge_fixes`, onto #36 | 6, 12; the wedge image count | merged as `fca1682` |
+| [#38](https://github.com/GarmanGroup/RADDOSE-3D/pull/38) | `jd_upstream_escape`, onto #37 | 1, 5, 2, 3, 4; item 3's slowdown undone | merged as `167fb7a` |
 
-The reordering changed no code. The top of #38 has the same tree as `eec659b`, which the corpus
-was last generated from, and every commit in the three PRs passes RADDOSE-3D's tests on its own.
-Once they are merged, regenerate the corpus from `master` so that `reference_commit` names a
-commit that exists upstream; no number should move.
+The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
+had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
+`reference_commit` exists upstream. As expected, no number moved.
 
 The table below records the local commits each port commit followed, which the PRs supersede.
 The escape branch gained `63fa851`, which undid a slowdown that item 3 introduced: its direction

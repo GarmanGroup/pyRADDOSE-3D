@@ -155,8 +155,6 @@ These decide what happens after step 2, and none of them is code.
 | decision | who | blocks |
 |---|---|---|
 | Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | CCP4, and nothing else |
-| Sign off the two physics changes in RADDOSE-3D #38 (escape energy accounting, fluorescence direction) | the group | merging #38 |
-| Review #36 and #37 | RADDOSE-3D maintainers | the corpus following merged commits |
 | Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | step 2's last item; the CLI |
 | A remote for the repository, even a private one | the author | CI on Linux and Windows; the notebooks in CI |
 | Whether any of the three subprograms is wanted | the group | step 6 |
@@ -167,18 +165,16 @@ copyright holders, so relicensing is on the critical path for CCP4 alone.
 
 ### 4. Upstream: RADDOSE-3D
 
-The fixes the port found are in three stacked PRs, opened 2026-10-13 and not yet reviewed:
+The fixes the port found are merged into RADDOSE-3D, as #36, #37 and #38 on 2026-10-13:
 
 - **#36**: input that was silently ignored, `Type Experimental`, `-o voxelfluences`, and the
   `PixelSize` docs;
 - **#37**: pink beams, collimation on measured beams, and the wedge image count;
-- **#38**, a draft: escape modelling. With photoelectron escape alone, its binding-energy fix
-  raises the dose by 3.5% for protein and by 20% for SeMet above the Se K edge. Its
-  fluorescence-direction fix moves doses by under 0.1%.
+- **#38**: escape modelling. With photoelectron escape alone, its binding-energy fix raises the
+  dose by 3.5% for protein and by 20% for SeMet above the Se K edge. Its fluorescence-direction
+  fix moves doses by under 0.1%.
 
-RADDOSE-3D squash-merges, so after each merge the next PR is rebased onto `master`. Once all
-three are in, regenerate the corpus from `master`, so that `reference_commit` names a commit
-that exists upstream. No number should move.
+The corpus is regenerated from `master` at `167fb7a`, and no number moved.
 
 **Still open in the Java:**
 

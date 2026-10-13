@@ -2,5 +2,5 @@ case_id: 080-beam-experimental
 tier: A
 exercises: measured beam profile from a PGM image, interpolated bilinearly
 seed: 20260917
-reference_version: 5.0.1095
-reference_commit: eec659b
+reference_version: 5.0.1086
+reference_commit: 167fb7a

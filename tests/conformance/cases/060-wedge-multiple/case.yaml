@@ -2,5 +2,5 @@ case_id: 060-wedge-multiple
 tier: A
 exercises: two consecutive wedges
 seed: 20260917
-reference_version: 5.0.1095
-reference_commit: eec659b
+reference_version: 5.0.1086
+reference_commit: 167fb7a

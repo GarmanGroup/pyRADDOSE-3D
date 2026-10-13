@@ -1,5 +1,5 @@
-reference_version: 5.0.1095
-reference_commit: eec659b
+reference_version: 5.0.1086
+reference_commit: 167fb7a
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
 case_count: 59
