@@ -1,20 +1,20 @@
 [
   {
     "wedge_number": 1.0,
-    "average_dwd": 9.225575,
-    "last_dwd": 18.497348,
+    "average_dwd": 9.225577,
+    "last_dwd": 18.497351,
     "elastic_yield": 2649638000.0,
     "diffraction_efficiency": 287205700.0,
-    "ad_wc": 18.336866,
-    "ad_exp_region": 18.336866,
-    "max_dose": 24.408347,
-    "dose_threshold": 13.099384,
+    "ad_wc": 18.336869,
+    "ad_exp_region": 18.336869,
+    "max_dose": 24.408351,
+    "dose_threshold": 13.099386,
     "abs_en_threshold": 95.0,
-    "tad": 18.874968,
+    "tad": 18.874971,
     "dose_contrast": 1.29316,
     "used_volume": 100.0,
     "wedge_absorbed_energy": 8.095007e-05,
-    "dose_inefficiency": 301523484.475872,
-    "dose_inefficiency_pe": 317437847.940217
+    "dose_inefficiency": 301523532.603242,
+    "dose_inefficiency_pe": 317437847.940371
   }
 ]

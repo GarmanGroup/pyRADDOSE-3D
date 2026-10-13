@@ -11,19 +11,19 @@ Elastic Coefficient: 2.01e-05 /um.
 Attenuation Coefficient: 3.48e-04 /um.
 Density: 1.09 g/ml.
 
-Average Diffraction Weighted Dose         : 8.663761 MGy
-Last Diffraction Weighted Dose            : 17.390859 MGy
+Average Diffraction Weighted Dose         : 8.663763 MGy
+Last Diffraction Weighted Dose            : 17.390862 MGy
 Elastic Yield                             : 2.65e+09 photons
 Diffraction Efficiency (Elastic Yield/DWD): 3.06e+08 photons/MGy
-Average Dose (Whole Crystal)              : 17.142247 MGy
-Average Dose (Exposed Region)             : 17.142247 MGy
-Max Dose                                  : 29.114282 MGy
-Average Dose (95.0 % of total absorbed energy threshold (11.46 MGy)): 17.806069 MGy
+Average Dose (Whole Crystal)              : 17.142250 MGy
+Average Dose (Exposed Region)             : 17.142250 MGy
+Max Dose                                  : 29.114286 MGy
+Average Dose (95.0 % of total absorbed energy threshold (11.46 MGy)): 17.806072 MGy
 Dose Contrast (Max/Threshold Av.)         : 1.64
 Used Volume                               : 100.0%
 Absorbed Energy (this Wedge)              : 8.10e-05 J.
-Dose Inefficiency (Max Dose/mJ Absorbed)  : 359657286.2 1/g
-Dose Inefficiency PE (Max Dose/mJ Deposited): 405026836.1 1/g
+Dose Inefficiency (Max Dose/mJ Absorbed)  : 359657333.7 1/g
+Dose Inefficiency PE (Max Dose/mJ Deposited): 405026820.4 1/g
 Final Dose Histogram:
 Bin  1,  0.0 to  0.1 MGy:  0.0 % 
 Bin  2,  0.1 to  3.4 MGy:  0.0 % 

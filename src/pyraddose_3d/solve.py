@@ -878,11 +878,7 @@ def _escape(
     counts = np.asarray(to_namespace(np, built.counts), dtype=np.float64)
 
     def photoelectric_at(energy: float) -> float:
-        # Hydrogen's average K fluorescence energy is 0 keV, so this is asked
-        # for log(0), as the Java is. Its fluorescence yield is 0 too, so the
-        # value is never used.
-        with np.errstate(divide="ignore", invalid="ignore"):
-            coefficients = material_coefficients(built, energy)
+        coefficients = material_coefficients(built, energy)
         return float(to_namespace(np, coefficients.absorption))
 
     factors = escape_factors(built.elements, counts, beam_energy, photoelectric_at)

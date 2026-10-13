@@ -2,4 +2,4 @@ case_id: 037-composition-sequence
 tier: A
 exercises: residues from a sequence file of protein, DNA and RNA chains
 seed: 20260917
-reference_version: 5.0.1087
+reference_version: 5.0.1088

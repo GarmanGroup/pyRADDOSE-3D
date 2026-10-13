@@ -2,4 +2,4 @@ case_id: 109-escape-pe-semet-above-edge
 tier: A
 exercises: photoelectron escape alone, SeMet above the Se K edge
 seed: 20260917
-reference_version: 5.0.1087
+reference_version: 5.0.1088

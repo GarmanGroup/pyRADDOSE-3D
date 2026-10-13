@@ -229,12 +229,12 @@ def escape_factors(
         factor_a = [0.0] * 9
         if beam_energy > k_edge:
             factor_a[0] = data.ionisation[0]
-            factors[row, 1:5] = (
-                k_edge,
-                factor_a[0],
-                data.yields[0],
-                photoelectric_at(data.average_k),
-            )
+            factors[row, 1:3] = (k_edge, factor_a[0])
+            # A shell with no tabulated emission energy has no fluorescence
+            # to place, so it relaxes locally: hydrogen's K shell, and the L
+            # shells of Mg to Co, whose distances were NaN.
+            if data.average_k > 0:
+                factors[row, 3:5] = (data.yields[0], photoelectric_at(data.average_k))
         light = element.atomic_number < 12
         for shell, (edge, column) in enumerate(
             ((l1_edge, 5), (l2_edge, 9), (l3_edge, 13)), start=1
@@ -243,7 +243,7 @@ def escape_factors(
                 factor_a[shell] = data.ionisation[shell] * _remaining(factor_a[:shell])
                 factors[row, column] = edge
                 factors[row, column + 1] = factor_a[shell]
-                if not surrounding:
+                if not surrounding and data.average_l > 0:
                     factors[row, column + 2] = data.yields[shell]
                     factors[row, column + 3] = photoelectric_at(data.average_l)
         for shell in range(4, 9):
@@ -556,9 +556,6 @@ def round_half_up(x: np.ndarray) -> np.ndarray:
 
     Exactly, including 0.49999999999999994, which ``floor(x + 0.5)`` gets
     wrong because the addition rounds up -- and NaN, which Java rounds to 0.
-    That last matters: the L-shell fluorescence of every element from Mg to
-    Co has no tabulated energy, so its escape distances are NaN, and the
-    Java aims that dose at voxel (0, 0, 0). Reproduced.
     """
     x = np.asarray(x, dtype=np.float64)
     finite = np.where(np.isnan(x), 0.0, x)
