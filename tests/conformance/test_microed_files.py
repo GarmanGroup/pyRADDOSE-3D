@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import functools
 import math
-import warnings
 from typing import TYPE_CHECKING
 
 import pytest
@@ -38,12 +37,7 @@ TOLERANCES = manifest()["microed_tolerances"]
 
 @functools.cache
 def run(case_dir: Path) -> MicroEDResult:
-    experiment = Experiment.from_yaml(case_dir / "config.yaml")
-    with warnings.catch_warnings():
-        # Sodium and aluminium, which the GOS model has no binding energies
-        # for: a NaN inelastic path, reported with a warning.
-        warnings.simplefilter("ignore", UserWarning)
-        return microed(experiment)
+    return microed(Experiment.from_yaml(case_dir / "config.yaml"))
 
 
 def _numbers(line: str) -> list[float]:

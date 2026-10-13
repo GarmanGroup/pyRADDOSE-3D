@@ -2,5 +2,5 @@ case_id: 039-composition-saxs-sequence-carbohydrates
 tier: A
 exercises: SAXS from a sequence, with carbohydrate residues on each monomer
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: 11d03e5
+reference_version: 5.0.1088
+reference_commit: ca553bc

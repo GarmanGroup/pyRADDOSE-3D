@@ -1,0 +1,6 @@
+case_id: 127-microed-sodium
+tier: A
+exercises: 'MicroED: sodium in the solvent, whose 2p binding energy the tables lacked'
+seed: 20260917
+reference_version: 5.0.1088
+reference_commit: ca553bc

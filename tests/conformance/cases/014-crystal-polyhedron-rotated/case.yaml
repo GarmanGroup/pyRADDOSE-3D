@@ -3,5 +3,5 @@ tier: A
 exercises: the prism tilted by AngleP and AngleL, with a placeholder Dimensions setting
   the default resolution to ten voxels across it
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: 11d03e5
+reference_version: 5.0.1088
+reference_commit: ca553bc

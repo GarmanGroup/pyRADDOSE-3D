@@ -2,5 +2,5 @@ case_id: 028-beam-pink
 tier: A
 exercises: 'a pink beam: 200 energies across a 0.5 keV FWHM'
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: 11d03e5
+reference_version: 5.0.1088
+reference_commit: ca553bc

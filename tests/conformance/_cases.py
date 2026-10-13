@@ -940,9 +940,9 @@ _CASES: list[Case] = [
         },
     ),
     Case(
-        "127-microed-sodium-nan",
+        "127-microed-sodium",
         "A",
-        "MicroED: sodium, which the GOS model has no binding energy for",
+        "MicroED: sodium in the solvent, whose 2p binding energy the tables lacked",
         {
             **MICROED,
             "crystal": _microed_crystal(
@@ -1020,9 +1020,9 @@ _CASES: list[Case] = [
         },
     ),
     Case(
-        "132-microed-aluminium-nan",
+        "132-microed-aluminium",
         "A",
-        "MicroED: aluminium, whose blank M1 binding energy crashed RADDOSE-3D",
+        "MicroED: aluminium, whose blank 3s binding energy crashed RADDOSE-3D",
         {
             **MICROED,
             "crystal": _microed_crystal(

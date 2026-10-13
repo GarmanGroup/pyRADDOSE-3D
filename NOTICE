@@ -26,6 +26,11 @@ WHAT IS DERIVED
       parameterisation of the McMaster tables of X-ray cross-sections. The
       values are unmodified; only the layout differs. See
       tests/backend/data/build_element_tables.py and the README.
+      Of the 22 subshell binding energies that table used to lack, which the
+      MicroED engine reads, 20 come from the X-ray Data Booklet, Table 1-1
+      (Lawrence Berkeley National Laboratory), and two, Al 3s and Cr 3d,
+      from T. A. Carlson, Photoelectron and Auger Spectroscopy (Plenum,
+      1975), as Geant4's G4AtomicShells tabulates them.
 
   Photoelectron energy deposition
       src/pyraddose_3d/data/pe_energy_low.csv, pe_energy_medium.csv and

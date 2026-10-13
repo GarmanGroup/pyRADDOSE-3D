@@ -27,9 +27,9 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 
 | PR | branch, onto | items | state |
 |---|---|---|---|
-| [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | open at `11d03e5`, awaiting sign-off on two physics changes |
+| [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | open at `ca553bc`, awaiting sign-off on the physics changes |
 
-The corpus is generated from `11d03e5`, so until #40 merges it follows a branch, not `master`.
+The corpus is generated from `ca553bc`, so until #40 merges it follows a branch, not `master`.
 
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
@@ -639,7 +639,7 @@ These were found before Milestone 4. The first three are now fixed: the first tw
 
 Found porting `Subprogram EMED` (`backend/microed.py`), against RADDOSE-3D `master` at
 `167fb7a`. "Run" means seen in a Java run; "read" means found in the source. All but the last
-two are fixed on RADDOSE-3D's `jd_microed_fixes` (`11d03e5`), [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40),
+two are fixed on RADDOSE-3D's `jd_microed_fixes` (`11d03e5`, and `ca553bc` for the binding energies), [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40),
 and the corpus follows that commit.
 
 | defect | where | effect | fix, in both |
@@ -648,7 +648,7 @@ and the corpus follows that commit.
 | The PDB route never multiplies its electron-scattering atoms by the molecules in the cell, and gives them no ligands | `CoefCalcFromPDB:381–394`; `multiplyAtomsEM` is never called | the elastic mean free path is far too long -- 45% for 3I40 -- and the counts and grid searches with it (run) | the electron physics reads the one composition; cases 128 and 129 |
 | The sequence, SAXS-sequence and CIF routes give the electron physics no macromolecule at all | no `...OccurrenceEM` calls in those classes | as above, worse (run) | as above; cases 130 and 131 |
 | The distant-collision integral mixes two shell models | `integrateDist`, `getpDisW` read `getShellBinding(i)`, whose index counts shells (K, L1, M1), so the L2 integral started at the M1 edge | the inelastic mean free path is 7.5% shorter than the subshell model gives: 234.20 nm for insulin at 300 keV, where it is 253.15 (run) | both read `getShellBindingSubshell`. **A physics change, for sign-off.** |
-| Eight elements have a zero binding energy for a subshell the GOS model reads, and aluminium a blank one | `MuCalcConstants.txt`; `getShellBindingSubshell` | Na, Ca, Sc, Ti, V, Cr, Ga, Ge: a NaN inelastic mean free path, so NaN counts and grid searches that end on 1990 kV and 1995 nm (run, Na). Al: `NullPointerException` (read) | a warning, NaN for everything the inelastic model feeds, and no search; cases 127 and 132. Real binding energies are a question for the group. |
+| Eight elements have a zero binding energy for a subshell the GOS model reads, and aluminium a blank one | `MuCalcConstants.txt`; `getShellBindingSubshell` | Na, Ca, Sc, Ti, V, Cr, Ga, Ge: a NaN inelastic mean free path, so NaN counts and grid searches that end on 1990 kV and 1995 nm (run, Na). Al: `NullPointerException` (read) | the table has them now: Na L2 and L3, Ca–V M2 and M3, Cr M2 and M3, and Ga and Ge M2–M5 from the X-ray Data Booklet (Table 1-1), as the table's neighbouring M1 binding energies are; Al 3s and Cr 3d, which it does not list, from Carlson (1975) as Geant4 tabulates them. Should a table still lack one, a warning, NaN for everything the inelastic model feeds, and no search. Cases 127 and 132. **A physics change, for sign-off.** |
 | A Gaussian beam gives MicroED no exposure | `BeamGaussian.getExposure` is a stub returning 0 | a dose of zero, NaN, 1990 kV and 1995 nm (run) | refused, as is any beam but TopHat |
 | An experimental beam has no size | `BeamExperimental.getBeamX` returns null | a crash (read) | refused |
 | A TopHat beam without `Exposure` | `BeamTophat.getExposure` unboxes null | `NullPointerException` (read) | refused |

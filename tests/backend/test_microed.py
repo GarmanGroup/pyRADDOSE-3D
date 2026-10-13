@@ -7,6 +7,7 @@ rule's point count, the refusals -- and the engine's place in the models.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from typing import TYPE_CHECKING
 
@@ -144,7 +145,7 @@ def test_the_baseline_matches_the_javas_mean_free_paths() -> None:
     )
 
 
-# --- Elements the tables have no binding energies for ----------------------
+# --- Binding energies -------------------------------------------------------
 
 
 def _run(
@@ -160,32 +161,66 @@ def _run(
     )
 
 
-def test_elements_lacking_binding_energies_in_atomic_number_order() -> None:
-    assert backend.lacking_bindings(material()) == ()
-    heavy = {"Ca": 1.0, "Zn": 1.0, "Al": 1.0, "S": 1.0, "Na": 1.0}
-    assert backend.lacking_bindings(material(protein_heavy_atoms=heavy)) == (
-        "NA",
-        "AL",
-        "CA",
+def test_every_element_has_the_binding_energies_the_gos_model_reads() -> None:
+    """Na, Ca, Sc, Ti, V, Cr, Ga and Ge had zeros, and Al a blank, until
+    RADDOSE-3D ``ca553bc`` filled them from the X-ray Data Booklet and,
+    for Al 3s and Cr 3d, Carlson."""
+    table = backend._shell_table()
+    atoms = tuple(
+        backend._Atom(
+            symbol=str(z),
+            z=z,
+            atomic_weight=1.0,
+            count=1.0,
+            shells=shells,
+            elastic=backend._elsepa()[1],
+        )
+        for z, shells in table.items()
     )
+    every = dataclasses.replace(material(), atoms=atoms)
+    assert len(atoms) > 80
+    assert backend.lacking_bindings(every) == ()
 
 
 @pytest.mark.parametrize(
     "changes",
     [
-        # Sodium's L2 binding energy is zero in the tables.
         {"solvent_heavy_conc": {"P": 425.0, "Na": 150.0}},
-        # Aluminium's M1 is blank.
-        {"protein_heavy_atoms": {"Al": 1.0}},
+        {"protein_heavy_atoms": {"Al": 1.0, "S": 6.0}},
     ],
 )
-def test_they_give_nan_for_what_the_inelastic_model_feeds(
+def test_sodium_and_aluminium_have_an_inelastic_path(
     changes: dict[str, object],
 ) -> None:
-    m = material(**changes)
+    """Sodium gave NaN, aluminium a crash in RADDOSE-3D."""
+    result = _run(material(**changes))
+    assert result.lacking_bindings == ()
+    assert math.isfinite(result.inelastic_mean_free_path)
+    assert math.isfinite(result.information_coefficient)
+    assert result.best_energy < 1990.0
+
+
+def test_an_element_lacking_binding_energies_gives_nan() -> None:
+    """The guard, for a table that lacks one. None does now, so zinc is
+    made to: its L2 binding energy zeroed."""
+    baseline = material()
+    atoms = tuple(
+        dataclasses.replace(
+            atom,
+            shells=dataclasses.replace(
+                atom.shells,
+                subshells=(*atom.shells.subshells[:2], 0.0, *atom.shells.subshells[3:]),
+            ),
+        )
+        if atom.symbol == "ZN"
+        else atom
+        for atom in baseline.atoms
+    )
+    lacking = dataclasses.replace(baseline, atoms=atoms)
+    assert backend.lacking_bindings(lacking) == ("ZN",)
     with pytest.warns(UserWarning, match="no binding energy for one or more"):
-        result = _run(m)
-    assert result.lacking_bindings
+        result = _run(lacking)
+    expected = _run(baseline)
     for value in (
         result.inelastic_mean_free_path,
         result.inelastic,
@@ -195,15 +230,8 @@ def test_they_give_nan_for_what_the_inelastic_model_feeds(
         result.best_thickness,
     ):
         assert math.isnan(value)
-    assert result.dose > 0
-    assert result.elastic > 0
-
-
-def test_sodium_leaves_the_dose_as_it_was() -> None:
-    """3.678951 MGy, as RADDOSE-3D reported before it stopped searching."""
-    m = material(solvent_heavy_conc={"P": 425.0, "Na": 150.0})
-    with pytest.warns(UserWarning):
-        assert _run(m).dose == pytest.approx(3.678951, rel=1e-6)
+    assert result.dose == expected.dose
+    assert result.elastic == expected.elastic
 
 
 # --- Slices ----------------------------------------------------------------

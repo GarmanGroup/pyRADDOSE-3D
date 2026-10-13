@@ -2,5 +2,5 @@ case_id: 038-composition-saxs-sequence
 tier: A
 exercises: SAXS sample whose monomer is read from a sequence file
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: 11d03e5
+reference_version: 5.0.1088
+reference_commit: ca553bc

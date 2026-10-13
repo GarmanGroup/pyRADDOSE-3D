@@ -3,5 +3,5 @@ tier: A
 exercises: 'escape under a pink beam: a draw per voxel for every energy sampled; a
   short wedge, as every image costs 200'
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: 11d03e5
+reference_version: 5.0.1088
+reference_commit: ca553bc

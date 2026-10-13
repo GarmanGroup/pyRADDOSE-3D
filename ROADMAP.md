@@ -174,7 +174,7 @@ These decide what happens after step 2, and none of them is code.
 | Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | CCP4, and nothing else |
 | Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | step 2's last item; the CLI |
 | A remote for the repository, even a private one | the author | CI on Linux and Windows; the notebooks in CI |
-| Sign-off on #40's two MicroED physics changes, and real binding energies for the nine elements MicroED reports NaN for (step 4) | the group | merging #40, and the corpus following `master` again |
+| Sign-off on #40's MicroED physics changes, the binding energies it adds among them (step 4) | the group | merging #40, and the corpus following `master` again |
 | Sign-off on fixing Monte Carlo and XFEL's physics defects in RADDOSE-3D (step 6) | the group | porting them faithfully |
 
 The licence itself is settled: AGPL-3.0-only, as RADDOSE-3D is (`HISTORY.md`, Milestone 0).
@@ -193,7 +193,7 @@ The fixes the port found are merged into RADDOSE-3D, as #36, #37 and #38 on 2026
   fix moves doses by under 0.1%.
 
 The MicroED fixes are [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40), from
-`jd_microed_fixes` at `11d03e5`, awaiting sign-off. The corpus is regenerated from that commit, so
+`jd_microed_fixes` at `ca553bc`, awaiting sign-off. The corpus is regenerated from that commit, so
 for now it follows a branch rather than `master`. The MX numbers moved by at most 3e-14, from
 the order a `HashSet` sums elements in. #40:
 
@@ -202,9 +202,10 @@ the order a `HashSet` sums elements in. #40:
   see one molecule's protein, the solvent alone, or nothing;
 - makes the distant-collision integral use one shell model, which lengthens insulin's inelastic
   mean free path at 300 keV from 234.20 to 253.15 nm (a physics change, for sign-off);
-- reports NaN for Na, Al, Ca, Sc, Ti, V, Cr, Ga and Ge, whose tables lack a binding energy the
-  GOS model reads, with a warning and no grid search. Al used to crash, and the others' grid
-  searches reported 1990 kV and 1995 nm;
+- gives Na, Al, Ca, Sc, Ti, V, Cr, Ga and Ge the binding energies the GOS model reads, which the
+  tables lacked, from the X-ray Data Booklet and, for Al 3s and Cr 3d, Carlson. Al used to
+  crash, and the others gave NaN and grid searches that reported 1990 kV and 1995 nm. Should a
+  table still lack one, MicroED now warns and reports NaN without searching;
 - gives a crystal thinner than 5 nm one slice, steps slice depths by the real width, refuses
   beams without an exposure, and removes Selenium, 9 MB of the 53 MB jar.
 

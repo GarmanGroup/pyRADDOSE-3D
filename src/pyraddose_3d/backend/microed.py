@@ -27,18 +27,20 @@ included -- some methods take the speed of light as 3e8 and others as
 iterates a ``HashSet``, so the two can differ in the last bit; nothing else
 should differ.
 
-Elements the tables have no binding energies for
--------------------------------------------------
-The GOS model reads every subshell's binding energy up to the valence one,
-and RADDOSE-3D's tables give zero for one of them for Na, Ca, Sc, Ti, V, Cr,
-Ga and Ge, and leave aluminium's M1 blank. For a crystal containing any of
-them, RADDOSE-3D reports NaN for the inelastic mean free path and everything
-it feeds -- the inelastic and productive counts, the information coefficient
-and the best voltage and thickness -- and warns. The dose and the elastic
-counts are unaffected. So does this port.
+Binding energies
+----------------
+The GOS model reads every subshell's binding energy up to the valence one.
+RADDOSE-3D's tables used to give zero for one of them for Na, Ca, Sc, Ti, V,
+Cr, Ga and Ge, and nothing for aluminium's M1. They now come from the X-ray
+Data Booklet, Table 1-1, and, for Al 3s and Cr 3d, which it does not list,
+from Carlson's *Photoelectron and Auger Spectroscopy* (1975) as Geant4
+tabulates them. Should a table still lack one, RADDOSE-3D reports NaN for
+the inelastic mean free path and everything it feeds -- the inelastic and
+productive counts, the information coefficient and the best voltage and
+thickness -- and warns, and so does this port (:func:`lacking_bindings`).
 
 This follows RADDOSE-3D with its MicroED fixes, ``jd_microed_fixes`` at
-``11d03e5``. Before them, the distant-collision integral mixed two shell
+``ca553bc``. Before them, the distant-collision integral mixed two shell
 models, and the electron physics saw part of the crystal, or none of it, for
 PDB, sequence and CIF compositions (``UPSTREAM_FIXES.md``).
 """
