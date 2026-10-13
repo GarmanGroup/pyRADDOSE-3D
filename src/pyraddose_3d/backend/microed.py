@@ -39,8 +39,8 @@ the inelastic mean free path and everything it feeds -- the inelastic and
 productive counts, the information coefficient and the best voltage and
 thickness -- and warns, and so does this port (:func:`lacking_bindings`).
 
-This follows RADDOSE-3D with its MicroED fixes, ``jd_microed_fixes`` at
-``ca553bc``. Before them, the distant-collision integral mixed two shell
+This follows RADDOSE-3D ``master`` at ``e2df6e4``, with its MicroED fixes
+(#40). Before them, the distant-collision integral mixed two shell
 models, and the electron physics saw part of the crystal, or none of it, for
 PDB, sequence and CIF compositions (``UPSTREAM_FIXES.md``).
 """

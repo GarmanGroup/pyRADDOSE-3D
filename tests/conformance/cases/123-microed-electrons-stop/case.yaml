@@ -2,5 +2,5 @@ case_id: 123-microed-electrons-stop
 tier: A
 exercises: 'MicroED: 10 keV electrons that stop inside the crystal'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

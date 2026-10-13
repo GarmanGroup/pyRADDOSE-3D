@@ -2,5 +2,5 @@ case_id: 104-escape-rotated-surrounding
 tier: A
 exercises: rotated crystal with surrounding; guards the cryo grid frame fix
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

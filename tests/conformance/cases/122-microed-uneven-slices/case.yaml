@@ -2,5 +2,5 @@ case_id: 122-microed-uneven-slices
 tier: A
 exercises: 'MicroED: a thickness that is not a whole number of 5 nm slices'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

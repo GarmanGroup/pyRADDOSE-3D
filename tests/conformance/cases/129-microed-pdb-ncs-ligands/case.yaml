@@ -2,5 +2,5 @@ case_id: 129-microed-pdb-ncs-ligands
 tier: A
 exercises: 'MicroED: composition from PDB 1A34, NCS operators and ligands'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

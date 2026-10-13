@@ -163,8 +163,8 @@ def _run(
 
 def test_every_element_has_the_binding_energies_the_gos_model_reads() -> None:
     """Na, Ca, Sc, Ti, V, Cr, Ga and Ge had zeros, and Al a blank, until
-    RADDOSE-3D ``ca553bc`` filled them from the X-ray Data Booklet and,
-    for Al 3s and Cr 3d, Carlson."""
+    RADDOSE-3D #40 filled them from the X-ray Data Booklet and, for Al 3s
+    and Cr 3d, Carlson."""
     table = backend._shell_table()
     atoms = tuple(
         backend._Atom(

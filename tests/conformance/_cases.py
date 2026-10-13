@@ -954,7 +954,7 @@ _CASES: list[Case] = [
         },
     ),
     # The composition routes other than the unit cell's. Until RADDOSE-3D
-    # 11d03e5 its electron calculations kept their own count of the atoms,
+    # #40 its electron calculations kept their own count of the atoms,
     # which the PDB route never multiplied by the molecules in the cell, and
     # the sequence and CIF routes never filled.
     Case(

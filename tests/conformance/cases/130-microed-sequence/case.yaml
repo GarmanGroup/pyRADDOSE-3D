@@ -2,5 +2,5 @@ case_id: 130-microed-sequence
 tier: A
 exercises: 'MicroED: composition from a sequence file'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

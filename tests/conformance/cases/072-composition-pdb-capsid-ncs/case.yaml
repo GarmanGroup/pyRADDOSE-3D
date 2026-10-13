@@ -2,5 +2,5 @@ case_id: 072-composition-pdb-capsid-ncs
 tier: A
 exercises: 'PDB 2BUK: a capsid with 59 NCS operators to apply'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

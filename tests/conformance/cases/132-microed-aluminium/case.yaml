@@ -2,5 +2,5 @@ case_id: 132-microed-aluminium
 tier: A
 exercises: 'MicroED: aluminium, whose blank 3s binding energy crashed RADDOSE-3D'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: ca553bc
+reference_version: 5.0.1087
+reference_commit: e2df6e4

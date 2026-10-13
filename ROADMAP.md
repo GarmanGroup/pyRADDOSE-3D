@@ -19,8 +19,8 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
   output files themselves. Photoelectron and fluorescence escape are included, value by value.
 - **MicroED** (`Subprogram EMED`) is ported: the dose to a thin crystal in an electron beam,
   slice by slice, the scattering counts, and the grid search for the best voltage and
-  thickness. Its fourteen cases agree with RADDOSE-3D to the last printed digit or two, against
-  RADDOSE-3D with its MicroED fixes (#40, step 4). It needs no new dependency and 0.37 MB of
+  thickness. Its fourteen cases agree with RADDOSE-3D to the last printed digit or two, now that
+  RADDOSE-3D has its MicroED fixes (#40, step 4). It needs no new dependency and 0.37 MB of
   data.
 - It reads RADDOSE-3D's `.txt` input files as well as YAML, and writes the same eight output
   files RADDOSE-3D writes.
@@ -174,7 +174,6 @@ These decide what happens after step 2, and none of them is code.
 | Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | CCP4, and nothing else |
 | Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | step 2's last item; the CLI |
 | A remote for the repository, even a private one | the author | CI on Linux and Windows; the notebooks in CI |
-| Sign-off on #40's MicroED physics changes, the binding energies it adds among them (step 4) | the group | merging #40, and the corpus following `master` again |
 | Sign-off on fixing Monte Carlo and XFEL's physics defects in RADDOSE-3D (step 6) | the group | porting them faithfully |
 
 The licence itself is settled: AGPL-3.0-only, as RADDOSE-3D is (`HISTORY.md`, Milestone 0).
@@ -183,7 +182,7 @@ copyright holders, so relicensing is on the critical path for CCP4 alone.
 
 ### 4. Upstream: RADDOSE-3D
 
-The fixes the port found are merged into RADDOSE-3D, as #36, #37 and #38 on 2026-10-13:
+The fixes the port found are merged into RADDOSE-3D, as #36, #37, #38 and #40 on 2026-10-13:
 
 - **#36**: input that was silently ignored, `Type Experimental`, `-o voxelfluences`, and the
   `PixelSize` docs;
@@ -192,16 +191,15 @@ The fixes the port found are merged into RADDOSE-3D, as #36, #37 and #38 on 2026
   dose by 3.5% for protein and by 20% for SeMet above the Se K edge. Its fluorescence-direction
   fix moves doses by under 0.1%.
 
-The MicroED fixes are [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40), from
-`jd_microed_fixes` at `ca553bc`, awaiting sign-off. The corpus is regenerated from that commit, so
-for now it follows a branch rather than `master`. The MX numbers moved by at most 3e-14, from
-the order a `HashSet` sums elements in. #40:
+[#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) is the MicroED fixes, merged as
+`e2df6e4`. The corpus is regenerated from `master` at that commit. The MX numbers moved by at
+most 3e-14, from the order a `HashSet` sums elements in. #40:
 
 - ends the `NullPointerException` that every XFEL, MicroED and Monte Carlo run ended in;
 - gives the electron physics the whole crystal for PDB, sequence and CIF compositions. It used to
   see one molecule's protein, the solvent alone, or nothing;
 - makes the distant-collision integral use one shell model, which lengthens insulin's inelastic
-  mean free path at 300 keV from 234.20 to 253.15 nm (a physics change, for sign-off);
+  mean free path at 300 keV from 234.20 to 253.15 nm;
 - gives Na, Al, Ca, Sc, Ti, V, Cr, Ga and Ge the binding energies the GOS model reads, which the
   tables lacked, from the X-ray Data Booklet and, for Al 3s and Cr 3d, Carlson. Al used to
   crash, and the others gave NaN and grid searches that reported 1990 kV and 1995 nm. Should a
