@@ -40,7 +40,7 @@ behaviour rather than a difference in input.
 The port also reads `.txt` files (`Experiment.from_raddose_txt`), so existing
 inputs keep working. Every case survives the round trip YAML to `.txt` and
 back -- all but the seed, which RADDOSE-3D takes from its command line --
-which tests the reader against the emitter on 45 configurations.
+which tests the reader against the emitter on 56 configurations.
 
 ## The two tiers
 

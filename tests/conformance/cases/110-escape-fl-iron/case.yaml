@@ -2,5 +2,5 @@ case_id: 110-escape-fl-iron
 tier: A
 exercises: fluorescence escape from iron, whose L-shell lines are untabulated
 seed: 20260917
-reference_version: 5.0.1093
-reference_commit: cb8e2db
+reference_version: 5.0.1095
+reference_commit: eec659b

@@ -14,8 +14,15 @@ crystal (`CalcSurrounding`), and *a pink beam* one with an energy spread (`Energ
 
 ## Status
 
-The RADDOSE-3D branches are local, stacked one on the next, and not yet pushed. Each port
-commit carries the corpus regenerated from the branch named beside it.
+The RADDOSE-3D branches are local and not yet pushed. They are stacked, each on the one before:
+`master` → `jd_upstream_input_fixes` → `jd_upstream_escape_fixes` → `jd_upstream_pink_fixes` →
+`jd_upstream_pgm_collimation` → `jd_upstream_wedge_count`, so they can go up as five PRs in that
+order. Each port commit carries the corpus regenerated from the commit named beside it.
+
+The last three branches were rebased after the escape branch gained `63fa851`, which undid a
+slowdown that item 3 introduced: its direction table was built of boxed integers, and
+photoelectron escape ran six times slower. The table, and every result, are unchanged. Port
+commits made before the rebase name the old hashes, given here in brackets.
 
 | items | RADDOSE-3D branch | port | state |
 |---|---|---|---|
@@ -26,15 +33,41 @@ commit carries the corpus regenerated from the branch named beside it.
 | 2: fluorescence direction | `jd_upstream_escape_fixes` 31fdb9b | `81afd79` | done; physics change awaiting sign-off |
 | 3: separate direction tables | `jd_upstream_escape_fixes` 8ee300b | `07bfc7b` | done |
 | 4: path in front of the surrounding | `jd_upstream_escape_fixes` 7322e36 | `8ed9b2c` | done |
-| 6: pink beams | `jd_upstream_pink_fixes` d1e5ad5 | `59949f3`, `5348d95` | done |
-| 12: collimation on measured beams | `jd_upstream_pgm_collimation` cb8e2db | this commit | done; decisions C and D taken as recommended |
+| item 3's slowdown undone | `jd_upstream_escape_fixes` 63fa851 | this commit | done; no result changes |
+| 6: pink beams | `jd_upstream_pink_fixes` 8f78795 (d1e5ad5) | `59949f3`, `5348d95` | done |
+| 12: collimation on measured beams | `jd_upstream_pgm_collimation` 32ed072 (cb8e2db) | `a931c11` | done; decisions C and D taken as recommended |
+| a case that shows the reversed-wedge defect first: 067 | `jd_upstream_pgm_collimation` 32ed072 (cb8e2db) | `747dd6e` | done |
+| the wedge image count, and a reversed wedge's step | `jd_upstream_wedge_count` eec659b | this commit | done |
+
+Every item above is done. Two older items remain open (see *Older upstream items*), and one
+defect found while fixing these is recorded but not fixed (see *Found while fixing*).
+
+## Found while fixing
+
+- **An unreadable sequence file was ignored.** `parseSequenceFile` printed "Could not read sequence
+  file." and carried on with no residues, giving a dose for a crystal of solvent alone. Now an
+  error, in `jd_upstream_input_fixes`.
+- **A reversed wedge also lost its requested step.** `Wedge` tested `AngularResolution` against the
+  signed span, so a wedge running backwards always fell back to 2 degrees. The truncation was
+  worse than the plan said too: 0 to 90 degrees at 3 had 30 images, not 31, and 30 to 0 at 2 had
+  13, not 16. Both fixed in `jd_upstream_wedge_count`.
+- **The container cases depend on NIST's website, and Java 8 cannot reach it.** RADDOSE-3D fetches
+  NIST's attenuation tables on every run with a container. NIST refuses Java 8's requests (HTTP
+  403), and the run then fails with a `NullPointerException`. JDK 25 is served. **Not fixed.** The
+  fix is to vendor the tables in the Java as the port already does (`nist_elements.tsv`,
+  `nist_mixtures.tsv`), which also makes runs reproducible offline. The corpus generator now
+  refuses to run on a JVM other than the one the manifest records, which is how this was found.
+- **The escape tolerances were not re-measured.** Items 2, 3 and 4 give the escape cases new random
+  realisations. Every case still agrees with the Java within the existing tolerances, at worst
+  2e-4 on a quantised quantity, but the self-sensitivity behind those tolerances was measured on
+  the old realisations.
 
 ---
 
 ## Why the two must change together
 
 The port reproduces the Java on purpose, quirks included, and marks each quirk in its source. The
-conformance corpus (`tests/conformance`) compares the two on 50 cases, value by value. That includes
+conformance corpus (`tests/conformance`) compares the two on 56 cases, value by value. That includes
 escape modelling: the port draws from `java.util.Random` in the Java's order, so the same seed gives
 the same dose.
 
@@ -460,8 +493,9 @@ out `KEVTOJOULES × energy`.
 
 ## The port's four interim decisions
 
-Each of these is the port's current answer to one of the Java defects above. Each should change
-when its Java fix lands.
+Each of these was the port's answer to one of the Java defects above until its Java fix landed.
+**All four are now settled as recommended**: A and B with the input fixes, C and D with item 12.
+The text below records the reasoning.
 
 ### A. A sequence file whose residues come before any header is refused
 
@@ -522,6 +556,9 @@ regenerating the ANTLR 3 parser, which is not worth it for this.
 
 ## Port-only issues found while writing this
 
+Both are resolved: item 5 removed the NaN, and item 2 replaced the code that aimed it; the
+misdescriptions were corrected when this document was written.
+
 - **NaN fluorescence goes to a different voxel from the Java's.** The Java computes the offsets
   for fluorescence track 0 as (*r* sin 0, *r* sin 0, *r*). With *r* = NaN, that is NaN in all three
   axes, so the dose goes to voxel (0, 0, 0). The port writes the x and y offsets as `+ 0.0`
@@ -540,21 +577,24 @@ regenerating the ANTLR 3 parser, which is not worth it for this.
 
 ---
 
-## Older upstream items, still present
+## Older upstream items
 
-These were found before Milestone 4. They are listed in `ROADMAP.md` and re-checked today.
+These were found before Milestone 4. The first three are now fixed: the first two in
+`jd_upstream_input_fixes`, the third in `jd_upstream_wedge_count`. The last two remain open.
 
 | item | where | fix |
 |---|---|---|
-| `-o voxelfluences:…` never matches: `"voxeldose"` is tested twice | `OutputFactory.java:59–62` | one word. No corpus effect, since the corpus uses the default outputs. |
-| the help text advertises `Summary`, `SummaryCSV:…` and `DoseStateCSV`, which are not modules | `RD3D.java:399–401` | correct the text |
-| a 0–30° wedge at 2° per image takes 15 images, not 16: the count is computed in radians and truncated | `Crystal.java:891–893` | round when within 10⁻⁹ of an integer, in both codebases. This changes every corpus case whose wedge divides exactly but truncates in radians, so do it separately. |
+| `-o voxelfluences:…` never matches: `"voxeldose"` is tested twice | `OutputFactory.java:59–62` | **fixed** |
+| the help text advertises `Summary`, `SummaryCSV:…` and `DoseStateCSV`, which are not modules | `RD3D.java:399–401` | **fixed** |
+| a 0–30° wedge at 2° per image takes 15 images, not 16: the count is computed in radians and truncated | `Crystal.java:891–893` | **fixed**, with the reversed wedge's count and step; only case 066 moved, plus new case 067 |
 | characters the lexer does not know are skipped with a message, not refused | the generated parser | refuse, as #34 did for parser errors. The port warns today. |
 | `MicroED.getSolventFraction()`, and the `getBeamArea()`/`getExposure()` stubs | MicroED, `BeamGaussian.java:298–306` | Milestone 6 |
 
 ---
 
 ## Order of work
+
+Done as below, in this order.
 
 1. **Add the missing cases first:**
    - a pink beam with a surrounding (item 6a);

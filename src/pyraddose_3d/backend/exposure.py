@@ -42,7 +42,12 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from pyraddose_3d.backend._array import array_namespace, promote, to_namespace
+from pyraddose_3d.backend._array import (
+    array_namespace,
+    is_torch,
+    promote,
+    to_namespace,
+)
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.geometry import Mesh, find_depth
 
@@ -197,7 +202,16 @@ def exposure_angles(start: float, end: float, resolution: float) -> list[float]:
         return [begin] * STATIC_EXPOSURE_STEPS
 
     sign = 1 if finish >= begin else -1
-    count = sign * int((finish - begin) / resolution + 1)
+    # One image per step, both ends included, in either direction. A count
+    # within 1e-9 of a whole number of steps is that number: in radians, 30
+    # degrees at 2 comes to 14.999999999999998 steps.
+    # A plain number: the count is an integer, with no gradient to carry.
+    span: Any = abs(finish - begin) / resolution
+    steps = float(span.detach() if is_torch(span) else span)
+    nearest = round(steps)
+    if abs(steps - nearest) < 1e-9:
+        steps = nearest
+    count = int(steps) + 1
     return [begin + sign * step * resolution for step in range(count)]
 
 

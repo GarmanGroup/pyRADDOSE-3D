@@ -97,7 +97,8 @@ __all__ = [
 #: 1 degree it agrees with a central finite difference to 5e-9. But the
 #: start also enters the integer image count, and *that* term is a step no
 #: gradient can carry. At a start of 0 degrees the count falls from 46 to 45
-#: the moment the angle moves, so a finite difference there measures the
+#: once the angle moves by more than about 1e-11 radians -- whole numbers of
+#: steps are given a 1e-9 margin -- so a finite difference there measures the
 #: step and disagrees with autograd entirely. Autograd is the one telling
 #: the truth -- it reports the slope at fixed image count -- but an
 #: optimiser stepping across one of those boundaries will see the objective
@@ -473,9 +474,10 @@ def wedge_resolution(start: float, end: float, requested: float | None) -> float
     """The angular step RADDOSE-3D actually uses, in degrees.
 
     Not always the one asked for. ``Wedge.java`` keeps a requested step only
-    if the wedge spans more than ten of them, and otherwise uses 2 degrees::
+    if the wedge spans more than ten of them, in either direction, and
+    otherwise uses 2 degrees::
 
-        if (angularResolution != null && (end - start) / angularResolution > 10)
+        if (angularResolution != null && Math.abs(end - start) / angularResolution > 10)
 
     So a 30 degree wedge at 5 degrees -- six steps -- is simulated at 2, and so
     is any wedge with no step given. The Java prints "ANGULAR RESOLUTION TOO
@@ -494,7 +496,7 @@ def wedge_resolution(start: float, end: float, requested: float | None) -> float
     float
         The step in degrees.
     """
-    if requested is not None and (end - start) / requested > 10:
+    if requested is not None and abs(end - start) / requested > 10:
         return requested
     return DEFAULT_ANGULAR_RESOLUTION
 

@@ -2,5 +2,5 @@ case_id: 065-wedge-still-decaying
 tier: A
 exercises: a still with a decay model, where the number of steps is observable
 seed: 20260917
-reference_version: 5.0.1093
-reference_commit: cb8e2db
+reference_version: 5.0.1095
+reference_commit: eec659b

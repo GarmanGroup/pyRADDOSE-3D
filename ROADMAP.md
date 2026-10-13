@@ -6,8 +6,8 @@ check a claim rather than take it on trust.
 ## Where the port stands
 
 11,000 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
-RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 1,190 tests,
-none expected to fail. All 50 conformance cases match the Java within measured tolerances — on
+RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 1,258 tests,
+none expected to fail. All 56 conformance cases match the Java within measured tolerances — on
 the sixteen summary numbers, on the dose field and per-image series behind them, and on the
 output files themselves — photoelectron and fluorescence escape included, value by value. The
 MX path is complete: every input RADDOSE-3D's MX calculation accepts is ported, except two that
@@ -355,18 +355,22 @@ stay differentiable.
 - **SAXS required a unit cell.** RADDOSE-3D defaults to a 1000 Å box of solution, and both SAXS
   routes now do too.
 
-### The Java's quirks, reproduced and marked
+### The Java's quirks: reproduced, then fixed in both
 
-Faithfulness means reproducing what RADDOSE-3D does, not what it meant to do. Each of these is
-marked in the source and listed under *Upstream* below:
+Faithfulness means reproducing what RADDOSE-3D does, not what it meant to do, so the port first
+reproduced each of these and marked it in its source:
 
-- fluorescence deposits along +z only;
-- the crystal's photoelectron tracks use the surrounding's draw table;
-- photoelectron escape alone loses the atom's relaxation energy, except the K-shell Auger part;
-- the cryo clamp uses the unrotated crystal;
-- pink beams give the surrounding 200 times its dose, report the per-image volume ×200, and keep
-  only the last energy's fluences;
-- the L-shell fluorescence of every element from Mg to Co goes to voxel (0, 0, 0).
+- fluorescence deposited along +z only;
+- the crystal's photoelectron tracks used the surrounding's draw table;
+- photoelectron escape alone lost the atom's relaxation energy, except the K-shell Auger part;
+- the surrounding's attenuation was clamped onto the unrotated crystal's box;
+- pink beams gave the surrounding 200 times its dose, reported the per-image volume ×200, and
+  kept only the last energy's fluences;
+- the L-shell fluorescence of every element from Mg to Co went to voxel (0, 0, 0).
+
+All are now fixed in RADDOSE-3D on local branches, not yet merged, with the port following
+each fix and the corpus regenerated from it. `UPSTREAM_FIXES.md` has the detail, measurements and
+status.
 
 # Milestone 5 — Publication and CCP4
 
@@ -422,67 +426,29 @@ not block 5.
 
 ---
 
-## Upstream: small Java defects to report
+## Upstream: Java defects
 
-Found while surveying, unrelated to the port:
+`UPSTREAM_FIXES.md` explains each defect the port found, measures it, and records its fix and
+status. All are fixed on RADDOSE-3D branches that are local and not yet pushed, stacked as five
+PRs; the port follows each, with the corpus regenerated from it. Items 1 and 2 there change doses
+materially -- photoelectron escape alone lost 15% of a SeMet crystal's dose above the Se K edge
+-- and need the group's sign-off before merging.
+
+Still open:
 
 - `MicroED.getSolventFraction()` returns 0 when explicitly set, and `getBeamArea()`/
-  `getExposure()` are stubs in `BeamGaussian`/`BeamExperimental` — from the earlier audit, still
-  open.
-- Lexer errors are not refused. A character the grammar does not know is skipped with a
-  message ("no viable alternative at character 'ß'") and the run carries on —
-  `input-b3x14.txt`, which RADDOSE-3D ships, has a stray `ß`. A gap in #34, which refuses input
-  the *parser* cannot read.
-- A wedge from 0° to 30° at 2° per image takes 15 images, not 16: the count is computed in
-  radians, where 30°/2° comes to 14.999999999999998, and truncated. The port reproduces it.
-
-Found porting Milestone 4. The port reproduces each, marked in its source, so fixing one means
-changing both together. `UPSTREAM_FIXES.md` explains each one, measures it, and sets out the fix
-in both codebases:
-
-- **Fluorescence escape deposits along +z only.** `addDoseAfterFL` draws a direction and never
-  uses it.
-- **With a surrounding, the crystal's photoelectrons use the surrounding's track table**
-  (`trackNumberBias`).
-- **With photoelectron escape alone, the atom's relaxation energy is lost.** That branch
-  subtracts the whole binding energy from the photoelectron, but deposits only the K-shell Auger
-  energy. The K fluorescence and all L and M relaxation vanish: 3.2% of the absorbed energy for
-  insulin at 12.1 keV, and 15.5% for a SeMet crystal above the Se K edge. With both escapes on,
-  energy is conserved, but the photoelectron carries the L and M Auger energy. The surrounding has
-  its own version: with fluorescence escape off, its photoelectron keeps everything but the K
-  Auger energy.
-- **The cryo region is clamped to the unrotated crystal's box** (`minimumDimensions`), not the
-  rotated one.
-- **Pink beams have several problems.**
-  - The surrounding's exposure is not divided over the 200 energy samples. With a surrounding,
-    the whole-crystal dose is 18 times too high.
-  - The per-image exposed volume in `DWDs.csv` is 200 times too large.
-  - `VoxelFluences.csv` holds only the last sample.
-  - The coefficients printed are those of the last sample, not the mean energy.
-- **The L-shell fluorescence of every element from Mg to Co gives NaN distances.** None of these
-  elements has a tabulated L emission energy. `StrictMath.round` turns the NaN into 0, so the
-  fluorescence is aimed at voxel (0, 0, 0), outside the crystal, and is lost. The printed
-  fluorescence escape total is then `NaN`.
-
-**Fixed, not yet merged.** These are fixed on RADDOSE-3D branches that are local and not yet
-pushed, and the port follows them. `UPSTREAM_FIXES.md`, *Status*, lists the branches and
-commits:
-
-- `-o voxelfluences` never resolved, because `OutputFactory` tested `"voxeldose"` twice.
-- The help text advertised module names that do not exist.
-- Escape modelling with `AbsCoefCalc Average` crashed, or for fluorescence alone did nothing.
-  Both are now refused.
-- `AbsCoefCalc SAXSSEQ` ignored `NumCarb`.
-- A sequence file whose residues came before any `>` header failed misleadingly. An unreadable
-  sequence file was ignored, leaving a crystal of solvent alone.
-- `Type Experimental` could never work, and failed with an unhelpful message.
-- `BeamExperimentalTest` checked nothing.
-- The user guide described `PixelSize` the other way round from the code.
+  `getExposure()` are stubs in `BeamGaussian`/`BeamExperimental` -- Milestone 6.
+- Lexer errors are not refused. A character the grammar does not know is skipped with a message
+  ("no viable alternative at character 'ß'") and the run carries on -- `input-b3x14.txt`, which
+  RADDOSE-3D ships, has a stray `ß`. A gap in #34, which refuses input the *parser* cannot read.
+- Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's
+  requests, which then fail with a `NullPointerException`. The port vendors the tables; the Java
+  should too.
 
 ## Verification, throughout
 
 - Every step keeps the conformance corpus bit-identical unless it deliberately changes a number,
-  and a changed expectation is a reviewable diff. Baseline is 50/50. The worst deviation is
+  and a changed expectation is a reviewable diff. Baseline is 56/56. The worst deviation is
   2.0e-4 (`102-escape-pe-fl`, `dose_threshold`, a quantised quantity), and 6.5e-5 for the rest;
   `pytest tests/conformance` prints the per-case table.
 - New output writers are checked against the Java's own files for the same case through

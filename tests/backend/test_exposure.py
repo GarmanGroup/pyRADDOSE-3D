@@ -404,25 +404,31 @@ def test_a_rotation_steps_by_the_resolution() -> None:
     assert angles[-1] == pytest.approx(math.radians(90))
 
 
-def test_a_reversed_wedge_counts_backwards() -> None:
-    """A reversed wedge gets *44* steps where the forward one gets 46.
+def test_a_reversed_wedge_counts_as_a_forward_one() -> None:
+    """A wedge swept backwards has as many angles as the same wedge forwards.
 
-    ``count = sign * int((end - start) / resolution + 1)``. Forward that is
-    ``int(46.0)``; reversed it is ``int(-44.0)``, because the ``+ 1`` moves
-    toward zero rather than away from it and ``int`` truncates. So a wedge
-    swept backwards is sampled at two fewer angles than the same wedge swept
-    forwards, and ends two steps short.
-
-    Pinned rather than corrected: it changes results, and the exposure time
-    is divided by the step count, so it is not a simple truncation.
+    RADDOSE-3D used to take ``sign * int((end - start) / resolution + 1)``,
+    which for a reversed wedge is ``int(-44.0)``: two angles fewer, ending two
+    steps short. Fixed in both (UPSTREAM_FIXES.md, the wedge image count).
     """
     forward = exposure_angles(0.0, math.radians(90), math.radians(2))
     reverse = exposure_angles(math.radians(90), 0.0, math.radians(2))
 
-    assert len(forward) == 46
-    assert len(reverse) == 44
-    assert reverse[0] > reverse[-1]
-    assert reverse[-1] == pytest.approx(math.radians(90 - 43 * 2))
+    assert len(forward) == len(reverse) == 46
+    assert reverse[0] == forward[-1]
+    assert reverse[-1] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_a_whole_number_of_steps_includes_both_ends() -> None:
+    """30 degrees at 2 is 15 steps, 16 angles.
+
+    In radians the quotient is 14.999999999999998, which RADDOSE-3D used to
+    truncate to 14 steps; a count within 1e-9 of a whole number is now that
+    number.
+    """
+    angles = exposure_angles(0.0, math.radians(30), math.radians(2))
+    assert len(angles) == 16
+    assert angles[-1] == pytest.approx(math.radians(30))
 
 
 def test_whole_turns_are_removed_from_both_ends() -> None:

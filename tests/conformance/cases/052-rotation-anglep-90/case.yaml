@@ -2,5 +2,5 @@ case_id: 052-rotation-anglep-90
 tier: A
 exercises: AngleP 90
 seed: 20260917
-reference_version: 5.0.1093
-reference_commit: cb8e2db
+reference_version: 5.0.1095
+reference_commit: eec659b

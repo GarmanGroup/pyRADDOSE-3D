@@ -2,5 +2,5 @@ case_id: 031-composition-small-molecule
 tier: A
 exercises: small molecule crystal
 seed: 20260917
-reference_version: 5.0.1093
-reference_commit: cb8e2db
+reference_version: 5.0.1095
+reference_commit: eec659b
