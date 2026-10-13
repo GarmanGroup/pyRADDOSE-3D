@@ -20,12 +20,11 @@ a voxel absorbs a photon, not all of the energy stays there:
 
 Matching the Java's random draws
 --------------------------------
-All of this is deterministic except the photoelectron's direction, which is
-one ``nextInt`` per voxel per image from a single ``java.util.Random``. The
-draws are taken here in exactly the Java's order -- voxel by voxel in
-``i, j, k`` order, a fluorescence draw (which the Java takes and never
-uses) before the photoelectron draws, the crystal's voxels before the
-surrounding's -- from :class:`~pyraddose_3d.backend.java_random.JavaRandom`
+All of this is deterministic except the directions, which are ``nextInt``
+draws from a single ``java.util.Random``. The draws are taken here in
+exactly the Java's order -- voxel by voxel in ``i, j, k`` order, the
+fluorescence's direction before the photoelectron's, the crystal's voxels
+before the surrounding's -- from :class:`~pyraddose_3d.backend.java_random.JavaRandom`
 with the same seed, so the port reproduces RADDOSE-3D's escape results
 rather than only their statistics. That holds while the same voxels are
 lit in every image: a voxel exactly on a collimation edge, where the two
@@ -38,10 +37,6 @@ Quirks reproduced
 Each is marked where it happens, and listed in the roadmap as a defect to
 report upstream rather than fixed here:
 
-- Fluorescence is deposited along a single direction, +z in the crystal's
-  voxel grid: the loop over directions runs ``FL_ANGLE_RESOLUTION**2 = 1``
-  times, so only the first track is used. The random track it draws is
-  discarded.
 - With a surrounding, the crystal's photoelectrons are drawn using the
   surrounding's direction weights: both share one field, and the
   surrounding's is computed last.
@@ -95,7 +90,6 @@ _PE_ANGLE_RES_LIMIT = 100
 #: ``PE_ANGLE_LIMIT``: a full turn.
 _PE_ANGLE_LIMIT = 1 * 2 * math.pi
 #: ``FL_ANGLE_RESOLUTION`` and ``FL_ANGLE_RES_LIMIT``.
-_FL_ANGLE_RESOLUTION = 1
 _FL_ANGLE_RES_LIMIT = 16
 #: Default fluorescence distance bins, ``flDistBins``.
 _FL_DISTANCE_BINS = 8
@@ -655,15 +649,20 @@ class FluorescenceEscape:
     distribution : np.ndarray
         ``(elements, 4, bins)``: where the fluorescence is reabsorbed, the
         last bin being what escapes.
-    tracks : int
-        ``numberOfTracksFL``, the bound of the draw the Java discards.
+    directions : np.ndarray
+        ``(numberOfTracksFL, 3)`` unit vectors, one drawn per voxel.
     """
 
     release: float
     proportion: np.ndarray
     distances: np.ndarray
     distribution: np.ndarray
-    tracks: int
+    directions: np.ndarray
+
+    @property
+    def tracks(self) -> int:
+        """``numberOfTracksFL``: the bound of each voxel's draw."""
+        return len(self.directions)
 
 
 def fluorescence_escape(
@@ -717,19 +716,33 @@ def fluorescence_escape(
                 distribution[i, j, l] = reached if l == bins - 1 else reached - running
                 running += distribution[i, j, l]
 
-    # findVoxelsReachedByFL: only the number of directions matters here.
-    step = _PE_ANGLE_LIMIT / _FL_ANGLE_RES_LIMIT
-    counter = -1
-    phi = 0.0
-    while phi < _PE_ANGLE_LIMIT:
-        theta = 0.0
-        while theta <= _PE_ANGLE_LIMIT / 2:
-            replicate = (theta == 0 or theta == (_PE_ANGLE_LIMIT / 2)) and phi != 0
-            if not replicate:
-                counter += 1
-            theta += step
-        phi += step
-    return FluorescenceEscape(release, proportion, distances, distribution, counter + 1)
+    return FluorescenceEscape(
+        release, proportion, distances, distribution, _fluorescence_directions()
+    )
+
+
+def _fluorescence_directions() -> np.ndarray:
+    """``findVoxelsReachedByFL``'s directions: a Fibonacci lattice.
+
+    Fluorescence is emitted with equal probability in every direction, so
+    the directions are spread evenly over the sphere, each standing for the
+    same solid angle. Formed as the Java forms them, the azimuth reduced to
+    ``[0, 2 pi)`` before its cosine and sine are taken.
+
+    Returns
+    -------
+    np.ndarray
+        ``(256, 3)`` unit vectors.
+    """
+    count = _FL_ANGLE_RES_LIMIT * _FL_ANGLE_RES_LIMIT
+    golden_angle = math.pi * (3 - math.sqrt(5))
+    directions = np.empty((count, 3))
+    for track in range(count):
+        z = 1 - (2.0 * track + 1) / count
+        radius = math.sqrt(1 - z * z)
+        phi = math.fmod(track * golden_angle, 2 * math.pi)
+        directions[track] = (radius * math.cos(phi), radius * math.sin(phi), z)
+    return directions
 
 
 # --- the surrounding ------------------------------------------------------------
@@ -1074,9 +1087,9 @@ class Escape:
             relaxation = (pe.binding_energy / photon_energy) * image_dose
             dose_pe = image_dose - relaxation
 
-        # The draws, in the Java's order: voxel by voxel, a fluorescence
-        # draw (taken and never used) when there is fluorescence to release,
-        # then the photoelectron's.
+        # The draws, in the Java's order: voxel by voxel, the fluorescence's
+        # direction when there is fluorescence to release, then the
+        # photoelectron's.
         slots = (1 if fl is not None else 0) + (PE_ANGLE_RESOLUTION**2 if pe else 0)
         draws = np.zeros((len(index), 0), dtype=np.int64)
         if slots:
@@ -1094,7 +1107,7 @@ class Escape:
             draws = draws.reshape(bounds.shape)
 
         if fl is not None:
-            self._fluorescence(dose, ijk, fl_release)
+            self._fluorescence(dose, ijk, fl_release, draws[:, 0])
             if pe is None:
                 np.add.at(dose, index, image_dose - fl_release)
         if pe is not None:
@@ -1121,34 +1134,28 @@ class Escape:
             np.add.at(dose, index, image_dose)
 
     def _fluorescence(
-        self, dose: np.ndarray, ijk: np.ndarray, release: np.ndarray
+        self,
+        dose: np.ndarray,
+        ijk: np.ndarray,
+        release: np.ndarray,
+        draws: np.ndarray,
     ) -> None:
-        """``addDoseAfterFL``: along the first track, +z, for every lit voxel."""
+        """``addDoseAfterFL``: along the direction drawn for each lit voxel."""
         fl = self.fluorescence
         assert fl is not None
         releasing = release > 0
+        ijk, release = ijk[releasing].astype(np.float64), release[releasing]
+        directions = fl.directions[draws[releasing]]
         for n in range(fl.proportion.shape[0]):
             for shell in range(4):
                 share = fl.proportion[n, shell]
                 if share == 0:
                     continue
                 for m in range(fl.distances.shape[2]):
-                    amount = (
-                        release
-                        * share
-                        * fl.distribution[n, shell, m]
-                        / math.pow(_FL_ANGLE_RESOLUTION, 2)
-                    )
+                    amount = release * share * fl.distribution[n, shell, m]
                     r = fl.distances[n, shell, m] * self.ppm
-                    targets = ijk.astype(np.float64)
-                    # x and y are r times sin(0): zero.
-                    targets = np.stack(
-                        [targets[:, 0] + 0.0, targets[:, 1] + 0.0, targets[:, 2] + r],
-                        axis=-1,
-                    )
-                    self._deposit(
-                        dose, round_half_up(targets)[releasing], amount[releasing]
-                    )
+                    targets = ijk + r * directions
+                    self._deposit(dose, round_half_up(targets), amount)
 
     # -- the surrounding --------------------------------------------------------
 

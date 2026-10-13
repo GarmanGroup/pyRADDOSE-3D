@@ -2,4 +2,4 @@ case_id: 106-escape-vertical-goniometer
 tier: A
 exercises: 'GoniometerAxis 90: the polarisation biases photoelectrons along x'
 seed: 20260917
-reference_version: 5.0.1088
+reference_version: 5.0.1089

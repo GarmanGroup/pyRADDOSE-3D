@@ -11,19 +11,19 @@ Elastic Coefficient: 2.11e-05 /um.
 Attenuation Coefficient: 4.42e-04 /um.
 Density: 1.10 g/ml.
 
-Average Diffraction Weighted Dose         : 11.497374 MGy
-Last Diffraction Weighted Dose            : 23.051166 MGy
+Average Diffraction Weighted Dose         : 11.499791 MGy
+Last Diffraction Weighted Dose            : 23.056105 MGy
 Elastic Yield                             : 2.77e+09 photons
 Diffraction Efficiency (Elastic Yield/DWD): 2.41e+08 photons/MGy
-Average Dose (Whole Crystal)              : 22.851108 MGy
-Average Dose (Exposed Region)             : 22.851108 MGy
-Max Dose                                  : 30.415716 MGy
-Average Dose (95.0 % of total absorbed energy threshold (16.33 MGy)): 23.521683 MGy
+Average Dose (Whole Crystal)              : 22.855189 MGy
+Average Dose (Exposed Region)             : 22.855189 MGy
+Max Dose                                  : 30.429057 MGy
+Average Dose (95.0 % of total absorbed energy threshold (16.32 MGy)): 23.525883 MGy
 Dose Contrast (Max/Threshold Av.)         : 1.29
 Used Volume                               : 100.0%
 Absorbed Energy (this Wedge)              : 1.05e-04 J.
-Dose Inefficiency (Max Dose/mJ Absorbed)  : 288884483.7 1/g
-Dose Inefficiency PE (Max Dose/mJ Deposited): 314720841.7 1/g
+Dose Inefficiency (Max Dose/mJ Absorbed)  : 289011197.5 1/g
+Dose Inefficiency PE (Max Dose/mJ Deposited): 314802673.4 1/g
 Final Dose Histogram:
 Bin  1,  0.0 to  0.1 MGy:  0.0 % 
 Bin  2,  0.1 to  3.4 MGy:  0.0 % 
@@ -32,7 +32,7 @@ Bin  4,  6.7 to 10.1 MGy:  0.0 %
 Bin  5, 10.1 to 13.4 MGy:  1.3 % 
 Bin  6, 13.4 to 16.7 MGy:  6.9 % 
 Bin  7, 16.7 to 20.0 MGy: 19.4 % 
-Bin  8, 20.0 to 23.4 MGy: 25.0 % 
-Bin  9, 23.4 to 26.7 MGy: 25.4 % 
-Bin 10, 26.7 to 30.0 MGy: 21.0 % 
-Bin 11, 30.0 MGy upwards:  1.0 %
+Bin  8, 20.0 to 23.4 MGy: 24.6 % 
+Bin  9, 23.4 to 26.7 MGy: 25.8 % 
+Bin 10, 26.7 to 30.0 MGy: 20.8 % 
+Bin 11, 30.0 MGy upwards:  1.3 %
