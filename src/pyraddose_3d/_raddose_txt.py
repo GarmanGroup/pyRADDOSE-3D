@@ -39,7 +39,7 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from pyraddose_3d.models.beam import GaussianBeam, TophatBeam
+from pyraddose_3d.models.beam import ExperimentalBeam, GaussianBeam, TophatBeam
 from pyraddose_3d.models.composition import (
     AverageComposition,
     CifComposition,
@@ -274,19 +274,29 @@ def _container_lines(container: Container | None) -> list[str]:
     return lines
 
 
-def _beam_lines(beam: GaussianBeam | TophatBeam) -> list[str]:
+def _beam_lines(beam: GaussianBeam | TophatBeam | ExperimentalBeam) -> list[str]:
     """Emit the whole Beam block."""
     lines = ["Beam"]
     if isinstance(beam, GaussianBeam):
         lines.append("Type Gaussian")
         lines.append(f"Flux {_number(beam.flux)}")
         lines.append(f"FWHM {' '.join(_number(v) for v in beam.fwhm)}")
+    elif isinstance(beam, ExperimentalBeam):
+        lines.append("Type ExperimentalPGM")
+        lines.append(f"Flux {_number(beam.flux)}")
+        lines.append(f"File {beam.file}")
+        lines.append(f"PixelSize {' '.join(_number(v) for v in beam.pixel_size)}")
     else:
         lines.append("Type TopHat")
         lines.append(f"Flux {_number(beam.flux)}")
     lines.append(f"Energy {_number(beam.energy)}")
     if beam.energy_fwhm is not None:
         lines.append(f"EnergyFWHM {_number(beam.energy_fwhm)}")
+    if isinstance(beam, ExperimentalBeam) and beam.circular:
+        # The grammar needs two sizes; BeamExperimentalpgm reads only the shape.
+        lines.append(
+            "Collimation Circular 0 0  # the image's inscribed ellipse; sizes unused"
+        )
     if beam.collimation is not None:
         lines.append(
             f"Collimation {beam.collimation.shape.capitalize()} "
@@ -591,6 +601,8 @@ _BEAM_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "HORIZONTAL": ("horizontal", _read_number),
     "VERTICAL": ("vertical", _read_number),
     "ENERGYFWHM": ("energy_fwhm", _read_number),
+    "FILE": ("file", _read_word),
+    "PIXELSIZE": ("pixel_size", lambda s, k: _read_numbers(s, k, 2, 2)),
 }
 
 _WEDGE_KEYWORDS: dict[str, tuple[str, Reader]] = {
@@ -615,8 +627,6 @@ _REFUSED: dict[str, dict[str, str]] = {
         "RUNS": f"repeats the Monte Carlo or XFEL simulation, {_NOT_PORTED}",
     },
     "Beam": {
-        "FILE": f"belongs to an experimental beam profile, {_NOT_PORTED}",
-        "PIXELSIZE": f"belongs to an experimental beam profile, {_NOT_PORTED}",
         "EXPOSURE": f"belongs to a MicroED beam, {_NOT_PORTED}",
         "PULSEENERGY": f"belongs to an XFEL beam, {_NOT_PORTED}",
         "SEMIANGLE": f"belongs to a MicroED beam, {_NOT_PORTED}",
@@ -661,7 +671,11 @@ _SUBPROGRAMS = {
 _DECAY = {"SIMPLE": "simple", "LINEAR": "linear", "LEAL": "leal", "BFACTOR": "bfactor"}
 
 _CRYSTAL_TYPES = {"CUBOID", "SPHERICAL", "CYLINDER", "POLYHEDRON"}
-_BEAM_TYPES = {"GAUSSIAN": "gaussian", "TOPHAT": "tophat"}
+_BEAM_TYPES = {
+    "GAUSSIAN": "gaussian",
+    "TOPHAT": "tophat",
+    "EXPERIMENTALPGM": "experimental",
+}
 
 
 def _read_unit_cell(stream: _Stream, keyword: _Token) -> list[float]:
@@ -1093,15 +1107,18 @@ def _beam(
         stream, values, "type", "Type", line, "RADDOSE-3D needs the beam profile"
     )
     profile = written.upper()
-    if profile in ("EXPERIMENTAL", "EXPERIMENTALPGM"):
+    if profile == "EXPERIMENTAL":
         raise stream.error(
             values["type"][1],
-            f"Type {written}: experimental beam profiles are not ported",
+            f"Type {written}: RADDOSE-3D cannot build this beam from an input "
+            f"file, since BeamExperimental has no property constructor; "
+            f"ExperimentalPGM reads the profile from a PGM image",
         )
     if profile not in _BEAM_TYPES:
         raise stream.error(
             values["type"][1],
-            f"Type {written!r} is not a beam profile; expected Gaussian or TopHat",
+            f"Type {written!r} is not a beam profile; expected Gaussian, TopHat "
+            f"or ExperimentalPGM",
         )
 
     beam: dict[str, Any] = {
@@ -1119,6 +1136,8 @@ def _beam(
                 stream, values, "fwhm", "FWHM", line, "a Gaussian beam needs its widths"
             )
         )
+    if profile == "EXPERIMENTALPGM":
+        return _experimental_beam(stream, values, line, beam)
 
     # Merged as the Java merges properties: Rectangular and Circular set both
     # sides, Horizontal and Vertical one each, and Circular also marks the
@@ -1148,6 +1167,50 @@ def _beam(
             "x": horizontal,
             "y": vertical,
         }
+    if "energy_fwhm" in values:
+        beam["energy_fwhm"] = values["energy_fwhm"][0]
+    return beam
+
+
+def _experimental_beam(
+    stream: _Stream,
+    values: dict[str, tuple[Any, int]],
+    line: int,
+    beam: dict[str, Any],
+) -> dict[str, Any]:
+    """The rest of an ``ExperimentalPGM`` beam, as ``BeamExperimentalpgm`` reads it.
+
+    Its collimation is the image. ``Circular`` clips that to the ellipse
+    inscribed in it, whatever sizes it gives; any other collimation has no
+    effect, and is dropped with a warning.
+    """
+    beam["type"] = "experimental"
+    beam["file"] = _require(
+        stream, values, "file", "File", line, "an experimental beam reads its image"
+    )
+    beam["pixel_size"] = tuple(
+        _require(
+            stream,
+            values,
+            "pixel_size",
+            "PixelSize",
+            line,
+            "RADDOSE-3D sizes an experimental beam from its pixels",
+        )
+    )
+    if "circular" in values:
+        beam["circular"] = True
+    ignored = [k for k in ("rectangular", "horizontal", "vertical") if k in values]
+    if ignored:
+        warnings.warn(
+            RaddoseTxtWarning(
+                f"{stream.source}, line {values[ignored[0]][1]}: collimation "
+                f"other than Circular has no effect on an experimental beam, "
+                f"whose extent is its image's; RADDOSE-3D ignores it, and so "
+                f"does this"
+            ),
+            stacklevel=5,
+        )
     if "energy_fwhm" in values:
         beam["energy_fwhm"] = values["energy_fwhm"][0]
     return beam

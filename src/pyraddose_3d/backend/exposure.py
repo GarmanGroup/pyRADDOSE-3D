@@ -279,8 +279,9 @@ def expose(
         ``(N,)`` boolean, which voxels are inside the crystal.
     beam : Any
         Anything with an ``intensity(x, y, off_axis)`` method --
-        :class:`~pyraddose_3d.backend.beam.GaussianBeam` or
-        :class:`~pyraddose_3d.backend.beam.TophatBeam`.
+        :class:`~pyraddose_3d.backend.beam.GaussianBeam`,
+        :class:`~pyraddose_3d.backend.beam.TophatBeam` or
+        :class:`~pyraddose_3d.backend.beam.ExperimentalBeam`.
     coefficients : MaterialCoefficients
         Absorption, attenuation, elastic and inelastic, in inverse
         micrometres.

@@ -540,6 +540,12 @@ def beam_description(beam: Beam) -> str:
     ``BeamTophat`` concatenates raw doubles, so it reads ``2.0E12`` where
     the Gaussian reads ``2.0e+12``.
     """
+    if beam.type == "experimental":
+        return (
+            f"Experimental beam profile taken from {beam.file}. Beam has "
+            f"{java_e(beam.flux, 1)} photons per second at "
+            f"{java_f(beam.energy, 2)} keV.\n"
+        )
     if beam.type == "tophat":
         assert beam.collimation is not None
         return (

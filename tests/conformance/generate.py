@@ -104,7 +104,7 @@ def run_reference(root: Path, input_text: str, out_dir: Path) -> None:
 
 
 #: Directives whose argument is a path relative to this repository.
-PATH_DIRECTIVES = ("PDB ", "CIF ", "SeqFile ", "ModelFile ")
+PATH_DIRECTIVES = ("PDB ", "CIF ", "SeqFile ", "ModelFile ", "File ")
 
 REPO_ROOT = HERE.parent.parent
 
@@ -155,8 +155,13 @@ def generate_case(case: Case, root: Path, version: str) -> None:
         # and are checked through their statistics instead, plus their first
         # line. The R script's timestamp is blanked, or every regeneration
         # would rewrite every one of them.
+        # A path the reference was given absolute is made relative again, as
+        # the configuration has it: an experimental beam names its image.
         for name in ("Summary.txt", "Summary.csv"):
-            shutil.copyfile(out_dir / f"out-{name}", expected / name)
+            text = (out_dir / f"out-{name}").read_text(encoding="utf-8")
+            (expected / name).write_text(
+                text.replace(f"{REPO_ROOT}{os.sep}", ""), encoding="utf-8"
+            )
         script = (out_dir / "out-DoseState.R").read_text(encoding="utf-8")
         (expected / "DoseState.R").write_text(
             re.sub(r"^# Code generated .*$", R_TIMESTAMP, script, flags=re.MULTILINE),

@@ -2,8 +2,8 @@
 
 A field has a default only where RADDOSE-3D has one, and it is RADDOSE-3D's,
 so that leaving a setting out of a YAML file means the same as leaving it out
-of a ``.txt`` input. Flux, energy and a Gaussian's widths are required by the
-Java and are required here.
+of a ``.txt`` input. Flux, energy, a Gaussian's widths and an experimental
+beam's image and pixel size are required by the Java and are required here.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pydantic import Field, model_validator
 
 from pyraddose_3d.models._base import RD3DModel
 
-__all__ = ["Beam", "Collimation", "GaussianBeam", "TophatBeam"]
+__all__ = ["Beam", "Collimation", "ExperimentalBeam", "GaussianBeam", "TophatBeam"]
 
 
 class Collimation(RD3DModel):
@@ -91,4 +91,45 @@ class TophatBeam(_BeamBase):
         return self
 
 
-Beam = Annotated[GaussianBeam | TophatBeam, Field(discriminator="type")]
+class ExperimentalBeam(_BeamBase):
+    """A measured beam profile, read from an image (``Type ExperimentalPGM``).
+
+    The image is a plain (``P2``) PGM file whose pixel values are relative
+    intensities; the flux sets their total. RADDOSE-3D lays the image's
+    horizontal axis along y, the rotation axis, and its vertical axis along
+    x, both reversed: a peak right of the image's centre is at negative y.
+
+    Attributes
+    ----------
+    file : str
+        Path to the PGM file, resolved relative to the working directory of
+        the run.
+    pixel_size : tuple[float, float]
+        Pixel size in x and y, in micrometres: the first down the image, the
+        second across it.
+    circular : bool
+        Clip the profile to the ellipse inscribed in the image. This is what
+        ``Collimation Circular`` does to an experimental beam in RADDOSE-3D,
+        whatever size it gives; no other collimation has any effect on one,
+        so ``collimation`` must be left out.
+    """
+
+    type: Literal["experimental"] = "experimental"
+    file: str
+    pixel_size: tuple[Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]]
+    circular: bool = False
+
+    @model_validator(mode="after")
+    def _no_aperture(self) -> Self:
+        if self.collimation is not None:
+            raise ValueError(
+                "an experimental beam takes no collimation: RADDOSE-3D ignores "
+                "its size and shape, except that circular clips the image to "
+                "its inscribed ellipse, which is what circular: true says"
+            )
+        return self
+
+
+Beam = Annotated[
+    GaussianBeam | TophatBeam | ExperimentalBeam, Field(discriminator="type")
+]

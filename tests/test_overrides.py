@@ -109,6 +109,18 @@ def test_an_override_that_would_be_ignored_is_refused(
         solve(uncollimated, overrides)
 
 
+def test_a_width_the_beam_does_not_have_is_refused() -> None:
+    measured = Experiment.from_yaml(
+        Path(__file__).parent
+        / "conformance"
+        / "cases"
+        / "080-beam-experimental"
+        / "config.yaml"
+    )
+    with pytest.raises(KeyError, match="this experimental beam has no fwhm"):
+        solve(measured, {"beam.fwhm": (10.0, 10.0)})
+
+
 def test_an_invalid_value_is_refused(experiment: Experiment) -> None:
     with pytest.raises(ValidationError):
         solve(experiment, {"beam.flux": -1.0})

@@ -559,8 +559,9 @@ def apply_overrides(
     ------
     KeyError
         If a path is not tunable, names a wedge the experiment does not have,
-        or tunes a collimation the beam does not have. :func:`simulate` would
-        otherwise never read such an override, and ignore it without a word.
+        or tunes a collimation or width the beam does not have.
+        :func:`simulate` would otherwise never read such an override, and
+        ignore it without a word.
     pydantic.ValidationError
         If a value is not a valid setting -- a negative flux, say.
     """
@@ -585,6 +586,8 @@ def apply_overrides(
                 node = node[key]
             if node is None:
                 raise KeyError(f"{path!r}: the beam has no collimation to tune")
+        if isinstance(node, dict) and leaf not in node:
+            raise KeyError(f"{path!r}: this {node.get('type')} beam has no {leaf}")
         plain = np.asarray(to_namespace(np, value), dtype=np.float64)
         node[leaf] = plain.item() if plain.ndim == 0 else tuple(plain.tolist())
     return type(experiment).model_validate(config)
@@ -653,6 +656,15 @@ def crystal_beam(
 
     if beam.type == "tophat":
         return backend_beam.TophatBeam(flux, energy, aperture_x, aperture_y, circular)
+    if beam.type == "experimental":
+        return backend_beam.ExperimentalBeam(
+            flux,
+            energy,
+            backend_beam.read_pgm(beam.file),
+            beam.pixel_size[0],
+            beam.pixel_size[1],
+            beam.circular,
+        )
 
     fwhm = _setting(overrides, "beam.fwhm", beam.fwhm)
     return backend_beam.GaussianBeam(
@@ -817,8 +829,14 @@ def solve(
     return simulate(experiment, overrides).summaries
 
 
-def _beam_minimum_dimension(beam: Any) -> float:
-    """``Beam.beamMinumumDimension``: the narrowest of the beam's widths."""
+def _beam_minimum_dimension(beam: Any, built: Any) -> float:
+    """``Beam.beamMinumumDimension``: the narrowest of the beam's widths.
+
+    From the model, so that a tensor override does not reach it; an
+    experimental beam's comes from its image, which ``built`` has read.
+    """
+    if beam.type == "experimental":
+        return float(built.minimum_dimension)
     collimation = beam.collimation
     if beam.type == "tophat":
         assert collimation is not None
@@ -923,7 +941,7 @@ def _escape(
         )
         surrounding = surrounding_escape(
             cell_factors, beam_energy, surrounding_density, density, bins,
-            low, high, ppm, _beam_minimum_dimension(experiment.beam), vertical,
+            low, high, ppm, _beam_minimum_dimension(experiment.beam, beam), vertical,
         )  # fmt: skip
         at = [beam_energy] if energies is None else list(np.asarray(energies))
         surrounding_absorption = np.array(

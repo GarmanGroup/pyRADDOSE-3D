@@ -292,6 +292,37 @@ _CASES: list[Case] = [
         "no Collimation line: RADDOSE-3D's beam is then uncollimated",
         {"beam": {"collimation": REMOVE}},
     ),
+    # An off-centre peak on a ramp with a dead corner, 20 by 14 pixels of
+    # 1.5 by 1.4 um: a flipped or transposed image reads differently.
+    Case(
+        "080-beam-experimental",
+        "A",
+        "measured beam profile from a PGM image, interpolated bilinearly",
+        {
+            "beam": {
+                "type": "experimental",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "file": "tests/data/beam_profile.pgm",
+                "pixel_size": [1.5, 1.4],
+            }
+        },
+    ),
+    Case(
+        "081-beam-experimental-circular",
+        "A",
+        "measured beam clipped to the ellipse inscribed in its image",
+        {
+            "beam": {
+                "type": "experimental",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "file": "tests/data/beam_profile.pgm",
+                "pixel_size": [1.5, 1.4],
+                "circular": True,
+            }
+        },
+    ),
     # --- composition --------------------------------------------------------
     Case(
         "036-composition-carbohydrates",
@@ -574,6 +605,25 @@ _CASES: list[Case] = [
                     "surrounding": True,
                 }
             }
+        },
+    ),
+    # The surrounding's extent follows the beam's narrowest dimension, which
+    # for a measured beam is its image's.
+    Case(
+        "108-escape-surrounding-experimental-beam",
+        "A",
+        "escape into a surrounding sized by an experimental beam's image",
+        {
+            "beam": {
+                "type": "experimental",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "file": "tests/data/beam_profile.pgm",
+                "pixel_size": [1.5, 1.4],
+            },
+            "crystal": {
+                "escape": {"photoelectron": True, "surrounding": True},
+            },
         },
     ),
     Case(

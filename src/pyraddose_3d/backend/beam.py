@@ -1,6 +1,7 @@
 """Beam profiles: how much energy falls where.
 
-Ports ``BeamGaussian.java`` and ``BeamTophat.java``. A beam answers one
+Ports ``BeamGaussian.java``, ``BeamTophat.java`` and the measured profiles of
+``BeamExperimental.java`` and ``BeamExperimentalpgm.java``. A beam answers one
 question for the exposure loop -- given a point in the plane perpendicular to
 the beam, what is the energy flux there -- and two supporting ones about its
 own size.
@@ -23,13 +24,28 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from pyraddose_3d.backend._array import array_namespace, erf, promote
+from pyraddose_3d.backend._array import (
+    array_namespace,
+    astype,
+    erf,
+    is_torch,
+    promote,
+    to_namespace,
+)
 
-__all__ = ["GaussianBeam", "TophatBeam", "normal_cdf"]
+__all__ = [
+    "ExperimentalBeam",
+    "GaussianBeam",
+    "TophatBeam",
+    "normal_cdf",
+    "pink_beam_energies",
+    "read_pgm",
+]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
@@ -299,6 +315,179 @@ class TophatBeam:
         """Smallest length scale in the beam, for choosing a voxel size."""
         xp, (width_x, width_y) = promote(self.width_x, self.width_y)
         return xp.minimum(width_x, width_y)
+
+
+def read_pgm(path: str | Path) -> np.ndarray:
+    """Read a beam image from a plain PGM file, as ``BeamExperimentalpgm``.
+
+    The Java discards the first line, skips any lines that start with a
+    ``#`` comment, reads the width, the height and the maximum value, and
+    then the pixels row by row from the top. It stores them reversed in both
+    directions and transposed: the result's first index runs along y, from
+    the image's right-hand column, and its second along x, from its bottom
+    row. That is the beam's frame, with the image's horizontal axis along
+    the goniometer.
+
+    Parameters
+    ----------
+    path : str | Path
+        A plain (``P2``) PGM file: the pixel values written as text.
+
+    Returns
+    -------
+    np.ndarray
+        ``(width, height)`` relative intensities, as the Java's
+        ``dataStructure``.
+
+    Raises
+    ------
+    ValueError
+        If the file is not a plain PGM, or has fewer pixels than it says.
+        RADDOSE-3D does not check the magic number, and fails on a binary
+        (``P5``) file part way through reading it.
+    """
+    text = Path(path).read_text("latin-1")
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if not lines[0].split() or lines[0].split()[0] != "P2":
+        raise ValueError(
+            f"{path} is not a plain (P2) PGM file, the only kind RADDOSE-3D reads"
+        )
+    # Scanner.hasNext("#.*") then nextLine(): each blank or comment line goes.
+    start = 1
+    while start < len(lines) and (
+        not lines[start].split() or lines[start].split()[0].startswith("#")
+    ):
+        start += 1
+    tokens = " ".join(lines[start:]).split()
+    try:
+        width, height = int(tokens[0]), int(tokens[1])
+        int(tokens[2])  # the maximum value, unused
+        values = [float(t) for t in tokens[3 : 3 + width * height]]
+    except (IndexError, ValueError):
+        raise ValueError(f"{path} does not hold a PGM header and pixels") from None
+    if len(values) < width * height:
+        raise ValueError(
+            f"{path} has {len(values)} pixels where its header says {width} x {height}"
+        )
+    image = np.array(values, dtype=np.float64).reshape(height, width)
+    return np.ascontiguousarray(image[::-1, ::-1].T)
+
+
+def _numpy(value: Array) -> np.ndarray:
+    """A value as a NumPy array, for indexing rather than arithmetic."""
+    if is_torch(value):
+        return value.detach().cpu().numpy()
+    return np.asarray(value)
+
+
+@dataclass(frozen=True)
+class ExperimentalBeam:
+    """A measured beam profile, interpolated bilinearly between its pixels.
+
+    Ports ``BeamExperimental``. The image is given a border of zeros one
+    pixel wide, normalised so that it holds the beam's energy flux, and read
+    by bilinear interpolation between pixel centres. Outside the image less
+    its outermost pixel the intensity is zero.
+
+    Attributes
+    ----------
+    flux : Array
+        Photons per second, after any container.
+    energy : Array
+        Photon energy in keV.
+    profile : np.ndarray
+        Relative intensities, ``[y, x]``, as :func:`read_pgm` returns them.
+    pixel_x, pixel_y : float
+        Pixel size in micrometres.
+    circular : bool
+        Whether to clip the profile to the ellipse inscribed in the image, as
+        RADDOSE-3D does for an experimental beam with ``Collimation
+        Circular``. The ellipse's size is the image's, whatever the
+        collimation says.
+    """
+
+    flux: Array
+    energy: Array
+    profile: np.ndarray
+    pixel_x: float
+    pixel_y: float
+    circular: bool = False
+
+    @property
+    def width_x(self) -> float:
+        """``beamXSize``: the image, its border included, in micrometres."""
+        return float((self.profile.shape[1] + 2) * self.pixel_x)
+
+    @property
+    def width_y(self) -> float:
+        """``beamYSize``."""
+        return float((self.profile.shape[0] + 2) * self.pixel_y)
+
+    def intensity(self, x: Array, y: Array, off_axis: Array = 0.0) -> Array:
+        """Energy flux at a point in the beam's plane.
+
+        Parameters
+        ----------
+        x, y : Array
+            Position in micrometres, relative to the image's centre.
+        off_axis : Array, optional
+            Horizontal displacement of the sample from the beam axis.
+
+        Returns
+        -------
+        Array
+            Joules per second per square micrometre.
+        """
+        bordered = np.pad(self.profile, 1)
+        # beamSum, accumulated in the Java's order.
+        total = float(np.cumsum(self.profile.ravel())[-1])
+        xp, (x, y, off_axis, energy, flux) = promote(
+            x, y, off_axis, self.energy, self.flux
+        )
+        shifted = x - off_axis
+        reach_x = self.width_x / 2 - self.pixel_x
+        reach_y = self.width_y / 2 - self.pixel_y
+        if self.circular:
+            inside = (shifted * shifted) / (reach_x * reach_x) + (y * y) / (
+                reach_y * reach_y
+            ) <= 1
+        else:
+            inside = (xp.abs(shifted) <= reach_x) & (xp.abs(y) <= reach_y)
+
+        real_x = shifted + self.width_x / 2
+        real_y = y + self.width_y / 2
+        column = xp.floor(real_x / self.pixel_x - 0.5)
+        row = xp.floor(real_y / self.pixel_y - 0.5)
+        # Java narrows each fraction to a float before interpolating.
+        fraction_x = _through_float32(xp, real_x / self.pixel_x - (column + 0.5))
+        fraction_y = _through_float32(xp, real_y / self.pixel_y - (row + 0.5))
+
+        # Points outside the image are masked below; clip them to any pixel.
+        i = np.clip(_numpy(row).astype(np.int64), 0, bordered.shape[0] - 2)
+        j = np.clip(_numpy(column).astype(np.int64), 0, bordered.shape[1] - 2)
+        denominator = total * self.pixel_x * self.pixel_y
+
+        def corner(di: int, dj: int) -> Array:
+            value = to_namespace(xp, bordered[i + di, j + dj])
+            return value * KEV_TO_JOULES * energy * flux / denominator
+
+        value = (
+            corner(0, 0) * (1 - fraction_x) * (1 - fraction_y)
+            + corner(0, 1) * fraction_x * (1 - fraction_y)
+            + corner(1, 0) * (1 - fraction_x) * fraction_y
+            + corner(1, 1) * fraction_x * fraction_y
+        )
+        return xp.where(inside, value, 0.0)
+
+    @property
+    def minimum_dimension(self) -> float:
+        """``beamMinumumDimension``: the image's smaller side."""
+        return min(self.width_x, self.width_y)
+
+
+def _through_float32(xp: Any, value: Array) -> Array:
+    """``(float) value``, widened back: rounded to single precision."""
+    return astype(astype(value, xp.float32), xp.float64)
 
 
 #: ``NormalEnergyDistribution.FWHM_TO_SIGMA``.

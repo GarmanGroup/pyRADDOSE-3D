@@ -455,9 +455,62 @@ def test_unported_calculations_are_refused_with_the_reason(
         read(crystal + beam + WEDGE)
 
 
-def test_an_experimental_beam_is_refused() -> None:
-    with pytest.raises(RaddoseTxtError, match="experimental beam"):
+def test_type_experimental_is_refused() -> None:
+    """RADDOSE-3D's BeamExperimental has no constructor an input file reaches."""
+    with pytest.raises(RaddoseTxtError, match="no property constructor"):
         read(CRYSTAL + BEAM.replace("Type Gaussian", "Type Experimental") + WEDGE)
+
+
+PGM_BEAM = """Beam
+Type ExperimentalPGM
+File beam.pgm
+PixelSize 1.5 1.4
+Flux 2e12
+Energy 12.1
+"""
+
+
+def test_an_experimental_beam_is_read() -> None:
+    beam = read(CRYSTAL + PGM_BEAM + WEDGE).beam
+    assert beam.type == "experimental"
+    assert (beam.file, beam.pixel_size, beam.circular) == (
+        "beam.pgm",
+        (1.5, 1.4),
+        False,
+    )
+
+
+def test_circular_collimation_clips_an_experimental_beam() -> None:
+    """Whatever sizes it gives: BeamExperimentalpgm reads only the shape."""
+    text = with_lines(PGM_BEAM, "Collimation Circular 5 5")
+    beam = read(CRYSTAL + text + WEDGE).beam
+    assert beam.circular
+    assert read(read(CRYSTAL + text + WEDGE).to_raddose_txt()).beam == beam
+
+
+def test_other_collimation_of_an_experimental_beam_is_ignored_with_a_warning() -> None:
+    text = with_lines(PGM_BEAM, "Collimation Rectangular 5 5")
+    with pytest.warns(RaddoseTxtWarning, match="line 13: collimation other than"):
+        beam = read(CRYSTAL + text + WEDGE).beam
+    assert beam == read(CRYSTAL + PGM_BEAM + WEDGE).beam
+
+
+@pytest.mark.parametrize(
+    ("remove", "named"), [("File", "File"), ("PixelSize", "PixelSize")]
+)
+def test_an_experimental_beam_needs_its_image(remove: str, named: str) -> None:
+    text = "".join(
+        line + "\n" for line in PGM_BEAM.splitlines() if not line.startswith(remove)
+    )
+    with pytest.raises(RaddoseTxtError, match=f"{named} is required"):
+        read(CRYSTAL + text + WEDGE)
+
+
+def test_an_experimental_beam_takes_no_collimation_in_yaml() -> None:
+    config = read(CRYSTAL + PGM_BEAM + WEDGE).model_dump()
+    config["beam"]["collimation"] = {"shape": "rectangular", "x": 5.0, "y": 5.0}
+    with pytest.raises(ValueError, match="takes no collimation"):
+        Experiment.model_validate(config)
 
 
 def test_small_molecule_refuses_solvent() -> None:

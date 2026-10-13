@@ -15,9 +15,11 @@ import pytest
 from pyraddose_3d.backend.beam import (
     FWHM_TO_SIGMA,
     KEV_TO_JOULES,
+    ExperimentalBeam,
     GaussianBeam,
     TophatBeam,
     normal_cdf,
+    read_pgm,
 )
 
 REFERENCE = pathlib.Path(__file__).parent / "data" / "beams.tsv"
@@ -277,3 +279,97 @@ def test_intensity_is_vectorised() -> None:
     assert got.shape == grid.shape
     for i, x in enumerate(grid):
         assert got[i] == pytest.approx(float(beam.intensity(float(x), 0.0)))
+
+
+# --- experimental beams -------------------------------------------------
+#
+# RADDOSE-3D's BeamExperimentalTest checks nothing: it never applies a
+# container, so the beam's attenuated flux stays 0 and every intensity is
+# 0, and its assertions are one-sided -- intensity minus expected below a
+# tolerance -- which 0 always satisfies. These check the values.
+
+#: ``BeamExperimentalTest``'s profile that changes along both axes,
+#: indexed [y, x]: 4 by 4 pixels of 5 um.
+BOTH = np.add.outer(np.arange(4.0), np.arange(4.0)) + 2
+PIXEL = 5.0
+
+
+def _experimental(circular: bool = False) -> ExperimentalBeam:
+    return ExperimentalBeam(1e12, 10.0, BOTH, PIXEL, PIXEL, circular)
+
+
+def _per_pixel(value: float) -> float:
+    """A pixel's value as an energy flux, as generateBeamArray scales it."""
+    return value * KEV_TO_JOULES * 10.0 * 1e12 / (BOTH.sum() * PIXEL * PIXEL)
+
+
+def test_an_experimental_beam_holds_its_pixels_at_their_centres() -> None:
+    """Pixel [i, j] is centred at x = 5j - 7.5, y = 5i - 7.5, the image
+    being centred on the beam axis with a border of zeros one pixel wide.
+    """
+    i, j = np.meshgrid(np.arange(4), np.arange(4), indexing="ij")
+    got = _experimental().intensity(5.0 * j - 7.5, 5.0 * i - 7.5)
+    assert got.tolist() == [[_per_pixel(v) for v in row] for row in BOTH]
+
+
+def test_an_experimental_beam_interpolates_bilinearly() -> None:
+    beam = _experimental()
+    assert beam.intensity(0.0, -7.5) == pytest.approx(_per_pixel(3.5), rel=1e-15)
+    assert beam.intensity(0.0, 0.0) == pytest.approx(_per_pixel(5.0), rel=1e-15)
+    assert beam.intensity(-6.25, -6.25) == pytest.approx(_per_pixel(2.5), rel=1e-7)
+
+
+def test_an_experimental_beam_carries_its_whole_flux() -> None:
+    """Summed over the pixel centres, it is the beam's power."""
+    i, j = np.meshgrid(np.arange(4), np.arange(4), indexing="ij")
+    power = _experimental().intensity(5.0 * j - 7.5, 5.0 * i - 7.5).sum()
+    assert power * PIXEL * PIXEL == pytest.approx(KEV_TO_JOULES * 10.0 * 1e12)
+
+
+def test_an_experimental_beam_fades_into_its_border() -> None:
+    """Out to one pixel short of the image's edge, then nothing."""
+    beam = _experimental()
+    # Halfway between the last pixel's centre and the zero border's.
+    assert beam.intensity(10.0, 7.5) == pytest.approx(_per_pixel(BOTH[3, 3]) / 2)
+    assert beam.intensity(10.001, 7.5) == 0.0
+    assert beam.intensity(0.0, -10.001) == 0.0
+    assert beam.minimum_dimension == 30.0
+
+
+def test_a_circular_experimental_beam_keeps_the_inscribed_ellipse() -> None:
+    assert _experimental().intensity(8.0, 8.0) > 0
+    assert _experimental(circular=True).intensity(8.0, 8.0) == 0.0
+    assert _experimental(circular=True).intensity(9.0, 0.0) > 0
+
+
+def test_an_experimental_beam_carries_a_gradient_in_flux() -> None:
+    torch = pytest.importorskip("torch")
+    flux = torch.tensor(1e12, dtype=torch.float64, requires_grad=True)
+    beam = ExperimentalBeam(flux, 10.0, BOTH, PIXEL, PIXEL)
+    intensity = beam.intensity(np.array([0.0, 2.5]), np.array([0.0, -2.5]))
+    intensity.sum().backward()
+    assert flux.grad.item() == pytest.approx(intensity.sum().item() / 1e12)
+
+
+def test_a_pgm_is_read_into_the_beams_frame(tmp_path: pathlib.Path) -> None:
+    """Reversed both ways and transposed, as BeamExperimentalpgm stores it."""
+    path = tmp_path / "beam.pgm"
+    path.write_text("P2\n# one\n\n# two\n3 2\n9\n1 2 3\n4 5 6\n", "ascii")
+    assert read_pgm(path).tolist() == [[6, 3], [5, 2], [4, 1]]
+
+
+@pytest.mark.parametrize(
+    ("text", "complaint"),
+    [
+        ("P5\n3 2\n9\n", "not a plain"),
+        ("P2\n3 2\n9\n1 2 3 4 5\n", "5 pixels where its header says 3 x 2"),
+        ("P2\n3\n", "does not hold a PGM header"),
+    ],
+)
+def test_a_pgm_that_cannot_be_read_is_refused(
+    tmp_path: pathlib.Path, text: str, complaint: str
+) -> None:
+    path = tmp_path / "beam.pgm"
+    path.write_text(text, "latin-1")
+    with pytest.raises(ValueError, match=complaint):
+        read_pgm(path)
