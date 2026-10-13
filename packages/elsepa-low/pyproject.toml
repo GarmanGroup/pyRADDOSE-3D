@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyraddose-3d-elsepa-low"
+version = "1.0.0"
+description = "ELSEPA's electron angular tables up to 20 keV, for every element (Z = 1 to 94), for pyRADDOSE-3D's Monte Carlo subprograms"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "Josh Dickerson", email = "jdickerson@berkeley.edu" }]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyraddose_3d_elsepa_low"]

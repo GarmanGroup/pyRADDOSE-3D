@@ -8,6 +8,13 @@ resolution-markers = [
     "python_full_version < '3.11.5'",
 ]
 
+[manifest]
+members = [
+    "pyraddose-3d",
+    "pyraddose-3d-elsepa-high",
+    "pyraddose-3d-elsepa-low",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -2752,6 +2759,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+montecarlo = [
+    { name = "pyraddose-3d-elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low" },
+]
 torch = [
     { name = "torch" },
 ]
@@ -2762,6 +2773,8 @@ dev = [
     { name = "mypy" },
     { name = "pdbpp" },
     { name = "pre-commit-uv" },
+    { name = "pyraddose-3d-elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "rich" },
@@ -2777,6 +2790,8 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "nbmake" },
+    { name = "pyraddose-3d-elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "torch" },
@@ -2786,11 +2801,15 @@ notebooks = [
     { name = "jupytext" },
     { name = "matplotlib" },
     { name = "nbmake" },
+    { name = "pyraddose-3d-elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "torch" },
 ]
 test = [
+    { name = "pyraddose-3d-elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "torch" },
@@ -2801,12 +2820,14 @@ requires-dist = [
     { name = "gemmi" },
     { name = "numpy" },
     { name = "pydantic" },
+    { name = "pyraddose-3d-elsepa-high", marker = "extra == 'montecarlo'", editable = "packages/elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low", marker = "extra == 'montecarlo'", editable = "packages/elsepa-low" },
     { name = "pyyaml" },
     { name = "scipy" },
     { name = "torch", marker = "extra == 'torch'" },
     { name = "types-pyyaml" },
 ]
-provides-extras = ["torch"]
+provides-extras = ["montecarlo", "torch"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2814,6 +2835,8 @@ dev = [
     { name = "mypy" },
     { name = "pdbpp" },
     { name = "pre-commit-uv" },
+    { name = "pyraddose-3d-elsepa-high", editable = "packages/elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low", editable = "packages/elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "rich" },
@@ -2829,6 +2852,8 @@ docs = [
     { name = "mkdocs-material", specifier = ">=9.7.7" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0" },
     { name = "nbmake", specifier = ">=1.5.5" },
+    { name = "pyraddose-3d-elsepa-high", editable = "packages/elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low", editable = "packages/elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "torch" },
@@ -2838,15 +2863,29 @@ notebooks = [
     { name = "jupytext", specifier = ">=1.19.6" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "nbmake", specifier = ">=1.5.5" },
+    { name = "pyraddose-3d-elsepa-high", editable = "packages/elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low", editable = "packages/elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "torch" },
 ]
 test = [
+    { name = "pyraddose-3d-elsepa-high", editable = "packages/elsepa-high" },
+    { name = "pyraddose-3d-elsepa-low", editable = "packages/elsepa-low" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "torch" },
 ]
+
+[[package]]
+name = "pyraddose-3d-elsepa-high"
+version = "1.0.0"
+source = { editable = "packages/elsepa-high" }
+
+[[package]]
+name = "pyraddose-3d-elsepa-low"
+version = "1.0.0"
+source = { editable = "packages/elsepa-low" }
 
 [[package]]
 name = "pyreadline3"

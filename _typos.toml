@@ -28,6 +28,9 @@ mis = "mis"
 arange = "arange"
 # Beam.beamMinumumDimension, the Java's spelling, named where it is ported.
 Minumum = "Minumum"
+# Comput. Phys. Commun., the journal ELSEPA is published in.
+Comput = "Comput"
+Commun = "Commun"
 
 [default]
 # Notebook cell ids are random hex, which reads as misspellings ("daa", "ded").

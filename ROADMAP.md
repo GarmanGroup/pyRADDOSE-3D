@@ -224,7 +224,8 @@ first:
    - the models and `.txt` keywords (done: the three subprograms and their settings are read
      and written, and running one is refused until it is ported);
    - the Auger, fluorescence and overvoltage tables, about 160 KB, in the core (done);
-   - ELSEPA's angular tables as optional data packages;
+   - ELSEPA's angular tables as optional data packages (done: `packages/elsepa-low`, 2.3 MB,
+     committed; `packages/elsepa-high`, 23 MB, built locally from a RADDOSE-3D checkout);
    - tier-B (statistical) conformance, calibrated: Java against Java and the port against
      itself must pass, and mutations of the claimed detectable size must fail.
 3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within

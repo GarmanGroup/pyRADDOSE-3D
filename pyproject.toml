@@ -54,6 +54,9 @@ dependencies = [
 [project.optional-dependencies]
 # Gradients. Required for strategy optimisation, not for computing dose.
 torch = ["torch"]
+# ELSEPA's electron angular tables, 25 MB, which only the Monte Carlo and XFEL
+# subprograms read: packages/elsepa-low and packages/elsepa-high.
+montecarlo = ["pyraddose-3d-elsepa-low", "pyraddose-3d-elsepa-high"]
 
 [project.urls]
 homepage = "https://github.com/jdickerson95/pyRADDOSE-3D"
@@ -73,7 +76,14 @@ repository = "https://github.com/jdickerson95/pyRADDOSE-3D"
 [dependency-groups]
 # torch is in the test group, not in `dependencies`: CI must exercise both
 # backends against the same conformance corpus, or they will drift.
-test = ["pytest", "pytest-cov", "torch"]
+# The ELSEPA tables too, so that tests needing them fail rather than skip.
+test = [
+    "pytest",
+    "pytest-cov",
+    "torch",
+    "pyraddose-3d-elsepa-low",
+    "pyraddose-3d-elsepa-high",
+]
 dev = [
     { include-group = "test" },
     "ipython",
@@ -101,8 +111,13 @@ docs = [
     "mkdocstrings[python]>=1.0",
 ]
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [tool.uv.sources]
 pyRADDOSE-3D = { workspace = true }
+pyraddose-3d-elsepa-low = { workspace = true }
+pyraddose-3d-elsepa-high = { workspace = true }
 
 # https://docs.astral.sh/ruff
 [tool.ruff]

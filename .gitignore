@@ -109,3 +109,7 @@ ENV/
 # IDE settings
 .vscode/
 .idea/
+
+# ELSEPA tables above 20 keV: 23 MB, built locally from a RADDOSE-3D checkout
+# (tests/backend/data/build_elsepa_packages.py). Their MANIFEST.tsv is committed.
+packages/elsepa-high/src/pyraddose_3d_elsepa_high/tables/*.csv.xz

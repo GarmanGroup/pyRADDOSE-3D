@@ -119,6 +119,16 @@ cd pyRADDOSE-3D
 uv sync
 ```
 
+The Monte Carlo and XFEL subprograms read ELSEPA's electron angular tables,
+which come in two data packages beside the core, in `packages/`: the `montecarlo`
+extra installs them. The tables above 20 keV, 23 MB compressed, are not
+committed, and the tests that need them fail until they are built from a
+RADDOSE-3D checkout:
+
+```sh
+uv run python tests/backend/data/build_elsepa_packages.py ~/git/RADDOSE-3D high
+```
+
 Run tests:
 
 ```sh

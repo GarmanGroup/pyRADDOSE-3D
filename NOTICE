@@ -39,6 +39,16 @@ WHAT IS DERIVED
       high_overvoltage.csv, values unmodified, gathered into four tables by
       tests/backend/data/build_monte_carlo_tables.py.
 
+  ELSEPA electron angular tables
+      packages/elsepa-low and packages/elsepa-high, the data packages
+      pyraddose-3d-elsepa-low and pyraddose-3d-elsepa-high, hold RADDOSE-3D's
+      constants/below_20000/ and above_20000/, each file xz-compressed and
+      otherwise unmodified, with its SHA-256 in MANIFEST.tsv, by
+      tests/backend/data/build_elsepa_packages.py: differential cross-sections
+      for the elastic scattering of electrons, computed with ELSEPA (Salvat,
+      Jablonski and Powell, Comput. Phys. Commun. 165, 157-190 (2005)). The
+      Monte Carlo and XFEL subprograms draw deflections from them.
+
   Photoelectron energy deposition
       src/pyraddose_3d/data/pe_energy_low.csv, pe_energy_medium.csv and
       pe_energy_high.csv are RADDOSE-3D's constants/EnergyCoefsLow.txt,
