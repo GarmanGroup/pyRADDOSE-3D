@@ -45,9 +45,11 @@ report upstream rather than fixed here:
 - With a surrounding, the crystal's photoelectrons are drawn using the
   surrounding's direction weights: both share one field, and the
   surrounding's is computed last.
-- With photoelectron and fluorescence escape both on, the binding energy is
-  not subtracted from the photoelectron's dose, though it is with
-  photoelectron escape alone.
+- With photoelectron escape alone, the whole binding energy is taken from
+  the photoelectron but only the K-shell Auger energy is deposited, so the
+  rest of the atom's relaxation energy is lost. With fluorescence escape
+  too, the photoelectron is given what is left after the fluorescence and
+  the K-shell Auger energy, which keeps the L and M Auger energy in it.
 - The surrounding's grid is clamped to the crystal's bounding box before
   its rotations, in a frame that has already turned with the goniometer.
 
@@ -567,9 +569,9 @@ def round_half_up(x: np.ndarray) -> np.ndarray:
 
     Exactly, including 0.49999999999999994, which ``floor(x + 0.5)`` gets
     wrong because the addition rounds up -- and NaN, which Java rounds to 0.
-    That last matters: the L-shell fluorescence of phosphorus and sulphur
-    has no tabulated energy, so its escape distances are NaN, and the Java
-    aims that dose at voxel (0, 0, 0). Reproduced.
+    That last matters: the L-shell fluorescence of every element from Mg to
+    Co has no tabulated energy, so its escape distances are NaN, and the
+    Java aims that dose at voxel (0, 0, 0). Reproduced.
     """
     x = np.asarray(x, dtype=np.float64)
     finite = np.where(np.isnan(x), 0.0, x)

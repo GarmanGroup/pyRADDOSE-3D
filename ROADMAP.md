@@ -362,10 +362,11 @@ marked in the source and listed under *Upstream* below:
 
 - fluorescence deposits along +z only;
 - the crystal's photoelectron tracks use the surrounding's draw table;
-- the photoelectron-plus-fluorescence branch skips the binding-energy subtraction;
+- photoelectron escape alone loses the atom's relaxation energy, except the K-shell Auger part;
 - the cryo clamp uses the unrotated crystal;
-- pink beams report the volume ×200 and only the last energy's fluences;
-- phosphorus and sulphur L-shell fluorescence goes to voxel (0, 0, 0).
+- pink beams give the surrounding 200 times its dose, report the per-image volume ×200, and keep
+  only the last energy's fluences;
+- the L-shell fluorescence of every element from Mg to Co goes to voxel (0, 0, 0).
 
 # Milestone 5 — Publication and CCP4
 
@@ -441,24 +442,32 @@ Found while surveying, unrelated to the port:
   radians, where 30°/2° comes to 14.999999999999998, and truncated. The port reproduces it.
 
 Found porting Milestone 4. The port reproduces each, marked in its source, so fixing one means
-changing both together:
+changing both together. `UPSTREAM_FIXES.md` explains each one, measures it, and sets out the fix
+in both codebases:
 
 - **Fluorescence escape deposits along +z only.** `addDoseAfterFL` draws a direction and never
   uses it.
 - **With a surrounding, the crystal's photoelectrons use the surrounding's track table**
   (`trackNumberBias`).
-- **With both escapes on, the photoelectron energy keeps the binding energy.** The
-  photoelectron-plus-fluorescence branch skips the subtraction that the photoelectron-only
-  branch makes.
+- **With photoelectron escape alone, the atom's relaxation energy is lost.** That branch
+  subtracts the whole binding energy from the photoelectron, but deposits only the K-shell Auger
+  energy. The K fluorescence and all L and M relaxation vanish: 3.2% of the absorbed energy for
+  insulin at 12.1 keV, and 15.5% for a SeMet crystal above the Se K edge. With both escapes on,
+  energy is conserved, but the photoelectron carries the L and M Auger energy. The surrounding has
+  its own version: with fluorescence escape off, its photoelectron keeps everything but the K
+  Auger energy.
 - **The cryo region is clamped to the unrotated crystal's box** (`minimumDimensions`), not the
   rotated one.
 - **Pink beams have several problems.**
-  - The surrounding's attenuation is not divided over the 200 energy samples.
-  - The summary's volume is 200 times too large.
+  - The surrounding's exposure is not divided over the 200 energy samples. With a surrounding,
+    the whole-crystal dose is 18 times too high.
+  - The per-image exposed volume in `DWDs.csv` is 200 times too large.
   - `VoxelFluences.csv` holds only the last sample.
   - The coefficients printed are those of the last sample, not the mean energy.
-- **Phosphorus and sulphur L-shell fluorescence energies give NaN distances.** `StrictMath.round`
-  turns these into 0, so that fluorescence lands on voxel (0, 0, 0).
+- **The L-shell fluorescence of every element from Mg to Co gives NaN distances.** None of these
+  elements has a tabulated L emission energy. `StrictMath.round` turns the NaN into 0, so the
+  fluorescence is aimed at voxel (0, 0, 0), outside the crystal, and is lost. The printed
+  fluorescence escape total is then `NaN`.
 - **Photoelectron escape with `AbsCoefCalc Average` throws a `NullPointerException`.** The port
   refuses it, saying why. Fluorescence alone warns, as the Java does.
 - **`AbsCoefCalc SAXSSEQ` ignores `NumCarb`.** It reads the value, but never calls `setNumCarb`,
