@@ -185,6 +185,16 @@ def _escape_lines(escape: EscapeOptions) -> list[str]:
         lines.append(f"PEResolution {escape.pe_resolution}")
     if escape.fl_resolution is not None:
         lines.append(f"FLResolution {escape.fl_resolution}")
+    if escape.goniometer_axis != 0:
+        lines.append(f"GoniometerAxis {_number(escape.goniometer_axis)}")
+    if escape.surrounding_heavy_conc:
+        lines.append(f"SurroundingHeavyConc {_elements(escape.surrounding_heavy_conc)}")
+    if escape.density_based:
+        lines.append("DensityBased TRUE")
+    if escape.surrounding_elements:
+        lines.append(f"SurroundingElements {_elements(escape.surrounding_elements)}")
+    if escape.surrounding_density is not None:
+        lines.append(f"SurroundingDensity {_number(escape.surrounding_density)}")
     return lines
 
 
@@ -264,6 +274,8 @@ def _beam_lines(beam: GaussianBeam | TophatBeam) -> list[str]:
         lines.append("Type TopHat")
         lines.append(f"Flux {_number(beam.flux)}")
     lines.append(f"Energy {_number(beam.energy)}")
+    if beam.energy_fwhm is not None:
+        lines.append(f"EnergyFWHM {_number(beam.energy_fwhm)}")
     if beam.collimation is not None:
         lines.append(
             f"Collimation {beam.collimation.shape.capitalize()} "
@@ -532,11 +544,17 @@ _CRYSTAL_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "CALCSURROUNDING": ("surrounding", _read_word),
     "PERESOLUTION": ("pe_resolution", _read_count),
     "FLRESOLUTION": ("fl_resolution", _read_count),
+    # Orients the polarisation's bias on photoelectron directions.
+    "GONIOMETERAXIS": ("goniometer_axis", _read_number),
     # Read only by the Monte Carlo and XFEL subprograms (Crystal.java passes
     # them to startMC and startXFEL and nowhere else), so an MX run ignores
     # them in the Java and here.
-    "GONIOMETERAXIS": ("ignored", _read_number),
     "POLARISATIONDIRECTION": ("ignored", _read_number),
+    "SURROUNDINGTHICKNESS": ("ignored", lambda s, k: _read_numbers(s, k, 3, 3)),
+    "SURROUNDINGHEAVYCONC": ("surrounding_heavy_conc", _read_elements),
+    "DENSITYBASED": ("density_based", _read_word),
+    "SURROUNDINGELEMENTS": ("surrounding_elements", _read_elements),
+    "SURROUNDINGDENSITY": ("surrounding_density", _read_number),
     "SUBPROGRAM": ("subprogram", _read_word),
     "CONTAINERMATERIALTYPE": ("container_type", _read_word),
     "MATERIALTYPE": ("container_type", _read_word),
@@ -561,6 +579,7 @@ _BEAM_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "CIRCULAR": ("circular", lambda s, k: _read_numbers(s, k, 2, 2)),
     "HORIZONTAL": ("horizontal", _read_number),
     "VERTICAL": ("vertical", _read_number),
+    "ENERGYFWHM": ("energy_fwhm", _read_number),
 }
 
 _WEDGE_KEYWORDS: dict[str, tuple[str, Reader]] = {
@@ -576,25 +595,15 @@ _WEDGE_KEYWORDS: dict[str, tuple[str, Reader]] = {
 }
 
 _NOT_PORTED = "which this port does not implement"
-_SURROUNDING = f"is part of modelling the material around the crystal, {_NOT_PORTED}"
 
 #: Keywords that would change a result this port cannot compute.
 _REFUSED: dict[str, dict[str, str]] = {
     "Crystal": {
-        "SURROUNDINGTHICKNESS": _SURROUNDING,
-        "SURROUNDINGDENSITY": _SURROUNDING,
-        "SURROUNDINGELEMENTS": _SURROUNDING,
-        "SURROUNDINGHEAVYCONC": _SURROUNDING,
-        "DENSITYBASED": _SURROUNDING,
         "SIMELECTRONS": f"sets up the Monte Carlo simulation, {_NOT_PORTED}",
         "SIMPHOTONS": f"sets up the Monte Carlo simulation, {_NOT_PORTED}",
         "RUNS": f"repeats the Monte Carlo or XFEL simulation, {_NOT_PORTED}",
     },
     "Beam": {
-        "ENERGYFWHM": (
-            f"makes a pink beam, summed over 200 sampled energies, {_NOT_PORTED} "
-            f"-- ignoring it would silently compute a monochromatic dose"
-        ),
         "FILE": f"belongs to an experimental beam profile, {_NOT_PORTED}",
         "PIXELSIZE": f"belongs to an experimental beam profile, {_NOT_PORTED}",
         "EXPOSURE": f"belongs to a MicroED beam, {_NOT_PORTED}",
@@ -1018,9 +1027,14 @@ def _crystal(
         if key in values:
             # "TRUE".equals(value.toUpperCase()), as Crystal.java tests it.
             escape[field_name] = values[key][0].upper() == "TRUE"
-    for key in ("pe_resolution", "fl_resolution"):
+    for key in (
+        "pe_resolution", "fl_resolution", "goniometer_axis",
+        "surrounding_heavy_conc", "surrounding_elements", "surrounding_density",
+    ):  # fmt: skip
         if key in values:
             escape[key] = values[key][0]
+    if "density_based" in values:
+        escape["density_based"] = values["density_based"][0].upper() == "TRUE"
     if escape:
         crystal["escape"] = escape
 
@@ -1094,6 +1108,8 @@ def _beam(
             "x": horizontal,
             "y": vertical,
         }
+    if "energy_fwhm" in values:
+        beam["energy_fwhm"] = values["energy_fwhm"][0]
     return beam
 
 

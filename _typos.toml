@@ -26,6 +26,8 @@ iit = "iit"
 mis = "mis"
 # numpy.arange, in the example notebooks' code cells.
 arange = "arange"
+# Beam.beamMinumumDimension, the Java's spelling, named where it is ported.
+Minumum = "Minumum"
 
 [default]
 # Notebook cell ids are random hex, which reads as misspellings ("daa", "ded").

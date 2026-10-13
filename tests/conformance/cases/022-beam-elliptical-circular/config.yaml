@@ -28,6 +28,11 @@ crystal:
     surrounding: false
     pe_resolution: null
     fl_resolution: null
+    goniometer_axis: 0.0
+    surrounding_heavy_conc: {}
+    density_based: false
+    surrounding_elements: {}
+    surrounding_density: null
   container: null
   type: cuboid
   dimensions:
@@ -41,6 +46,7 @@ beam:
     shape: circular
     x: 20.0
     y: 60.0
+  energy_fwhm: null
   type: gaussian
   fwhm:
   - 10.0

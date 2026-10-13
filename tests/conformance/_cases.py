@@ -12,12 +12,14 @@ the reference implementation. The full cross-product of the input space is
 Cases are split into two tiers:
 
 ``A``
-    Deterministic. No Monte Carlo escape modelling, so results are compared
-    value by value. This is the differentiable core and where the value is.
+    Reproducible. Compared value by value. This includes escape modelling:
+    it is random, but the port draws from ``java.util.Random`` in exactly
+    the Java's order, so with the corpus seed it reproduces the Java's
+    result rather than only its statistics.
 ``B``
-    Monte Carlo. Escape modelling is enabled, so a vectorised implementation
-    cannot reproduce the reference's random draw order even with a matching
-    generator. Compared statistically only.
+    Random in a way the port cannot reproduce draw for draw, and so
+    compared statistically. No case needs it at present; the Monte Carlo,
+    XFEL and MicroED subprograms, if ported, would.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ class _Remove:
 #: when switching to a crystal type that does not have that field.
 REMOVE = _Remove()
 
-#: Seed for every case. Only affects tier B, but pinned everywhere for clarity.
+#: Seed for every case. Escape modelling draws from it; pinned everywhere.
 SEED = 20260917
 
 
@@ -272,6 +274,19 @@ _CASES: list[Case] = [
         },
     ),
     Case(
+        "028-beam-pink",
+        "A",
+        "a pink beam: 200 energies across a 0.5 keV FWHM",
+        {"beam": {"energy_fwhm": 0.5}},
+    ),
+    Case(
+        "029-beam-pink-across-edge",
+        "A",
+        "a pink beam straddling the zinc K edge, so the crystal absorbs "
+        "differently on either side of it",
+        {"beam": {"energy": 9.7, "energy_fwhm": 0.3}},
+    ),
+    Case(
         "025-beam-uncollimated",
         "A",
         "no Collimation line: RADDOSE-3D's beam is then uncollimated",
@@ -490,28 +505,30 @@ _CASES: list[Case] = [
         "solvent fraction derived from the composition, not stated",
         {"crystal": {"composition": {"solvent_fraction": REMOVE}}},
     ),
-    # --- escape modelling (tier B: Monte Carlo) -----------------------------
+    # --- escape modelling ---------------------------------------------------
+    # Random, but reproducibly: the port draws from java.util.Random in the
+    # Java's order, so with the corpus seed these match value by value.
     Case(
         "100-escape-pe",
-        "B",
+        "A",
         "photoelectron escape only",
         {"crystal": {"escape": {"photoelectron": True}}},
     ),
     Case(
         "101-escape-fl",
-        "B",
+        "A",
         "fluorescence escape only",
         {"crystal": {"escape": {"fluorescence": True}}},
     ),
     Case(
         "102-escape-pe-fl",
-        "B",
+        "A",
         "photoelectron and fluorescence escape",
         {"crystal": {"escape": {"photoelectron": True, "fluorescence": True}}},
     ),
     Case(
         "103-escape-surrounding",
-        "B",
+        "A",
         "escape into a surrounding medium",
         {
             "crystal": {
@@ -525,12 +542,43 @@ _CASES: list[Case] = [
     ),
     Case(
         "104-escape-rotated-surrounding",
-        "B",
+        "A",
         "rotated crystal with surrounding; guards the cryo grid frame fix",
         {
             "crystal": {
                 "angle_p": 90.0,
                 "escape": {"photoelectron": True, "surrounding": True},
+            }
+        },
+    ),
+    Case(
+        "105-escape-pink",
+        "A",
+        "escape under a pink beam: a draw per voxel for every energy sampled; "
+        "a short wedge, as every image costs 200",
+        {
+            "crystal": {"escape": {"photoelectron": True, "fluorescence": True}},
+            "beam": {"energy_fwhm": 0.3},
+            "wedges": [{"start": 0.0, "end": 10.0, "exposure_time": 2.0}],
+        },
+    ),
+    Case(
+        "106-escape-vertical-goniometer",
+        "A",
+        "GoniometerAxis 90: the polarisation biases photoelectrons along x",
+        {"crystal": {"escape": {"photoelectron": True, "goniometer_axis": 90.0}}},
+    ),
+    Case(
+        "107-escape-surrounding-salt",
+        "A",
+        "a surrounding with heavy atoms in it",
+        {
+            "crystal": {
+                "escape": {
+                    "photoelectron": True,
+                    "surrounding": True,
+                    "surrounding_heavy_conc": {"Na": 500.0, "Cl": 500.0},
+                }
             }
         },
     ),

@@ -225,7 +225,7 @@ def main() -> None:
                     "DoseState/extremes": 5.0e-3,
                     "DoseState/position_um": 5.0e-3,
                     "VoxelDose/sum": 5.0e-3,
-                    "VoxelDose/max": 1.0e-4,
+                    "VoxelDose/max": 5.0e-4,
                     "VoxelFluences/sum": 5.0e-2,
                     "VoxelFluences/max": 5.0e-2,
                     "DWDs/dwd": 5.0e-3,
@@ -272,7 +272,12 @@ def main() -> None:
                     "Leal model, whose Gaussian term makes log RDE fall by "
                     "2 gamma^2 D per MGy: worst 7.1e-4 against the reference, "
                     "where the efficiency is down to 1e-4, and 2.6e-3 against "
-                    "itself."
+                    "itself. Escape modelling does the same to each image's "
+                    "maximum dose, which is one voxel's: a photoelectron's "
+                    "deposit lands in the voxel its track position rounds to, "
+                    "and a last-bit difference in a cosine moves it to the "
+                    "next. Worst 3.1e-4 against the reference and 6.7e-4 "
+                    "against itself, so VoxelDose/max goes from 1e-4 to 5e-4."
                 ),
                 "quantised_quantities": [
                     "dose_threshold",

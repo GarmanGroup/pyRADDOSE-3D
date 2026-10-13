@@ -91,7 +91,8 @@ SHIPPED = {
     "input_MC.txt": None,
     "ED_input.txt": "Subprogram EMED runs RADDOSE-3D's MicroED engine",
     "ED_input_cell.txt": "Subprogram EMED runs RADDOSE-3D's MicroED engine",
-    "MyInput_hole.txt": "material around the crystal",
+    # "SURROUNDINGELEMENTS C" has no amount; RADDOSE-3D refuses it too.
+    "MyInput_hole.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
     "MyInput_hole_MC.txt": "repeats the Monte Carlo or XFEL simulation",
     # A template for RADDOSE-3D's GUI, with placeholders where values go.
     "input.txt": "Dimensions needs 1 to 3 numbers, found 0",
@@ -332,9 +333,39 @@ def test_default_resolution_follows_the_first_dimension(
 def test_ignored_keywords_are_ignored() -> None:
     """Read only by the Monte Carlo and XFEL engines, as Crystal.java shows."""
     text = with_lines(
-        CRYSTAL, "GoniometerAxis 90", "PolarisationDirection 90", "Subprogram RD3D"
+        CRYSTAL,
+        "PolarisationDirection 90",
+        "SurroundingThickness 1 1 1",
+        "Subprogram RD3D",
     )
     assert read(text + BEAM + WEDGE) == read(CRYSTAL + BEAM + WEDGE)
+
+
+def test_escape_and_the_surrounding_are_read() -> None:
+    text = with_lines(
+        CRYSTAL,
+        "CalculatePEEscape TRUE",
+        "CalcSurrounding TRUE",
+        "GoniometerAxis 90",
+        "SurroundingHeavyConc Na 150 Cl 150",
+        "DensityBased TRUE",
+        "SurroundingElements C 1 H 2",
+        "SurroundingDensity 0.85",
+    )
+    escape = read(text + BEAM + WEDGE).crystal.escape
+    assert escape.photoelectron and escape.surrounding
+    assert escape.goniometer_axis == 90.0
+    assert escape.surrounding_heavy_conc == {"Na": 150.0, "Cl": 150.0}
+    assert escape.density_based
+    assert escape.surrounding_elements == {"C": 1.0, "H": 2.0}
+    assert escape.surrounding_density == 0.85
+
+
+def test_a_pink_beam_is_read() -> None:
+    assert (
+        read(CRYSTAL + with_lines(BEAM, "EnergyFWHM 0.1") + WEDGE).beam.energy_fwhm
+        == 0.1
+    )
 
 
 # --- what RADDOSE-3D requires -------------------------------------------------
@@ -373,12 +404,10 @@ def test_errors_name_the_file_and_line() -> None:
 @pytest.mark.parametrize(
     ("block", "line", "reason"),
     [
-        ("beam", "EnergyFWHM 0.1", "pink beam"),
         ("beam", "PulseEnergy 1", "XFEL"),
         ("crystal", "Subprogram MonteCarlo", "Monte Carlo engine"),
         ("crystal", "Subprogram XFEL", "XFEL engine"),
         ("crystal", "Subprogram EMSP", "MicroED engine"),
-        ("crystal", "SurroundingThickness 1 1 1", "material around the crystal"),
         ("crystal", "Runs 3", "Monte Carlo"),
         ("crystal", "AbsCoefCalc RDV2", "Fortran"),
         ("crystal", "AbsCoefCalc SAXSSEQ", "not ported"),
@@ -387,7 +416,7 @@ def test_errors_name_the_file_and_line() -> None:
 def test_unported_calculations_are_refused_with_the_reason(
     block: str, line: str, reason: str
 ) -> None:
-    """Never dropped: dropping EnergyFWHM would compute a pink beam as monochromatic."""
+    """Never dropped: dropping one would compute something else without a word."""
     crystal = with_lines(CRYSTAL, line) if block == "crystal" else CRYSTAL
     beam = with_lines(BEAM, line) if block == "beam" else BEAM
     with pytest.raises(RaddoseTxtError, match=reason):

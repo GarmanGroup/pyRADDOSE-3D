@@ -109,24 +109,13 @@ def test_case_round_trips_through_the_legacy_emitter(case_dir: Path) -> None:
     assert "Crystal" in experiment.to_raddose_txt()
 
 
-def test_escape_tiering_is_consistent() -> None:
-    """A case that enables escape modelling must be tier B, and vice versa."""
+def test_random_cases_carry_their_seed() -> None:
+    """A case with escape modelling is only reproducible with its seed."""
     for case_dir in CASE_DIRS:
         meta, experiment, _ = load_case(case_dir)
-        expected_tier = "B" if experiment.crystal.escape.any_enabled else "A"
-        assert meta["tier"] == expected_tier, (
-            f"{case_dir.name} is tier {meta['tier']} but escape.any_enabled is "
-            f"{experiment.crystal.escape.any_enabled}"
-        )
-
-
-def test_tier_a_cases_have_no_random_dependence() -> None:
-    """Tier A must be reproducible without matching the reference's RNG."""
-    tier_a = [d for d in CASE_DIRS if load_case(d)[0]["tier"] == "A"]
-    assert tier_a, "the corpus has no deterministic cases"
-    for case_dir in tier_a:
-        _, experiment, _ = load_case(case_dir)
-        assert not experiment.crystal.escape.any_enabled
+        if experiment.crystal.escape.any_enabled:
+            assert experiment.seed is not None, case_dir.name
+            assert meta["seed"] == experiment.seed
 
 
 # --------------------------------------------------------------------------
@@ -196,8 +185,6 @@ def unported_reason(experiment: Experiment) -> str | None:
     str | None
         A reason, or ``None``.
     """
-    if experiment.crystal.escape.any_enabled:
-        return "photoelectron and fluorescence escape are Monte Carlo, not ported"
     return None
 
 

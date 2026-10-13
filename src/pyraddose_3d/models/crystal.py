@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 
 from pyraddose_3d.models._base import RD3DModel
-from pyraddose_3d.models.composition import Composition
+from pyraddose_3d.models.composition import Composition, ElementAmounts
 
 __all__ = [
     "Container",
@@ -29,23 +29,41 @@ __all__ = [
 
 
 class EscapeOptions(RD3DModel):
-    """Photoelectron and fluorescence escape modelling.
+    """Photoelectron and fluorescence escape, and the medium around the crystal.
 
-    These are Monte Carlo calculations. They are not differentiable, and a
-    vectorised implementation cannot reproduce the reference implementation's
-    random draw order, so conformance cases that enable them are compared
-    statistically rather than value by value.
+    Escape chooses each photoelectron's direction at random, so it has no
+    gradient. The port draws its random numbers exactly as RADDOSE-3D does
+    -- the same generator, in the same order -- so with the same seed
+    (``Experiment.seed``, RADDOSE-3D's ``--seed``) it reproduces RADDOSE-3D's
+    result, not just its statistics.
 
     Attributes
     ----------
     photoelectron : bool
-        Track photoelectrons escaping the crystal.
+        ``CalculatePEEscape``: photoelectrons carry dose away from the voxel
+        that absorbed the photon, and out of the crystal.
     fluorescence : bool
-        Track fluorescent photons escaping the crystal.
+        ``CalculateFLEscape``: fluorescence photons do too.
     surrounding : bool
-        Model a surrounding medium that escaped particles can enter.
+        ``CalcSurrounding``: photoelectrons from the medium around the
+        crystal carry dose into it. Only with photoelectron escape, as in
+        RADDOSE-3D.
     pe_resolution, fl_resolution : int | None
-        Angular/distance resolution of the respective escape calculations.
+        ``PEResolution`` and ``FLResolution``: distance bins along each
+        track. RADDOSE-3D chooses when they are left out or below 2.
+    goniometer_axis : float
+        ``GoniometerAxis``: 90 for a vertical goniometer, anything else
+        horizontal. It sets which way the beam's polarisation sends
+        photoelectrons.
+    surrounding_heavy_conc : dict[str, float]
+        ``SurroundingHeavyConc``: heavy atoms in the surrounding, mmol/l.
+    density_based : bool
+        ``DensityBased``: the surrounding is not water but
+        ``surrounding_elements`` at ``surrounding_density`` -- an oil, say.
+    surrounding_elements : dict[str, float]
+        ``SurroundingElements``: atoms per formula unit of that material.
+    surrounding_density : float | None
+        ``SurroundingDensity``: its density in g/ml.
     """
 
     photoelectron: bool = False
@@ -53,6 +71,11 @@ class EscapeOptions(RD3DModel):
     surrounding: bool = False
     pe_resolution: Annotated[int, Field(gt=0)] | None = None
     fl_resolution: Annotated[int, Field(gt=1)] | None = None
+    goniometer_axis: float = 0.0
+    surrounding_heavy_conc: ElementAmounts = Field(default_factory=dict)
+    density_based: bool = False
+    surrounding_elements: ElementAmounts = Field(default_factory=dict)
+    surrounding_density: Annotated[float, Field(ge=0.0)] | None = None
 
     @property
     def any_enabled(self) -> bool:

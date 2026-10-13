@@ -37,6 +37,8 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from pyraddose_3d.backend._array import array_namespace, promote, to_namespace
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.geometry import Mesh, find_depth
@@ -82,11 +84,27 @@ class ImageRecord:
     decay : Array
         ``(A, N)`` relative diffraction efficiency each voxel had while it
         diffracted in that image, from the decay model.
+    weighted_decay, fluence_total : Array
+        ``(A,)`` sums over the image's observations of fluence times decay,
+        and of fluence: the fluence-weighted RDE is their ratio.
+    minimum_decay : Array
+        ``(A,)`` lowest decay any lit voxel had in the image; infinite if
+        none was lit.
+    observations : Array
+        ``(A,)`` lit voxels counted once per observation -- once per sampled
+        energy for a pink beam, as RADDOSE-3D counts the exposed volume.
+
+    For a pink beam ``dose``, ``fluence`` and ``decay`` are the image's last
+    observation, as in the Java -- so ``fluence`` is the last energy's alone.
     """
 
     dose: Array
     fluence: Array
     decay: Array
+    weighted_decay: Array
+    fluence_total: Array
+    minimum_decay: Array
+    observations: Array
 
 
 @dataclass(frozen=True)
@@ -115,6 +133,9 @@ class ExposureResult:
         rather than averaged in.
     images : ImageRecord | None
         Per-image fields, if :func:`expose` was asked to record them.
+    last_observed : Array | None
+        ``(N,)`` dose each voxel had when it was last lit, to carry into the
+        next wedge with ``dose``.
     """
 
     dose: Array
@@ -124,6 +145,7 @@ class ExposureResult:
     absorbed_energy: Array
     image_dwd: Array
     images: ImageRecord | None = None
+    last_observed: Array | None = None
 
     @property
     def average_dose(self) -> Array:
@@ -236,7 +258,10 @@ def expose(
     off_axis: Array = 0.0,
     decay_model: Any = None,
     initial_dose: Array | None = None,
+    last_observed: Array | None = None,
     record_images: bool = False,
+    energies: Array | None = None,
+    escape: Any = None,
 ) -> ExposureResult:
     """Accumulate dose over a wedge.
 
@@ -277,10 +302,22 @@ def expose(
     initial_dose : Array, optional
         ``(N,)`` dose the crystal already carries, from earlier wedges.
         Zero if omitted.
+    last_observed : Array, optional
+        ``(N,)`` dose each voxel had when it was last lit, from earlier
+        wedges. Defaults to ``initial_dose``, which it equals unless escape
+        moved dose into voxels while they were dark.
     record_images : bool, optional
         Keep the dose, fluence and decay of every voxel after every image,
         as :attr:`ExposureResult.images`. Off by default; see
         :class:`ImageRecord` for why.
+    energies : Array, optional
+        For a pink beam, the energies it is sampled at, in keV; the fields
+        of ``coefficients`` are then arrays with one value per energy. Each
+        angle's exposure is shared equally between them. A monochromatic
+        beam, the default, is sampled at ``beam.energy`` alone.
+    escape : Any, optional
+        An :class:`~pyraddose_3d.backend.escape.Escape`, to model
+        photoelectron and fluorescence escape. NumPy only.
 
     Returns
     -------
@@ -321,54 +358,79 @@ def expose(
     angle_count = len(angles)
 
     pixels_per_micron = grid.pixels_per_micron
-    photon_energy = beam.energy
+    energies = [beam.energy] if energies is None else list(energies)
+    samples = len(energies)
 
-    # Per-voxel conversion factors. All constant across the wedge, so they
-    # are formed once rather than per angle as the Java does.
+    def at(value: Array, k: int) -> Array:
+        """A coefficient at the k-th energy: indexed for a pink beam."""
+        return value if samples == 1 else value[k]
+
+    # Voxel cross-section times the time each angle is exposed for, shared
+    # between the energies a pink beam is sampled at.
+    beam_to_fluence = pixels_per_micron**-2 * exposure_seconds / (angle_count * samples)
     voxel_mass_term = 1e-15 * (pixels_per_micron**-3 * density)
-    fluence_to_dose = (
-        _fraction_absorbed(coefficients.absorption, pixels_per_micron)
-        / voxel_mass_term
-        * 1e-6
-    )
-    fluence_to_compton_dose = (
-        _fraction_absorbed(coefficients.inelastic, pixels_per_micron)
-        / voxel_mass_term
-        * 1e-6
-    )
-    fluence_to_elastic = _fraction_absorbed(coefficients.elastic, pixels_per_micron) / (
-        photon_energy * KEV_TO_JOULES
-    )
 
-    # Voxel cross-section times the time each angle is exposed for.
-    beam_to_fluence = pixels_per_micron**-2 * exposure_seconds / angle_count
-
-    # Compton electrons carry away this fraction of each photon's energy.
-    beam_energy_joules = photon_energy * KEV_TO_JOULES
-    # Promoted against the values that decide the backend: the ratio is a
-    # plain float whenever the photon energy is, even in a torch exposure.
-    _, (ratio, *_rest) = promote(
-        _ELECTRON_REST_ENERGY_J / (2 * beam_energy_joules + _ELECTRON_REST_ENERGY_J),
-        grid.origin,
-        beam.flux,
-        density,
-    )
-    # Dispatched on the ratio itself rather than on `xp`: it stays a plain
-    # float whenever the photon energy is one, even in a torch exposure, and
-    # forcing it into a tensor here would take torch's default float32 and
-    # silently halve the precision of everything downstream.
-    compton_fraction = 1 - array_namespace(ratio).sqrt(ratio)
-
-    # Energy absorbed per unit fluence crossing one voxel. The same
-    # numerator as fluence_to_dose, before the mass conversion.
-    energy_per_fluence = _fraction_absorbed(coefficients.absorption, pixels_per_micron)
+    steps = []
+    for k, photon_energy in enumerate(energies):
+        absorption = at(coefficients.absorption, k)
+        fluence_to_dose = (
+            _fraction_absorbed(absorption, pixels_per_micron) / voxel_mass_term * 1e-6
+        )
+        fluence_to_compton_dose = (
+            _fraction_absorbed(at(coefficients.inelastic, k), pixels_per_micron)
+            / voxel_mass_term
+            * 1e-6
+        )
+        # Compton electrons carry away this fraction of each photon's energy.
+        beam_energy_joules = photon_energy * KEV_TO_JOULES
+        # Promoted against the values that decide the backend: the ratio is a
+        # plain float whenever the photon energy is, even in a torch exposure.
+        _, (ratio, *_rest) = promote(
+            _ELECTRON_REST_ENERGY_J
+            / (2 * beam_energy_joules + _ELECTRON_REST_ENERGY_J),
+            grid.origin,
+            beam.flux,
+            density,
+        )
+        # Dispatched on the ratio itself rather than on `xp`: it stays a plain
+        # float whenever the photon energy is one, even in a torch exposure,
+        # and forcing it into a tensor here would take torch's default float32
+        # and silently halve the precision of everything downstream.
+        steps.append(
+            _EnergyStep(
+                energy_joules=beam_energy_joules,
+                attenuation=at(coefficients.attenuation, k),
+                fluence_to_dose=fluence_to_dose,
+                fluence_to_compton_dose=fluence_to_compton_dose,
+                fluence_to_elastic=_fraction_absorbed(
+                    at(coefficients.elastic, k), pixels_per_micron
+                )
+                / beam_energy_joules,
+                compton_fraction=1 - array_namespace(ratio).sqrt(ratio),
+                # Energy absorbed per unit fluence crossing one voxel: the
+                # numerator of fluence_to_dose, before the mass conversion.
+                energy_per_fluence=_fraction_absorbed(absorption, pixels_per_micron),
+            )
+        )
 
     dose = xp.zeros_like(coordinates[:, 0]) if initial_dose is None else initial_dose
+    # The dose each voxel had when the diffraction-weighted dose last saw it
+    # -- ``voxImageDoseLast``. Without escape it is always the current dose,
+    # since a voxel only gains dose while lit; with escape a voxel can gain
+    # dose from its neighbours while dark, and the Java's midpoint then
+    # spans everything since it was last lit.
+    last_seen = dose if last_observed is None else last_observed
     fluence = xp.zeros_like(coordinates[:, 0])
     elastic = xp.zeros_like(fluence)
     absorbed_energy = xp.zeros_like(fluence)
     image_dwd = []
-    recorded: tuple[list[Array], list[Array], list[Array]] = ([], [], [])
+    recorded = _Recorder() if record_images else None
+
+    if escape is not None and xp is not np:
+        raise NotImplementedError(
+            "escape modelling chooses its photoelectron directions at random, "
+            "so it has no gradient; run it without tensor overrides"
+        )
 
     for index, angle in enumerate(angles):
         shift = (
@@ -377,57 +439,81 @@ def expose(
             else translations[index]
         )
         placed = _place(coordinates, shift, angle)
-
+        rotated = mesh.rotated(angle, shift)
         intensity = beam.intensity(placed[:, 0], placed[:, 1], off_axis)
-        depth = find_depth(mesh.rotated(angle, shift), placed)
+        depth = find_depth(rotated, placed)
 
-        # Beer-Lambert over the path already travelled through the crystal.
-        surviving = intensity * xp.exp(-coefficients.attenuation * depth)
-        voxel_fluence = surviving * beam_to_fluence
+        numerator: Array = 0.0
+        denominator: Array = 0.0
+        if recorded is not None:
+            recorded.start_image()
+        for sample, step in enumerate(steps):
+            # Beer-Lambert over the path already travelled through the
+            # crystal. Voxels outside it receive nothing, whatever the beam
+            # is doing there: the Java never visits them.
+            voxel_fluence = (
+                intensity * xp.exp(-step.attenuation * depth) * beam_to_fluence
+            )
+            voxel_fluence = xp.where(occupied, voxel_fluence, 0.0)
+            photoelectric_dose = step.fluence_to_dose * voxel_fluence
+            compton_dose = (
+                step.fluence_to_compton_dose * voxel_fluence * step.compton_fraction
+            )
 
-        # Voxels outside the crystal receive nothing, whatever the beam is
-        # doing there: the Java never visits them.
-        voxel_fluence = xp.where(occupied, voxel_fluence, 0.0)
+            if escape is None:
+                dose = dose + photoelectric_dose
+            else:
+                dose = escape.expose_step(
+                    dose=dose,
+                    lit=voxel_fluence > 0,
+                    photoelectric_dose=photoelectric_dose,
+                    photons=voxel_fluence / step.energy_joules,
+                    fluence_to_dose=step.fluence_to_dose,
+                    angle=float(angle),
+                    rotated=rotated,
+                    shift=shift,
+                    beam=beam,
+                    off_axis=off_axis,
+                    attenuation=step.attenuation,
+                    exposure_seconds=float(exposure_seconds),
+                    angle_count=angle_count,
+                    sample=sample,
+                )
+            dose = dose + compton_dose
 
-        photoelectric_dose = fluence_to_dose * voxel_fluence
-        compton_dose = fluence_to_compton_dose * voxel_fluence * compton_fraction
-        added = photoelectric_dose + compton_dose
+            # The diffraction-weighted dose for this image: the dose each
+            # voxel was at while it diffracted, weighted by how much it
+            # diffracted. The Java takes the midpoint of the dose across the
+            # image for the weighting, but the *end* of it for the decay --
+            # reproduced.
+            decay = decay_model(dose + photoelectric_dose / 2)
+            contributing = voxel_fluence > 0
+            weight = xp.where(contributing, voxel_fluence * decay, 0.0)
+            midpoint = last_seen + (dose - last_seen) / 2
+            numerator = numerator + xp.sum(
+                xp.where(contributing, midpoint * weight, 0.0)
+            )
+            denominator = denominator + xp.sum(weight)
+            last_seen = xp.where(contributing, dose, last_seen)
 
-        dose_before = dose
-        dose = dose + added
+            if recorded is not None:
+                recorded.observe(dose, voxel_fluence, decay * xp.ones_like(dose), xp)
 
-        # The diffraction-weighted dose for this image: the dose each voxel
-        # was at while it diffracted, weighted by how much it diffracted.
-        # The Java takes the midpoint of the dose across the image for the
-        # weighting, but the *end* of it for the decay -- reproduced.
-        decay = decay_model(dose + photoelectric_dose / 2)
-        contributing = voxel_fluence > 0
-        weight = xp.where(contributing, voxel_fluence * decay, 0.0)
-        numerator = xp.sum(
-            xp.where(contributing, (dose_before + added / 2) * weight, 0.0)
-        )
-        denominator = xp.sum(weight)
+            fluence = fluence + voxel_fluence
+            elastic = elastic + step.fluence_to_elastic * voxel_fluence
+            # Both channels deposit energy, and both count towards the
+            # absorbed total used for dose inefficiency.
+            absorbed_energy = (
+                absorbed_energy
+                + step.energy_per_fluence * voxel_fluence * (1 + step.compton_fraction)
+            )
+
         # An image in which nothing diffracted contributes nothing, and the
         # division is avoided rather than guarded after the fact: reading
         # the denominator back as a Python float would break the gradient.
         empty = denominator == 0
         image_dwd.append(
             xp.where(empty, 0.0, numerator / xp.where(empty, 1.0, denominator))
-        )
-
-        if record_images:
-            recorded[0].append(dose)
-            recorded[1].append(voxel_fluence)
-            # The decay model returns a plain 1.0 when nothing decays, which
-            # has to be spread over the grid to be stacked with the rest.
-            recorded[2].append(decay * xp.ones_like(dose))
-
-        fluence = fluence + voxel_fluence
-        elastic = elastic + fluence_to_elastic * voxel_fluence
-        # Both channels deposit energy, and both count towards the absorbed
-        # total used for dose inefficiency.
-        absorbed_energy = absorbed_energy + energy_per_fluence * voxel_fluence * (
-            1 + compton_fraction
         )
 
     return ExposureResult(
@@ -438,11 +524,79 @@ def expose(
         absorbed_energy=absorbed_energy,
         image_dwd=xp.stack(image_dwd) if image_dwd else xp.zeros_like(fluence[:0]),
         images=(
-            ImageRecord(*(xp.stack(fields) for fields in recorded))
-            if record_images and len(angles) > 0
-            else None
+            recorded.result(xp) if recorded is not None and len(angles) > 0 else None
         ),
+        last_observed=last_seen,
     )
+
+
+@dataclass(frozen=True)
+class _EnergyStep:
+    """The conversion factors for one energy a beam is sampled at."""
+
+    energy_joules: Array
+    attenuation: Array
+    fluence_to_dose: Array
+    fluence_to_compton_dose: Array
+    fluence_to_elastic: Array
+    compton_fraction: Array
+    energy_per_fluence: Array
+
+
+class _Recorder:
+    """Builds an :class:`ImageRecord`, as ``ExposureSummary`` observes.
+
+    A pink beam observes each voxel once per sampled energy within an
+    image, and RADDOSE-3D's per-voxel images keep only the last of those --
+    so ``fluence`` is the last energy's, a 200th of the image's. Reproduced;
+    the per-image aggregates, which the Java sums over every observation,
+    are what the RDE uses.
+    """
+
+    def __init__(self) -> None:
+        self.dose: list[Array] = []
+        self.fluence: list[Array] = []
+        self.decay: list[Array] = []
+        self.weighted: list[Array] = []
+        self.fluence_total: list[Array] = []
+        self.minimum: list[Array] = []
+        self.observations: list[Array] = []
+
+    def start_image(self) -> None:
+        for column in (
+            self.dose, self.fluence, self.decay, self.weighted,
+            self.fluence_total, self.minimum, self.observations,
+        ):  # fmt: skip
+            column.append(None)
+
+    def observe(self, dose: Array, fluence: Array, decay: Array, xp: Any) -> None:
+        lit = fluence > 0
+        self.dose[-1] = dose
+        self.fluence[-1] = fluence
+        self.decay[-1] = decay
+        weighted = xp.sum(xp.where(lit, fluence * decay, 0.0))
+        total = xp.sum(fluence)
+        smallest = xp.min(xp.where(lit, decay, math.inf))
+        count = xp.sum(xp.where(lit, 1, 0))
+        if self.weighted[-1] is None:
+            self.weighted[-1], self.fluence_total[-1] = weighted, total
+            self.minimum[-1], self.observations[-1] = smallest, count
+        else:
+            self.weighted[-1] = self.weighted[-1] + weighted
+            self.fluence_total[-1] = self.fluence_total[-1] + total
+            self.minimum[-1] = xp.minimum(self.minimum[-1], smallest)
+            self.observations[-1] = self.observations[-1] + count
+
+    def result(self, xp: Any) -> ImageRecord:
+        return ImageRecord(
+            dose=xp.stack(self.dose),
+            fluence=xp.stack(self.fluence),
+            decay=xp.stack(self.decay),
+            weighted_decay=xp.stack(self.weighted),
+            fluence_total=xp.stack(self.fluence_total),
+            minimum_decay=xp.stack(self.minimum),
+            observations=xp.stack(self.observations),
+        )
 
 
 def _place(coordinates: Array, shift: Array, angle: Array) -> Array:

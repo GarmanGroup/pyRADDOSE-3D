@@ -47,11 +47,16 @@ class _BeamBase(RD3DModel):
     collimation : Collimation | None
         The aperture, or ``None`` for an uncollimated beam -- which is what
         RADDOSE-3D does when an input file has no ``Collimation`` line.
+    energy_fwhm : float | None
+        ``EnergyFWHM``: a pink beam, Gaussian in energy with this full width
+        at half maximum, in keV, about ``energy``. ``None`` is
+        monochromatic.
     """
 
     flux: Annotated[float, Field(gt=0.0)]
     energy: Annotated[float, Field(gt=0.0)]
     collimation: Collimation | None = None
+    energy_fwhm: Annotated[float, Field(gt=0.0)] | None = None
 
 
 class GaussianBeam(_BeamBase):

@@ -1,7 +1,7 @@
 reference_version: 5.0.1083
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 40
+case_count: 45
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
@@ -12,7 +12,7 @@ array_tolerances:
   DoseState/extremes: 0.005
   DoseState/position_um: 0.005
   VoxelDose/sum: 0.005
-  VoxelDose/max: 0.0001
+  VoxelDose/max: 0.0005
   VoxelFluences/sum: 0.05
   VoxelFluences/max: 0.05
   DWDs/dwd: 0.005
@@ -45,7 +45,11 @@ array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the 
   itself, both on the antimony crystal, so it shares the fluence maxima''s 5e-2. The
   weighted RDE is amplified the same way under the Leal model, whose Gaussian term
   makes log RDE fall by 2 gamma^2 D per MGy: worst 7.1e-4 against the reference, where
-  the efficiency is down to 1e-4, and 2.6e-3 against itself.'
+  the efficiency is down to 1e-4, and 2.6e-3 against itself. Escape modelling does
+  the same to each image''s maximum dose, which is one voxel''s: a photoelectron''s
+  deposit lands in the voxel its track position rounds to, and a last-bit difference
+  in a cosine moves it to the next. Worst 3.1e-4 against the reference and 6.7e-4
+  against itself, so VoxelDose/max goes from 1e-4 to 5e-4.'
 quantised_quantities:
 - dose_threshold
 - tad

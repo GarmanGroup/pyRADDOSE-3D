@@ -1,5 +1,5 @@
 case_id: 100-escape-pe
-tier: B
+tier: A
 exercises: photoelectron escape only
 seed: 20260917
 reference_version: 5.0.1083

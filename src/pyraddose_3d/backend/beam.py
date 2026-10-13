@@ -25,7 +25,9 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from pyraddose_3d.backend._array import erf, promote
+import numpy as np
+
+from pyraddose_3d.backend._array import array_namespace, erf, promote
 
 __all__ = ["GaussianBeam", "TophatBeam", "normal_cdf"]
 
@@ -297,3 +299,55 @@ class TophatBeam:
         """Smallest length scale in the beam, for choosing a voxel size."""
         xp, (width_x, width_y) = promote(self.width_x, self.width_y)
         return xp.minimum(width_x, width_y)
+
+
+#: ``NormalEnergyDistribution.FWHM_TO_SIGMA``.
+_FWHM_TO_SIGMA = 1 / (2 * math.sqrt(2 * math.log(2)))
+#: ``Crystal.energiesPerAngle``: how many energies a pink beam is sampled at.
+PINK_BEAM_SAMPLES = 200
+
+
+def pink_beam_energies(
+    mean: Array, fwhm: float, samples: int = PINK_BEAM_SAMPLES
+) -> Array:
+    """The energies RADDOSE-3D samples a pink beam at.
+
+    Ports ``SampleNormalEnergyDistribution``: a Gaussian of the given
+    full width at half maximum, sampled at evenly spaced cumulative
+    probabilities ``i / (n - 1)``, keeping those within 40 standard
+    deviations of the mean. The two ends are infinite and always dropped,
+    so the probabilities are ``i / (samples + 1)`` for ``i = 1 .. samples``.
+
+    Parameters
+    ----------
+    mean : Array
+        Mean photon energy, keV. A tensor carries a gradient through.
+    fwhm : float
+        Full width at half maximum, keV.
+    samples : int
+        How many energies.
+
+    Returns
+    -------
+    Array
+        ``(samples,)`` energies in keV, ascending.
+    """
+    from scipy.special import erfinv
+
+    sigma = _FWHM_TO_SIGMA * fwhm
+    # Grow the grid until exactly `samples` points survive the 40-sigma cut,
+    # as the Java does; both infinite ends always fail it.
+    length = samples
+    while True:
+        p = np.arange(length) / (length - 1)
+        with np.errstate(divide="ignore"):
+            z = math.sqrt(2) * erfinv(2 * p - 1)
+        kept = np.abs(sigma * z) <= 40 * sigma
+        if int(kept.sum()) == samples:
+            break
+        length += 1
+    xp = array_namespace(mean)
+    offsets = sigma * z[kept]
+    if xp is not np:
+        offsets = xp.asarray(offsets, dtype=mean.dtype)
+    return mean + offsets

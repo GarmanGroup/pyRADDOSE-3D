@@ -115,8 +115,8 @@ def final_dose_state(simulation: Simulation) -> dict[str, np.ndarray]:
     return {
         "coordinates": _numpy(simulation.grid.coordinates())[occupied],
         "dose": _numpy(exposures[-1].dose)[occupied],
-        "fluence": sum(_numpy(e.fluence) for e in exposures)[occupied],
-        "elastic": sum(_numpy(e.elastic) for e in exposures)[occupied],
+        "fluence": np.sum([_numpy(e.fluence) for e in exposures], axis=0)[occupied],
+        "elastic": np.sum([_numpy(e.elastic) for e in exposures], axis=0)[occupied],
     }
 
 
@@ -186,7 +186,6 @@ def image_series(simulation: Simulation) -> dict[str, np.ndarray]:
     exposed voxels as zeros throughout, its angle included.
     """
     _require_images(simulation)
-    occupied = _numpy(simulation.occupied).astype(bool)
     voxel_volume = float(simulation.grid.volume)
 
     columns: dict[str, list[Any]] = {
@@ -205,9 +204,12 @@ def image_series(simulation: Simulation) -> dict[str, np.ndarray]:
         ),
         start=1,
     ):
-        assert exposure.images is not None
-        fluence = _numpy(exposure.images.fluence)[:, occupied]
-        decay = _numpy(exposure.images.decay)[:, occupied]
+        images = exposure.images
+        assert images is not None
+        weighted = _numpy(images.weighted_decay)
+        fluence_total = _numpy(images.fluence_total)
+        minimum = _numpy(images.minimum_decay)
+        observations = _numpy(images.observations)
         dwd = _numpy(exposure.image_dwd)
         columns["rde"].extend(resolution_rde(dwd, wedge.max_resolution))
 
@@ -215,18 +217,19 @@ def image_series(simulation: Simulation) -> dict[str, np.ndarray]:
         for index, image_angle in enumerate(_numpy(angles)):
             # The Java's arithmetic, angle * (180 / PI), not math.degrees.
             degrees = float(image_angle) * (180 / math.pi)
-            lit = fluence[index] > 0
             columns["wedge"].append(number)
             columns["image"].append(index + 1)
             columns["angle"].append(degrees)
             columns["dwd"].append(float(dwd[index]))
-            columns["volume"].append(int(lit.sum()) * voxel_volume)
-            if lit.any():
-                running_min = min(running_min, float(decay[index][lit].min()))
-                total = fluence[index][lit].sum()
+            # Lit voxels counted once per observation: for a pink beam that
+            # is once per sampled energy, so RADDOSE-3D reports a volume that
+            # many times too large. Reproduced.
+            columns["volume"].append(int(observations[index]) * voxel_volume)
+            if fluence_total[index] > 0:
+                running_min = min(running_min, float(minimum[index]))
                 columns["rde_angle"].append(degrees)
                 columns["weighted"].append(
-                    float((fluence[index][lit] * decay[index][lit]).sum() / total)
+                    float(weighted[index] / fluence_total[index])
                 )
                 columns["minimum"].append(running_min)
             else:

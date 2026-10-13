@@ -1,5 +1,5 @@
 case_id: 102-escape-pe-fl
-tier: B
+tier: A
 exercises: photoelectron and fluorescence escape
 seed: 20260917
 reference_version: 5.0.1083

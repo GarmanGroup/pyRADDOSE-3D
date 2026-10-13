@@ -12,8 +12,10 @@ what stops configuration concerns leaking into the physics.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import re
+import warnings
 from dataclasses import dataclass
 from importlib import resources
 from typing import TYPE_CHECKING, Any
@@ -21,7 +23,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from pyraddose_3d.backend import beam as backend_beam
-from pyraddose_3d.backend._array import array_namespace, to_namespace
+from pyraddose_3d.backend._array import array_namespace, is_torch, to_namespace
+from pyraddose_3d.backend.beam import pink_beam_energies
 from pyraddose_3d.backend.coefficients import (
     AVERAGE_COEFFICIENTS,
     AVERAGE_DENSITY,
@@ -43,8 +46,17 @@ from pyraddose_3d.backend.container import (
     mixture_mass_attenuation,
 )
 from pyraddose_3d.backend.decay import leal_decay
+from pyraddose_3d.backend.escape import (
+    Escape,
+    escape_factors,
+    fluorescence_escape,
+    photoelectron_escape,
+    surrounding_composition,
+    surrounding_escape,
+)
 from pyraddose_3d.backend.exposure import ExposureResult, expose, exposure_angles
 from pyraddose_3d.backend.geometry import Mesh
+from pyraddose_3d.backend.java_random import JavaRandom
 from pyraddose_3d.backend.structure_files import (
     composition_from_cif,
     composition_from_pdb,
@@ -718,7 +730,8 @@ class Simulation:
         RADDOSE-3D reports as the crystal's size.
     coefficients : MaterialCoefficients
         Absorption, attenuation, elastic and inelastic coefficients at the
-        beam energy, in inverse micrometres.
+        beam energy, in inverse micrometres. For a pink beam, at the last
+        energy sampled, as RADDOSE-3D reports them.
     grid : VoxelGrid
         The voxel grid, in the lab frame before any rotation.
     occupied : Array
@@ -733,6 +746,10 @@ class Simulation:
         alone, as in RADDOSE-3D's per-wedge observer.
     summaries : list[WedgeSummary]
         One per wedge -- what :func:`solve` returns.
+    seed : int | None
+        The seed escape modelling drew its random numbers from: the
+        experiment's, or one chosen at random if it gave none. ``None``
+        without escape.
     """
 
     experiment: Experiment
@@ -744,6 +761,7 @@ class Simulation:
     angles: list[list[Any]]
     exposures: list[ExposureResult]
     summaries: list[WedgeSummary]
+    seed: int | None = None
 
 
 def solve(
@@ -795,6 +813,138 @@ def solve(
     return simulate(experiment, overrides).summaries
 
 
+def _beam_minimum_dimension(beam: Any) -> float:
+    """``Beam.beamMinumumDimension``: the narrowest of the beam's widths."""
+    collimation = beam.collimation
+    if beam.type == "tophat":
+        assert collimation is not None
+        return float(min(collimation.x, collimation.y))
+    narrowest = float(min(beam.fwhm[0], beam.fwhm[1]))
+    if collimation is not None and min(collimation.x, collimation.y) != 0:
+        return float(min(min(collimation.x, collimation.y), narrowest))
+    return narrowest
+
+
+def _escape(
+    experiment: Experiment,
+    built: Any,
+    crystal_density: Any,
+    mesh: Mesh,
+    grid: VoxelGrid,
+    occupied: Any,
+    beam: Any,
+    energies: Any,
+    overrides: Mapping[str, Any],
+    seed: int,
+) -> Escape | None:
+    """Set up photoelectron and fluorescence escape, as ``Crystal.expose`` does."""
+    crystal = experiment.crystal
+    options = crystal.escape
+    if any(is_torch(v) for v in overrides.values()):
+        raise NotImplementedError(
+            "escape modelling chooses each photoelectron's direction at random, "
+            "so it has no gradient; run it without tensor overrides"
+        )
+    if built is None:
+        if options.photoelectron:
+            raise ValueError(
+                "photoelectron escape needs the crystal's elements, and the "
+                "average composition has none; RADDOSE-3D fails with a "
+                "NullPointerException here"
+            )
+        warnings.warn(
+            "fluorescence escape needs the crystal's elements, and the average "
+            "composition has none; as in RADDOSE-3D, none is modelled",
+            stacklevel=3,
+        )
+        return None
+
+    beam_energy = float(to_namespace(np, beam.energy))
+    density = float(to_namespace(np, crystal_density))
+    counts = np.asarray(to_namespace(np, built.counts), dtype=np.float64)
+
+    def photoelectric_at(energy: float) -> float:
+        # Hydrogen's average K fluorescence energy is 0 keV, so this is asked
+        # for log(0), as the Java is. Its fluorescence yield is 0 too, so the
+        # value is never used.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            coefficients = material_coefficients(built, energy)
+        return float(to_namespace(np, coefficients.absorption))
+
+    factors = escape_factors(built.elements, counts, beam_energy, photoelectric_at)
+    vertical = options.goniometer_axis == 90.0
+    ppm = grid.pixels_per_micron
+    vertices = np.asarray(to_namespace(np, mesh.vertices))
+    low, high = vertices.min(axis=0), vertices.max(axis=0)
+
+    photoelectron = bins = None
+    if options.photoelectron:
+        photoelectron, bins = photoelectron_escape(
+            factors, beam_energy, density, ppm, options.pe_resolution, vertical
+        )
+    fluorescence = None
+    if options.fluorescence:
+        fluorescence = fluorescence_escape(factors, high - low, options.fl_resolution)
+
+    surrounding = surrounding_absorption = clamp = None
+    if options.surrounding and photoelectron is not None:
+        assert bins is not None
+        oil_density = options.surrounding_density
+        oil_elements = options.surrounding_elements
+        container = crystal.container
+        if crystal.composition.method == "saxs":
+            # The SAXS routes take the oil from the container when it is not
+            # given, as the grammar does.
+            if oil_density is None and container is not None:
+                oil_density = container.density
+            if (
+                not oil_elements
+                and container is not None
+                and container.type == "elemental"
+            ):
+                oil_elements = container.elements
+        cell, surrounding_density = surrounding_composition(
+            float(to_namespace(np, built.cell_volume)),
+            options.surrounding_heavy_conc,
+            options.density_based,
+            oil_elements,
+            oil_density or 0.0,
+        )
+        cell_factors = escape_factors(
+            cell.elements,
+            np.asarray(cell.counts, dtype=np.float64),
+            beam_energy,
+            photoelectric_at,
+            surrounding=True,
+        )
+        surrounding = surrounding_escape(
+            cell_factors, beam_energy, surrounding_density, density, bins,
+            low, high, ppm, _beam_minimum_dimension(experiment.beam), vertical,
+        )  # fmt: skip
+        at = [beam_energy] if energies is None else list(np.asarray(energies))
+        surrounding_absorption = np.array(
+            [float(material_coefficients(cell, e).absorption) for e in at]
+        )
+        # minimumDimensions: the crystal's box before its P and L rotations.
+        raw = crystal_mesh(crystal.model_copy(update={"angle_p": 0.0, "angle_l": 0.0}))
+        raw_vertices = np.asarray(raw.vertices)
+        clamp = (raw_vertices.min(axis=0), raw_vertices.max(axis=0))
+
+    return Escape(
+        JavaRandom(seed),
+        grid.shape,
+        np.asarray(to_namespace(np, occupied)),
+        ppm,
+        density,
+        beam_energy,
+        photoelectron,
+        fluorescence,
+        surrounding,
+        surrounding_absorption,
+        clamp,
+    )
+
+
 def simulate(
     experiment: Experiment,
     overrides: Mapping[str, Any] | None = None,
@@ -833,11 +983,6 @@ def simulate(
     as_run = apply_overrides(experiment, overrides)
 
     crystal = experiment.crystal
-    if crystal.escape.any_enabled:
-        raise NotImplementedError(
-            "photoelectron and fluorescence escape are Monte Carlo and are "
-            "not ported; those cases are tier B"
-        )
 
     mesh = crystal_mesh(crystal)
     grid = voxel_grid(mesh, pixels_per_micron(crystal, mesh))
@@ -847,14 +992,46 @@ def simulate(
     built, crystal_density = crystal_material(crystal.composition)
     beam = crystal_beam(experiment.beam, overrides, crystal.container)
 
+    # A pink beam is sampled at 200 energies about its mean, and the crystal
+    # absorbs and scatters differently at each.
+    energies = None
+    if experiment.beam.energy_fwhm is not None:
+        energies = pink_beam_energies(beam.energy, experiment.beam.energy_fwhm)
     if built is None:
         coefficients = AVERAGE_COEFFICIENTS
+        if energies is not None:
+            # CoefCalcAverage's coefficients do not depend on energy.
+            coefficients = MaterialCoefficients(
+                *(
+                    np.full(len(energies), value)
+                    for value in dataclasses.astuple(coefficients)
+                )
+            )
     else:
         # The beam's energy, override included: how strongly the crystal
         # absorbs and scatters depends on it as much as the beam does.
-        coefficients = material_coefficients(built, beam.energy)
+        coefficients = material_coefficients(
+            built, beam.energy if energies is None else energies
+        )
+    # What RADDOSE-3D reports: for a pink beam, the coefficients at the last
+    # energy sampled, which is what its CoefCalc holds when it prints them.
+    reported = coefficients
+    if energies is not None:
+        reported = MaterialCoefficients(
+            *(value[-1] for value in dataclasses.astuple(coefficients))
+        )
 
     decay = decay_function(crystal.decay_model, crystal.decay_parameters)
+    seed = experiment.seed
+    escape = None
+    if crystal.escape.photoelectron or crystal.escape.fluorescence:
+        if seed is None:
+            # RADDOSE-3D seeds from the clock and prints the seed it chose.
+            seed = int(np.random.default_rng().integers(0, 2**47))
+        escape = _escape(
+            experiment, built, crystal_density, mesh, grid, occupied,
+            beam, energies, overrides, seed,
+        )  # fmt: skip
 
     summaries = []
     exposures = []
@@ -862,6 +1039,7 @@ def simulate(
     # RADDOSE-3D holds dose on the crystal, so wedge two starts where
     # wedge one left off and its summary covers the whole history.
     carried = None
+    carried_seen = None
     for number, wedge in enumerate(experiment.wedges, start=1):
         index = number - 1
         first = _setting(overrides, f"wedges.{index}.start", wedge.start)
@@ -920,9 +1098,13 @@ def simulate(
             off_axis=off_axis,
             decay_model=decay,
             initial_dose=carried,
+            last_observed=carried_seen,
             record_images=record_images,
+            energies=energies,
+            escape=escape,
         )
         carried = result.dose
+        carried_seen = result.last_observed
         exposures.append(result)
         wedge_angles.append(list(angles))
         summaries.append(
@@ -932,11 +1114,12 @@ def simulate(
     return Simulation(
         experiment=as_run,
         mesh=mesh,
-        coefficients=coefficients,
+        coefficients=reported,
         grid=grid,
         occupied=occupied,
         density=crystal_density,
         angles=wedge_angles,
         exposures=exposures,
         summaries=summaries,
+        seed=seed,
     )
