@@ -24,8 +24,12 @@ __all__ = [
     "EscapeOptions",
     "MixtureContainer",
     "PolyhedronCrystal",
+    "SimulationOptions",
     "SphericalCrystal",
 ]
+
+#: RADDOSE-3D's Monte Carlo and XFEL subprograms.
+SIMULATED = frozenset({"montecarlo", "gos", "xfel"})
 
 
 class EscapeOptions(RD3DModel):
@@ -81,6 +85,36 @@ class EscapeOptions(RD3DModel):
     def any_enabled(self) -> bool:
         """Whether any escape modelling is switched on."""
         return self.photoelectron or self.fluorescence or self.surrounding
+
+
+class SimulationOptions(RD3DModel):
+    """Settings of RADDOSE-3D's Monte Carlo and XFEL subprograms.
+
+    Only those subprograms read them: ``subprogram`` ``montecarlo``, ``gos``
+    or ``xfel``.
+
+    Attributes
+    ----------
+    photons : int
+        ``SimPhotons`` (or ``SimElectrons``): photons simulated per run.
+        RADDOSE-3D's default is a million.
+    runs : int
+        ``Runs``: independent repeats, each adding a row to the output files.
+    polarisation_direction : float
+        ``PolarisationDirection``: 90 for vertical polarisation, anything else
+        horizontal. With ``escape.goniometer_axis`` it sets which way K-shell
+        photoelectrons are sent.
+    surrounding_thickness : tuple[float, float, float] | None
+        ``SurroundingThickness``: how far the surrounding extends from the
+        crystal in x, y and z, um, for the Monte Carlo subprogram. Unset, or
+        beyond a photoelectron's range, it is that range. The surrounding
+        itself is ``escape.surrounding``, as for the MX calculation.
+    """
+
+    photons: Annotated[int, Field(ge=1)] = 1_000_000
+    runs: Annotated[int, Field(ge=1)] = 1
+    polarisation_direction: float = 0.0
+    surrounding_thickness: tuple[float, float, float] | None = None
 
 
 class _ContainerBase(RD3DModel):
@@ -161,15 +195,30 @@ class _CrystalBase(RD3DModel):
         What the crystal is mounted in, which the beam crosses first.
         ``None`` is RADDOSE-3D's ``ContainerMaterialType None``: no
         attenuation.
-    subprogram : {"rd3d", "microed"}
-        Which of RADDOSE-3D's engines to run: ``rd3d``, the MX dose
-        calculation, or ``microed``, its MicroED calculation for a thin
-        crystal in an electron beam -- ``Subprogram EMED`` (or ``EMSP``) in a
-        ``.txt`` input. MicroED needs an electron beam, and ignores the
-        wedges, escape, the container and the decay model.
+    subprogram : {"rd3d", "microed", "montecarlo", "gos", "xfel"}
+        Which of RADDOSE-3D's engines to run:
+
+        - ``rd3d``, the MX dose calculation;
+        - ``microed``, its MicroED calculation for a thin crystal in an
+          electron beam -- ``Subprogram EMED`` (or ``EMSP``) in a ``.txt``
+          input. It needs an electron beam, and ignores the wedges, escape,
+          the container and the decay model;
+        - ``montecarlo`` and ``gos``, its Monte Carlo simulations of photons
+          and the electrons they free -- ``Subprogram MONTECARLO`` follows
+          electrons by their elastic scattering and stopping power, and
+          ``GOS`` also by inelastic collisions, with their secondary
+          electrons and Auger cascades;
+        - ``xfel``, the GOS simulation timed within an X-ray free-electron
+          laser pulse.
+
+        The last three take ``simulation`` settings and need a Gaussian or
+        TopHat beam. They are being ported (``ROADMAP.md``, Milestone 7).
+    simulation : SimulationOptions
+        Settings of the Monte Carlo and XFEL subprograms.
     """
 
-    subprogram: Literal["rd3d", "microed"] = "rd3d"
+    subprogram: Literal["rd3d", "microed", "montecarlo", "gos", "xfel"] = "rd3d"
+    simulation: SimulationOptions = Field(default_factory=SimulationOptions)
     pixels_per_micron: Annotated[float, Field(gt=0.0)] | None = None
     angle_p: float = 0.0
     angle_l: float = 0.0
@@ -178,6 +227,32 @@ class _CrystalBase(RD3DModel):
     decay_parameters: tuple[float, float, float] | None = None
     escape: EscapeOptions = Field(default_factory=EscapeOptions)
     container: Container | None = None
+
+    @model_validator(mode="after")
+    def _simulation_settings_need_a_simulation(self) -> Self:
+        """Only the Monte Carlo and XFEL subprograms read them."""
+        if self.subprogram not in SIMULATED and (
+            self.simulation != SimulationOptions()
+        ):
+            raise ValueError(
+                "simulation settings are read only by the Monte Carlo and XFEL "
+                "subprograms; set subprogram to montecarlo, gos or xfel, or leave "
+                "them out"
+            )
+        if (
+            self.simulation.surrounding_thickness is not None
+            and not self.escape.surrounding
+        ):
+            raise ValueError(
+                "simulation.surrounding_thickness sizes the surrounding, which "
+                "needs escape.surrounding"
+            )
+        if self.subprogram in SIMULATED and self.composition.method == "average":
+            raise ValueError(
+                "the Monte Carlo and XFEL subprograms need the crystal's elements, "
+                "and the average composition has none; RADDOSE-3D refuses it too"
+            )
+        return self
 
     @model_validator(mode="after")
     def _escape_needs_elements(self) -> Self:

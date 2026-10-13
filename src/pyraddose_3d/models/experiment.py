@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Annotated, Self
 from pydantic import Field, model_validator
 
 from pyraddose_3d.models._base import RD3DModel
-from pyraddose_3d.models.beam import Beam, ElectronBeam
-from pyraddose_3d.models.crystal import Crystal
+from pyraddose_3d.models.beam import Beam, ElectronBeam, GaussianBeam, TophatBeam
+from pyraddose_3d.models.crystal import SIMULATED, Crystal
 from pyraddose_3d.models.wedge import Wedge
 
 if TYPE_CHECKING:
@@ -42,8 +42,15 @@ class Experiment(RD3DModel):
 
     @model_validator(mode="after")
     def _beam_suits_the_engine(self) -> Self:
-        """MicroED takes an electron beam, and only MicroED does."""
-        microed = self.crystal.subprogram == "microed"
+        """Each engine takes the beams RADDOSE-3D lets it.
+
+        MicroED takes an electron beam, and only MicroED does. The Monte Carlo
+        and XFEL subprograms take a Gaussian or TopHat beam. XFEL reads the
+        beam's pulse energy rather than its flux; every other engine needs
+        the flux.
+        """
+        subprogram = self.crystal.subprogram
+        microed = subprogram == "microed"
         electron = isinstance(self.beam, ElectronBeam)
         if microed and not electron:
             raise ValueError(
@@ -55,6 +62,26 @@ class Experiment(RD3DModel):
             raise ValueError(
                 "an electron beam is for the MicroED engine; set the crystal's "
                 "subprogram to microed"
+            )
+        beam = self.beam
+        if isinstance(beam, ElectronBeam):
+            return self
+        if subprogram in SIMULATED and not isinstance(beam, (GaussianBeam, TophatBeam)):
+            raise ValueError(
+                "the Monte Carlo and XFEL subprograms need a Gaussian or TopHat "
+                "beam, and RADDOSE-3D refuses an experimental one"
+            )
+        if subprogram == "xfel":
+            if beam.pulse_energy is None:
+                raise ValueError(
+                    "the XFEL subprogram needs the beam's pulse energy "
+                    "(pulse_energy, mJ)"
+                )
+        elif beam.pulse_energy is not None:
+            # So every other engine has a flux: a beam has one or the other.
+            raise ValueError(
+                "pulse_energy is read only by the XFEL subprogram; set the "
+                "crystal's subprogram to xfel, or leave it out"
             )
         return self
 

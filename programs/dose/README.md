@@ -50,7 +50,7 @@ Photoelectron and fluorescence escape are Monte Carlo, so two runs give slightly
 
 Input that asks for something not ported is refused with a message saying what -- when the input is read, or at the latest when the calculation starts -- rather than ignored:
 
-- the Monte Carlo and XFEL subprograms (`Subprogram MonteCarlo`, `GOS`, `XFEL`)
+- the Monte Carlo and XFEL subprograms (`Subprogram MonteCarlo`, `GOS`, `XFEL`): their input is read, and the run is refused when it starts
 - `AbsCoefCalc RDV2` and `RDV3`, which run the original Fortran RADDOSE as an external program
 - `Type Experimental`, which RADDOSE-3D cannot build from an input file either; `Type ExperimentalPGM` works
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import runpy
+import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -92,3 +94,32 @@ def test_run_optimise_energy_writes_a_runnable_strategy(
     assert result.crystal == original.crystal
     assert result.wedges == original.wedges
     assert "Best energy" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("subprogram", ["MonteCarlo", "GOS", "XFEL"])
+def test_run_dose_refuses_the_subprograms_not_yet_ported(
+    subprogram: str, tmp_path: Path
+) -> None:
+    """Read, but refused by name before anything runs."""
+    text = (DOSE / "dose_example_input.txt").read_text()
+    text = text.replace("Crystal\n", f"Crystal\nSubprogram {subprogram}\n", 1)
+    if subprogram == "XFEL":
+        text = text.replace("Beam\n", "Beam\nPulseEnergy 1.4\n", 1)
+    config = tmp_path / "input.txt"
+    config.write_text(text)
+    with (
+        pytest.warns(match="Flux is ignored") if subprogram == "XFEL" else nullcontext()
+    ):
+        assert Experiment.from_file(config).crystal.subprogram == subprogram.lower()
+
+    script = runpy.run_path(str(DOSE / "run_dose.py"))
+    script["main"].__globals__.update(
+        CONFIG_PATH=str(config), OUTPUT_PREFIX=str(tmp_path / "output-")
+    )
+    with (
+        pytest.raises(NotImplementedError, match="Milestone 7"),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("ignore")
+        script["main"]()
+    assert not list(tmp_path.glob("output-*"))

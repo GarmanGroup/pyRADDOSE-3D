@@ -43,6 +43,7 @@ from __future__ import annotations
 import re
 import warnings
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from pyraddose_3d.models.beam import (
@@ -62,10 +63,12 @@ from pyraddose_3d.models.composition import (
     UnitCellComposition,
 )
 from pyraddose_3d.models.crystal import (
+    SIMULATED,
     CuboidCrystal,
     CylinderCrystal,
     MixtureContainer,
     PolyhedronCrystal,
+    SimulationOptions,
     SphericalCrystal,
 )
 
@@ -267,8 +270,34 @@ def _crystal_lines(crystal: Crystal) -> list[str]:
 
     lines.extend(_escape_lines(crystal.escape))
     lines.extend(_container_lines(crystal.container))
-    if crystal.subprogram == "microed":
-        lines.append("Subprogram EMED")
+    if crystal.subprogram != "rd3d":
+        lines.append(f"Subprogram {_SUBPROGRAM_KEYWORD[crystal.subprogram]}")
+    if crystal.subprogram in SIMULATED:
+        lines.extend(_simulation_lines(crystal.simulation))
+    return lines
+
+
+#: The keyword the emitter writes for each subprogram.
+_SUBPROGRAM_KEYWORD = {
+    "microed": "EMED",
+    "montecarlo": "MonteCarlo",
+    "gos": "GOS",
+    "xfel": "XFEL",
+}
+
+
+def _simulation_lines(simulation: SimulationOptions) -> list[str]:
+    """Emit the Monte Carlo and XFEL settings, as whole numbers where whole."""
+    lines = [f"SimPhotons {simulation.photons}"]
+    if simulation.runs != 1:
+        lines.append(f"Runs {simulation.runs}")
+    if simulation.polarisation_direction:
+        lines.append(
+            f"PolarisationDirection {_number(simulation.polarisation_direction)}"
+        )
+    if simulation.surrounding_thickness is not None:
+        values = " ".join(_number(v) for v in simulation.surrounding_thickness)
+        lines.append(f"SurroundingThickness {values}")
     return lines
 
 
@@ -307,16 +336,17 @@ def _beam_lines(
         return lines
     if isinstance(beam, GaussianBeam):
         lines.append("Type Gaussian")
-        lines.append(f"Flux {_number(beam.flux)}")
         lines.append(f"FWHM {' '.join(_number(v) for v in beam.fwhm)}")
     elif isinstance(beam, ExperimentalBeam):
         lines.append("Type ExperimentalPGM")
-        lines.append(f"Flux {_number(beam.flux)}")
         lines.append(f"File {beam.file}")
         lines.append(f"PixelSize {' '.join(_number(v) for v in beam.pixel_size)}")
     else:
         lines.append("Type TopHat")
+    if beam.flux is not None:
         lines.append(f"Flux {_number(beam.flux)}")
+    if beam.pulse_energy is not None:
+        lines.append(f"PulseEnergy {_number(beam.pulse_energy)}")
     lines.append(f"Energy {_number(beam.energy)}")
     if beam.energy_fwhm is not None:
         lines.append(f"EnergyFWHM {_number(beam.energy_fwhm)}")
@@ -514,6 +544,34 @@ def _read_count(stream: _Stream, keyword: _Token) -> int:
     return int(token.text)
 
 
+#: The largest values RADDOSE-3D's ``long`` and ``int`` hold.
+_LONG_MAX = 2**63 - 1
+_INT_MAX = 2**31 - 1
+
+
+def _read_whole(stream: _Stream, keyword: _Token, maximum: int) -> int:
+    """A whole number from 1 to ``maximum``, in any notation: 1000000, 1e6, 1e6.0.
+
+    As the grammar's ``wholeNumber`` reads ``SimPhotons`` and ``Runs``,
+    with ``BigDecimal.longValueExact``.
+    """
+    if not _is_number(stream.peek()):
+        _read_number(stream, keyword)  # raises with the message
+    token = stream.take()
+    try:
+        value = Decimal(token.text)
+        whole = value == value.to_integral_value()
+    except InvalidOperation:
+        whole = False
+    if not whole or not 1 <= value <= maximum:
+        raise stream.error(
+            keyword.line,
+            f"{keyword.text} needs a whole number from 1 to {maximum}, "
+            f"not {token.text}",
+        )
+    return int(value)
+
+
 def _read_word(stream: _Stream, keyword: _Token) -> str:
     found = stream.peek()
     if found is None or found.text.upper() in _BLOCKS:
@@ -591,20 +649,21 @@ _CRYSTAL_KEYWORDS: dict[str, tuple[str, Reader]] = {
     # Orients the polarisation's bias on photoelectron directions.
     "GONIOMETERAXIS": ("goniometer_axis", _read_number),
     # Read only by the Monte Carlo and XFEL subprograms (Crystal.java passes
-    # them to startMC and startXFEL and nowhere else), so an MX run ignores
-    # them in the Java and here.
-    "POLARISATIONDIRECTION": ("ignored", _read_number),
-    "SURROUNDINGTHICKNESS": ("ignored", lambda s, k: _read_numbers(s, k, 3, 3)),
+    # them to startMC and startXFEL and nowhere else).
+    "POLARISATIONDIRECTION": ("polarisation_direction", _read_number),
+    "SURROUNDINGTHICKNESS": (
+        "surrounding_thickness",
+        lambda s, k: _read_numbers(s, k, 3, 3),
+    ),
     "SURROUNDINGHEAVYCONC": ("surrounding_heavy_conc", _read_elements),
     "DENSITYBASED": ("density_based", _read_word),
     "SURROUNDINGELEMENTS": ("surrounding_elements", _read_elements),
     "SURROUNDINGDENSITY": ("surrounding_density", _read_number),
     "SUBPROGRAM": ("subprogram", _read_word),
-    # Monte Carlo and XFEL settings: refused unless the run is MicroED, whose
-    # Monte Carlo is disabled in RADDOSE-3D, so that they reach nothing.
-    "SIMELECTRONS": ("sim_electrons", _read_number),
-    "SIMPHOTONS": ("sim_electrons", _read_number),
-    "RUNS": ("runs", _read_number),
+    # The Monte Carlo and XFEL subprograms' photons per run, and runs.
+    "SIMELECTRONS": ("photons", lambda s, k: _read_whole(s, k, _LONG_MAX)),
+    "SIMPHOTONS": ("photons", lambda s, k: _read_whole(s, k, _LONG_MAX)),
+    "RUNS": ("runs", lambda s, k: _read_whole(s, k, _INT_MAX)),
     "CONTAINERMATERIALTYPE": ("container_type", _read_word),
     "MATERIALTYPE": ("container_type", _read_word),
     "CONTAINERTHICKNESS": ("container_thickness", _read_number),
@@ -631,6 +690,8 @@ _BEAM_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "ENERGYFWHM": ("energy_fwhm", _read_number),
     "FILE": ("file", _read_word),
     "PIXELSIZE": ("pixel_size", lambda s, k: _read_numbers(s, k, 2, 2)),
+    # The XFEL subprogram's pulse, in mJ.
+    "PULSEENERGY": ("pulse_energy", _read_number),
     # MicroED's: the fluence, and settings only its disabled Monte Carlo read.
     "EXPOSURE": ("exposure", _read_number),
     "SEMIANGLE": ("semi_angle", _read_number),
@@ -655,9 +716,7 @@ _NOT_PORTED = "which this port does not implement"
 #: Keywords that would change a result this port cannot compute.
 _REFUSED: dict[str, dict[str, str]] = {
     "Crystal": {},
-    "Beam": {
-        "PULSEENERGY": f"belongs to an XFEL beam, {_NOT_PORTED}",
-    },
+    "Beam": {},
     "Wedge": {},
 }
 
@@ -685,14 +744,24 @@ _COEFCALC_REFUSED = {
     "RDV3": "runs the original Fortran RADDOSE as an external program",
 }
 
-#: Subprograms this port does not run.
+#: Subprogram value -> engine. EMED and EMSP run the same MicroED
+#: calculation.
 _SUBPROGRAMS = {
-    "MONTECARLO": "Monte Carlo",
-    "GOS": "Monte Carlo",
-    "XFEL": "XFEL",
+    "RD3D": "rd3d",
+    "EMED": "microed",
+    "EMSP": "microed",
+    "MONTECARLO": "montecarlo",
+    "GOS": "gos",
+    "XFEL": "xfel",
 }
-#: Both run the same MicroED calculation.
-_MICROED = frozenset({"EMED", "EMSP"})
+
+#: The Monte Carlo and XFEL settings, by key, with their keywords.
+_SIMULATION = (
+    ("photons", "SimPhotons"),
+    ("runs", "Runs"),
+    ("polarisation_direction", "PolarisationDirection"),
+    ("surrounding_thickness", "SurroundingThickness"),
+)
 
 _DECAY = {"SIMPLE": "simple", "LINEAR": "linear", "LEAL": "leal", "BFACTOR": "bfactor"}
 
@@ -1007,29 +1076,13 @@ def _container(
 def _crystal(
     stream: _Stream, values: dict[str, tuple[Any, int]], line: int
 ) -> dict[str, Any]:
-    microed = False
+    subprogram = "rd3d"
     if "subprogram" in values:
         written, at = values["subprogram"]
-        engine = _SUBPROGRAMS.get(written.upper())
-        if engine is not None:
-            raise stream.error(
-                at,
-                f"Subprogram {written} runs RADDOSE-3D's {engine} engine, "
-                f"{_NOT_PORTED}",
-            )
-        microed = written.upper() in _MICROED
-        if not microed and written.upper() != "RD3D":
+        if written.upper() not in _SUBPROGRAMS:
             raise stream.error(at, f"Subprogram {written!r} is not one RADDOSE-3D has")
-    for key, label in (("sim_electrons", "SimElectrons"), ("runs", "Runs")):
-        if key not in values:
-            continue
-        if not microed:
-            raise stream.error(
-                values[key][1],
-                f"{label} sets up RADDOSE-3D's Monte Carlo or XFEL simulation, "
-                f"{_NOT_PORTED}",
-            )
-        _ignored(values[key][1], label, "RADDOSE-3D's MicroED Monte Carlo is disabled")
+        subprogram = _SUBPROGRAMS[written.upper()]
+    simulation = _simulation(values, subprogram)
 
     written = _require(
         stream, values, "type", "Type", line, "RADDOSE-3D needs the crystal's shape"
@@ -1127,9 +1180,49 @@ def _crystal(
         crystal["container"] = container
 
     crystal["composition"] = _composition(stream, values, line)
-    if microed:
-        crystal["subprogram"] = "microed"
+    if subprogram != "rd3d":
+        crystal["subprogram"] = subprogram
+    if simulation:
+        crystal["simulation"] = simulation
+    if subprogram in SIMULATED and crystal["composition"]["method"] == "average":
+        raise stream.error(
+            values["coefcalc"][1] if "coefcalc" in values else line,
+            f"the {_ENGINE_NAMES[subprogram]} subprogram needs the crystal's "
+            f"elements, and AbsCoefCalc Average gives none; RADDOSE-3D refuses it too",
+        )
     return crystal
+
+
+def _surrounding(values: dict[str, tuple[Any, int]]) -> bool:
+    """``CalcSurrounding True``, as the composition classes test it."""
+    return "surrounding" in values and values["surrounding"][0].upper() == "TRUE"
+
+
+_ONLY_SIMULATED = "only RADDOSE-3D's Monte Carlo and XFEL subprograms read it"
+
+#: How messages name the simulated subprograms.
+_ENGINE_NAMES = {"montecarlo": "MONTECARLO", "gos": "GOS", "xfel": "XFEL"}
+
+
+def _simulation(values: dict[str, tuple[Any, int]], subprogram: str) -> dict[str, Any]:
+    """The Monte Carlo and XFEL settings, or warnings that nothing reads them."""
+    simulation: dict[str, Any] = {}
+    for key, label in _SIMULATION:
+        if key not in values:
+            continue
+        value, at = values[key]
+        if subprogram in SIMULATED:
+            if key == "surrounding_thickness":
+                if not _surrounding(values):
+                    _ignored(at, label, "CalcSurrounding is off, so there is none")
+                    continue
+                value = tuple(value)
+            simulation[key] = value
+        elif subprogram == "microed" and key in ("photons", "runs"):
+            _ignored(at, label, "RADDOSE-3D's MicroED Monte Carlo is disabled")
+        else:
+            _ignored(at, label, _ONLY_SIMULATED)
+    return simulation
 
 
 def _ignored(line: int, label: str, why: str) -> None:
@@ -1148,9 +1241,9 @@ _MICROED_BEAM = (
 
 
 def _beam(
-    stream: _Stream, values: dict[str, tuple[Any, int]], line: int, microed: bool
+    stream: _Stream, values: dict[str, tuple[Any, int]], line: int, subprogram: str
 ) -> dict[str, Any]:
-    if microed:
+    if subprogram == "microed":
         return _electron_beam(stream, values, line)
     for key, label in _MICROED_BEAM:
         if key in values:
@@ -1176,16 +1269,46 @@ def _beam(
             f"Type {written!r} is not a beam profile; expected Gaussian, TopHat "
             f"or ExperimentalPGM",
         )
+    if subprogram in SIMULATED and profile == "EXPERIMENTALPGM":
+        raise stream.error(
+            values["type"][1],
+            f"the {_ENGINE_NAMES[subprogram]} subprogram needs a TopHat or "
+            f"Gaussian beam; RADDOSE-3D refuses an experimental one too",
+        )
 
     beam: dict[str, Any] = {
         "type": _BEAM_TYPES[profile],
-        "flux": _require(
-            stream, values, "flux", "Flux", line, "RADDOSE-3D's beams require it"
-        ),
         "energy": _require(
             stream, values, "energy", "Energy", line, "RADDOSE-3D's beams require it"
         ),
     }
+    if subprogram == "xfel":
+        # XFEL takes its photons from the pulse's energy, not the flux.
+        beam["pulse_energy"] = _require(
+            stream,
+            values,
+            "pulse_energy",
+            "PulseEnergy",
+            line,
+            "the XFEL subprogram needs the pulse's energy, in mJ, and RADDOSE-3D "
+            "refuses a run without it",
+        )
+        if "flux" in values:
+            _ignored(
+                values["flux"][1],
+                "Flux",
+                "the XFEL subprogram takes its photons from PulseEnergy",
+            )
+    else:
+        beam["flux"] = _require(
+            stream, values, "flux", "Flux", line, "RADDOSE-3D's beams require it"
+        )
+        if "pulse_energy" in values:
+            _ignored(
+                values["pulse_energy"][1],
+                "PulseEnergy",
+                "only RADDOSE-3D's XFEL subprogram reads it",
+            )
     if profile == "GAUSSIAN":
         beam["fwhm"] = tuple(
             _require(
@@ -1242,6 +1365,7 @@ def _electron_beam(
         raise stream.error(line, "a TopHat beam fills its collimation, so it needs one")
     for key, label, why in (
         ("flux", "Flux", "MicroED's fluence is its Exposure"),
+        ("pulse_energy", "PulseEnergy", "only RADDOSE-3D's XFEL subprogram reads it"),
         ("energy_fwhm", "EnergyFWHM", "MicroED's beam is monochromatic"),
         ("fwhm", "FWHM", "a TopHat beam has no FWHM"),
         (
@@ -1395,8 +1519,8 @@ def parse_raddose_txt(text: str, source: str = "<input>") -> dict[str, Any]:
     def build_beam() -> dict[str, Any] | None:
         if beam_block is None or crystal is None:
             return None
-        microed = crystal.get("subprogram") == "microed"
-        return _beam(stream, beam_block[0], beam_block[1], microed)
+        subprogram = crystal.get("subprogram", "rd3d")
+        return _beam(stream, beam_block[0], beam_block[1], subprogram)
 
     while not stream.done():
         token = stream.take()

@@ -95,7 +95,7 @@ SHIPPED = {
     "ED_input_cell.txt": None,
     # "SURROUNDINGELEMENTS C" has no amount; RADDOSE-3D refuses it too.
     "MyInput_hole.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
-    # The same, and a Monte Carlo run besides, which is not ported.
+    # The same, in a Monte Carlo run.
     "MyInput_hole_MC.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
     # A template for RADDOSE-3D's GUI, with placeholders where values go.
     "input.txt": "Dimensions needs 1 to 3 numbers, found 0",
@@ -333,15 +333,20 @@ def test_default_resolution_follows_the_first_dimension(
     assert crystal.base_pixels_per_micron == pytest.approx(10 / first)
 
 
-def test_ignored_keywords_are_ignored() -> None:
-    """Read only by the Monte Carlo and XFEL engines, as Crystal.java shows."""
-    text = with_lines(
-        CRYSTAL,
+@pytest.mark.parametrize(
+    "line",
+    [
         "PolarisationDirection 90",
         "SurroundingThickness 1 1 1",
-        "Subprogram RD3D",
-    )
-    assert read(text + BEAM + WEDGE) == read(CRYSTAL + BEAM + WEDGE)
+        "SimPhotons 1000",
+        "Runs 3",
+    ],
+)
+def test_simulation_settings_are_ignored_by_the_mx_calculation(line: str) -> None:
+    """Read only by the Monte Carlo and XFEL subprograms, as Crystal.java shows."""
+    text = with_lines(CRYSTAL, line, "Subprogram RD3D")
+    with pytest.warns(RaddoseTxtWarning, match=f"{line.split()[0]} is ignored"):
+        assert read(text + BEAM + WEDGE) == read(CRYSTAL + BEAM + WEDGE)
 
 
 def test_escape_and_the_surrounding_are_read() -> None:
@@ -442,11 +447,7 @@ def test_errors_name_the_file_and_line() -> None:
 @pytest.mark.parametrize(
     ("block", "line", "reason"),
     [
-        ("beam", "PulseEnergy 1", "XFEL"),
-        ("crystal", "Subprogram MonteCarlo", "Monte Carlo engine"),
-        ("crystal", "Subprogram XFEL", "XFEL engine"),
         ("crystal", "Subprogram EMSP", "MicroED needs a TopHat beam"),
-        ("crystal", "Runs 3", "Monte Carlo"),
         ("crystal", "AbsCoefCalc RDV2", "Fortran"),
     ],
 )
@@ -737,7 +738,14 @@ def test_microed_needs_an_exposure() -> None:
 
 
 @pytest.mark.parametrize(
-    "extra", ["Flux 1e12", "EnergyFWHM 0.1", "SemiAngle 10", "ApertureRadius 5"]
+    "extra",
+    [
+        "Flux 1e12",
+        "EnergyFWHM 0.1",
+        "SemiAngle 10",
+        "ApertureRadius 5",
+        "PulseEnergy 1",
+    ],
 )
 def test_what_microed_ignores_is_warned_about(extra: str) -> None:
     """RADDOSE-3D accepts these silently and never reads them."""
@@ -747,14 +755,158 @@ def test_what_microed_ignores_is_warned_about(extra: str) -> None:
     assert experiment.beam.type == "electron"
 
 
-def test_monte_carlo_settings_are_ignored_by_microed_and_refused_otherwise() -> None:
-    """MicroED's Monte Carlo is commented out in RADDOSE-3D."""
-    with pytest.warns(RaddoseTxtWarning, match="SimElectrons is ignored"):
-        read(with_lines(MICROED_CRYSTAL, "SimElectrons 1000") + ELECTRON_BEAM + WEDGE)
-    with pytest.raises(RaddoseTxtError, match="Monte Carlo or XFEL simulation"):
-        read(with_lines(CRYSTAL, "SimElectrons 1000") + BEAM + WEDGE)
+@pytest.mark.parametrize("line", ["SimElectrons 1000", "Runs 2"])
+def test_monte_carlo_settings_are_ignored_by_microed(line: str) -> None:
+    """MicroED's Monte Carlo is commented out in RADDOSE-3D.
+
+    The grammar's ``wholeNumber`` calls both spellings ``SimPhotons``.
+    """
+    label = {"SimElectrons": "SimPhotons"}.get(line.split()[0], line.split()[0])
+    with pytest.warns(RaddoseTxtWarning, match=f"{label} is ignored.*disabled"):
+        read(with_lines(MICROED_CRYSTAL, line) + ELECTRON_BEAM + WEDGE)
 
 
 def test_an_exposure_belongs_to_microed() -> None:
     with pytest.raises(RaddoseTxtError, match="belongs to a MicroED beam"):
         read(CRYSTAL + with_lines(BEAM, "Exposure 1") + WEDGE)
+
+
+# --- Monte Carlo and XFEL: Subprogram MONTECARLO, GOS, XFEL ----------------------
+
+MC_CRYSTAL = with_lines(CRYSTAL, "Subprogram MonteCarlo")
+XFEL_CRYSTAL = with_lines(CRYSTAL, "Subprogram XFEL")
+XFEL_BEAM = BEAM.replace("Flux 2e12", "PulseEnergy 1.4")
+
+
+@pytest.mark.parametrize(
+    ("written", "subprogram"),
+    [
+        ("MonteCarlo", "montecarlo"),
+        ("MONTECARLO", "montecarlo"),
+        ("gos", "gos"),
+        ("XFEL", "xfel"),
+    ],
+)
+def test_the_simulated_subprograms_are_read(written: str, subprogram: str) -> None:
+    """Crystal.java upper-cases the value before comparing it."""
+    crystal = with_lines(CRYSTAL, f"Subprogram {written}")
+    beam = XFEL_BEAM if subprogram == "xfel" else BEAM
+    experiment = read(crystal + beam + WEDGE)
+    assert experiment.crystal.subprogram == subprogram
+    assert experiment.crystal.simulation.photons == 1_000_000
+    assert experiment.crystal.simulation.runs == 1
+
+
+def test_the_simulation_settings_are_read() -> None:
+    text = with_lines(
+        MC_CRYSTAL,
+        "CalcSurrounding TRUE",
+        "SimPhotons 20000",
+        "Runs 3",
+        "PolarisationDirection 90",
+        "SurroundingThickness 1 2 0.5",
+    )
+    simulation = read(text + BEAM + WEDGE).crystal.simulation
+    assert simulation.photons == 20_000
+    assert simulation.runs == 3
+    assert simulation.polarisation_direction == 90.0
+    assert simulation.surrounding_thickness == (1.0, 2.0, 0.5)
+
+
+@pytest.mark.parametrize(
+    ("written", "photons"),
+    [("1000000", 1_000_000), ("1e6", 1_000_000), ("1000000.0", 1_000_000)],
+)
+def test_photons_are_whole_numbers_in_any_notation(written: str, photons: int) -> None:
+    """The grammar's ``wholeNumber``: ``BigDecimal.longValueExact``."""
+    for keyword in ("SimPhotons", "SimElectrons"):
+        text = with_lines(MC_CRYSTAL, f"{keyword} {written}")
+        assert read(text + BEAM + WEDGE).crystal.simulation.photons == photons
+
+
+@pytest.mark.parametrize(
+    "line", ["SimPhotons 1.5", "SimPhotons 0", "Runs 2.5", "Runs -1", "Runs 3e9"]
+)
+def test_fractions_and_counts_out_of_range_are_refused(line: str) -> None:
+    """``Runs`` must fit an ``int``, and both must be at least 1."""
+    with pytest.raises(RaddoseTxtError, match="needs a whole number from 1 to"):
+        read(with_lines(MC_CRYSTAL, line) + BEAM + WEDGE)
+
+
+def test_a_surrounding_thickness_without_a_surrounding_is_ignored() -> None:
+    """Crystal.java reads it only when the composition has a surrounding."""
+    text = with_lines(MC_CRYSTAL, "SurroundingThickness 1 1 1")
+    with pytest.warns(RaddoseTxtWarning, match="SurroundingThickness is ignored"):
+        experiment = read(text + BEAM + WEDGE)
+    assert experiment.crystal.simulation.surrounding_thickness is None
+
+
+def test_xfel_takes_a_pulse_energy_rather_than_a_flux() -> None:
+    """XFEL.java takes its photons from ``getPulseEnergy``, never the flux."""
+    beam = read(XFEL_CRYSTAL + XFEL_BEAM + WEDGE).beam
+    assert beam.pulse_energy == 1.4
+    assert beam.flux is None
+    with pytest.warns(RaddoseTxtWarning, match="Flux is ignored"):
+        beam = read(XFEL_CRYSTAL + with_lines(BEAM, "PulseEnergy 1.4") + WEDGE).beam
+    assert (beam.flux, beam.pulse_energy) == (None, 1.4)
+
+
+def test_xfel_needs_a_pulse_energy() -> None:
+    with pytest.raises(RaddoseTxtError, match="PulseEnergy is required"):
+        read(XFEL_CRYSTAL + BEAM + WEDGE)
+
+
+@pytest.mark.parametrize("crystal", [CRYSTAL, MC_CRYSTAL])
+def test_a_pulse_energy_is_ignored_by_every_other_engine(crystal: str) -> None:
+    with pytest.warns(RaddoseTxtWarning, match="PulseEnergy is ignored"):
+        beam = read(crystal + with_lines(BEAM, "PulseEnergy 1.4") + WEDGE).beam
+    assert (beam.flux, beam.pulse_energy) == (2e12, None)
+    with pytest.raises(RaddoseTxtError, match="Flux is required"):
+        read(crystal + XFEL_BEAM + WEDGE)
+
+
+def test_the_simulated_subprograms_refuse_an_experimental_beam() -> None:
+    """SubprogramInputs.check: every photon started at (0, 0)."""
+    beam = """Beam
+Type ExperimentalPGM
+File beam.pgm
+PixelSize 1 1
+Flux 2e12
+Energy 12.1
+"""
+    with pytest.raises(RaddoseTxtError, match="needs a TopHat or Gaussian beam"):
+        read(MC_CRYSTAL + beam + WEDGE)
+
+
+def test_the_simulated_subprograms_refuse_the_average_composition() -> None:
+    """SubprogramInputs.check: they choose elements, and Average has none."""
+    crystal = """Crystal
+Type Cuboid
+Dimensions 20 16 12
+AbsCoefCalc Average
+Subprogram GOS
+"""
+    with pytest.raises(RaddoseTxtError, match=r"line 4: .*AbsCoefCalc Average"):
+        read(crystal + BEAM + WEDGE)
+
+
+@pytest.mark.parametrize("subprogram", ["montecarlo", "gos", "xfel"])
+def test_simulated_experiments_read_back_identically(subprogram: str) -> None:
+    """The emitter writes whole numbers, so old RADDOSE-3D reads its files too."""
+    experiment = read(
+        with_lines(
+            CRYSTAL,
+            f"Subprogram {subprogram}",
+            "CalcSurrounding TRUE",
+            "SimPhotons 2e4",
+            "Runs 2",
+            "PolarisationDirection 90",
+            "SurroundingThickness 1 2 0.5",
+        )
+        + (XFEL_BEAM if subprogram == "xfel" else BEAM)
+        + WEDGE
+    )
+    text = experiment.to_raddose_txt()
+    assert "SimPhotons 20000\n" in text
+    assert "Runs 2\n" in text
+    assert read(text) == experiment

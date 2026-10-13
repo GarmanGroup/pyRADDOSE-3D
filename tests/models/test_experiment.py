@@ -241,3 +241,79 @@ def test_collimation_shape_is_constrained() -> None:
     assert Collimation(shape="circular", x=1.0, y=1.0).shape == "circular"
     with pytest.raises(ValidationError):
         Collimation(shape="triangular", x=1.0, y=1.0)
+
+
+# --- the Monte Carlo and XFEL subprograms ------------------------------------
+
+
+@pytest.mark.parametrize("subprogram", ["montecarlo", "gos"])
+def test_the_monte_carlo_subprograms_take_the_usual_beams(subprogram: str) -> None:
+    experiment = _experiment(crystal=_crystal(subprogram=subprogram))
+    assert experiment.crystal.simulation.photons == 1_000_000
+    tophat = TophatBeam(
+        flux=2e12, energy=12.1, collimation=Collimation(shape="circular", x=5, y=5)
+    )
+    assert _experiment(crystal=_crystal(subprogram=subprogram), beam=tophat)
+
+
+def test_simulation_settings_need_a_simulation() -> None:
+    """Only the Monte Carlo and XFEL subprograms read them."""
+    with pytest.raises(ValidationError, match="read only by the Monte Carlo"):
+        _crystal(simulation={"runs": 2})
+    assert _crystal(subprogram="gos", simulation={"runs": 2}).simulation.runs == 2
+
+
+@pytest.mark.parametrize(
+    ("simulation", "wrong"),
+    [({"photons": 0}, "photons"), ({"runs": 0}, "runs")],
+)
+def test_simulation_counts_are_at_least_one(simulation: dict, wrong: str) -> None:
+    with pytest.raises(ValidationError, match=wrong):
+        _crystal(subprogram="montecarlo", simulation=simulation)
+
+
+def test_a_surrounding_thickness_needs_a_surrounding() -> None:
+    """Crystal.java reads it only when the composition has a surrounding."""
+    thickness = {"surrounding_thickness": (1.0, 1.0, 1.0)}
+    with pytest.raises(ValidationError, match=r"needs escape\.surrounding"):
+        _crystal(subprogram="montecarlo", simulation=thickness)
+    crystal = _crystal(
+        subprogram="montecarlo", simulation=thickness, escape={"surrounding": True}
+    )
+    assert crystal.simulation.surrounding_thickness == (1.0, 1.0, 1.0)
+
+
+def test_the_simulated_subprograms_refuse_the_average_composition() -> None:
+    with pytest.raises(ValidationError, match="need the crystal's elements"):
+        _crystal(subprogram="xfel", composition={"method": "average"})
+
+
+def test_the_simulated_subprograms_refuse_an_experimental_beam(tmp_path) -> None:
+    pgm = tmp_path / "beam.pgm"
+    pgm.write_bytes(b"P2\n1 1\n255\n1\n")
+    beam = {
+        "type": "experimental",
+        "flux": 2e12,
+        "energy": 12.1,
+        "file": str(pgm),
+        "pixel_size": (1.0, 1.0),
+    }
+    with pytest.raises(ValidationError, match="Gaussian or TopHat"):
+        _experiment(crystal=_crystal(subprogram="montecarlo"), beam=beam)
+
+
+def test_xfel_reads_the_pulse_energy_and_only_xfel_does() -> None:
+    xfel = _crystal(subprogram="xfel")
+    pulse = _beam(flux=None, pulse_energy=1.4)
+    assert _experiment(crystal=xfel, beam=pulse).beam.pulse_energy == 1.4
+    with pytest.raises(ValidationError, match="needs the beam's pulse energy"):
+        _experiment(crystal=xfel)
+    with pytest.raises(ValidationError, match="read only by the XFEL"):
+        _experiment(beam=_beam(pulse_energy=1.4))
+    with pytest.raises(ValidationError, match="read only by the XFEL"):
+        _experiment(crystal=_crystal(subprogram="gos"), beam=pulse)
+
+
+def test_a_beam_needs_a_flux_or_a_pulse_energy() -> None:
+    with pytest.raises(ValidationError, match="flux, or for the XFEL"):
+        _beam(flux=None)

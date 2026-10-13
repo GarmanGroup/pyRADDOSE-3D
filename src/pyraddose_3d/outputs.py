@@ -548,10 +548,13 @@ def beam_description(beam: XrayBeam) -> str:
     ``BeamTophat`` concatenates raw doubles, so it reads ``2.0E12`` where
     the Gaussian reads ``2.0e+12``.
     """
+    # Only the MX calculation describes its beam, and it requires a flux.
+    flux = beam.flux
+    assert flux is not None
     if beam.type == "experimental":
         return (
             f"Experimental beam profile taken from {beam.file}. Beam has "
-            f"{java_e(beam.flux, 1)} photons per second at "
+            f"{java_e(flux, 1)} photons per second at "
             f"{java_f(beam.energy, 2)} keV.\n"
         )
     if beam.type == "tophat":
@@ -559,7 +562,7 @@ def beam_description(beam: XrayBeam) -> str:
         return (
             f"Top hat beam, {java_double(beam.collimation.x)} by "
             f"{java_double(beam.collimation.y)} (x by y) um with "
-            f"{java_double(beam.flux)} photons per second at "
+            f"{java_double(flux)} photons per second at "
             f"{java_double(beam.energy)}keV.\n"
         )
     collimation = ""
@@ -569,7 +572,7 @@ def beam_description(beam: XrayBeam) -> str:
         )
     return (
         f"Gaussian beam, {collimation}with {java_f(beam.fwhm[0], 2)} by "
-        f"{java_f(beam.fwhm[1], 2)} FWHM (x by y) and {java_e(beam.flux, 1)} "
+        f"{java_f(beam.fwhm[1], 2)} FWHM (x by y) and {java_e(flux, 1)} "
         f"photons per second at {java_f(beam.energy, 2)} keV.\n"
     )
 

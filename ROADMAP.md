@@ -221,8 +221,9 @@ first:
    - Two small numeric fixes it ran into: a truncated charge sum in the stopping power, and
      XFEL's per-voxel occupancy cache, which biased small non-cuboid crystals by about 6%.
 2. **Port foundations**:
-   - the models and `.txt` keywords;
-   - the Auger, fluorescence and overvoltage tables, about 160 KB, in the core;
+   - the models and `.txt` keywords (done: the three subprograms and their settings are read
+     and written, and running one is refused until it is ported);
+   - the Auger, fluorescence and overvoltage tables, about 160 KB, in the core (done);
    - ELSEPA's angular tables as optional data packages;
    - tier-B (statistical) conformance, calibrated: Java against Java and the port against
      itself must pass, and mutations of the claimed detectable size must fail.

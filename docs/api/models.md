@@ -15,6 +15,8 @@ rejects unknown keys and validates its values when it is built.
 
 ::: pyraddose_3d.models.crystal.EscapeOptions
 
+::: pyraddose_3d.models.crystal.SimulationOptions
+
 ::: pyraddose_3d.models.crystal.MixtureContainer
 
 ::: pyraddose_3d.models.crystal.ElementalContainer

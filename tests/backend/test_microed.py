@@ -283,7 +283,7 @@ def test_each_engine_has_its_own_entry_point() -> None:
     with pytest.raises(ValueError, match=r"call pyraddose_3d\.solve\.microed"):
         simulate(experiment())
     mx = Experiment.from_yaml("tests/conformance/cases/000-baseline/config.yaml")
-    with pytest.raises(ValueError, match="runs the MX calculation"):
+    with pytest.raises(ValueError, match="runs RADDOSE-3D's MX calculation"):
         microed(mx)
 
 

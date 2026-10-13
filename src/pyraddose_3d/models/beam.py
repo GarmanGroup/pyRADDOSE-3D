@@ -48,8 +48,9 @@ class _BeamBase(RD3DModel):
 
     Attributes
     ----------
-    flux : float
-        Photons per second.
+    flux : float | None
+        Photons per second. Every engine needs it but the XFEL subprogram,
+        which takes ``pulse_energy`` instead.
     energy : float
         Photon energy in keV.
     collimation : Collimation | None
@@ -59,12 +60,25 @@ class _BeamBase(RD3DModel):
         ``EnergyFWHM``: a pink beam, Gaussian in energy with this full width
         at half maximum, in keV, about ``energy``. ``None`` is
         monochromatic.
+    pulse_energy : float | None
+        ``PulseEnergy``: the energy of one X-ray free-electron laser pulse,
+        in mJ, which only the XFEL subprogram reads.
     """
 
-    flux: Annotated[float, Field(gt=0.0)]
+    flux: Annotated[float, Field(gt=0.0)] | None = None
     energy: Annotated[float, Field(gt=0.0)]
     collimation: Collimation | None = None
     energy_fwhm: Annotated[float, Field(gt=0.0)] | None = None
+    pulse_energy: Annotated[float, Field(gt=0.0)] | None = None
+
+    @model_validator(mode="after")
+    def _needs_photons(self) -> Self:
+        """A flux, or for XFEL a pulse energy, as RADDOSE-3D's beams require."""
+        if self.flux is None and self.pulse_energy is None:
+            raise ValueError(
+                "a beam needs its flux, or for the XFEL subprogram its pulse energy"
+            )
+        return self
 
 
 class GaussianBeam(_BeamBase):

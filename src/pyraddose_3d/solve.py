@@ -67,6 +67,7 @@ from pyraddose_3d.backend.structure_files import (
 from pyraddose_3d.backend.summary import WedgeSummary, summarise
 from pyraddose_3d.backend.voxels import VoxelGrid, occupancy, voxel_grid
 from pyraddose_3d.backend.wireframe import read_obj
+from pyraddose_3d.models.crystal import SIMULATED
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -824,7 +825,8 @@ def microed(experiment: Experiment) -> MicroEDResult:
     beam = experiment.beam
     if crystal.subprogram != "microed" or beam.type != "electron":
         raise ValueError(
-            "this experiment runs the MX calculation; call solve or simulate"
+            f"this experiment runs RADDOSE-3D's {_ENGINES[crystal.subprogram]}, "
+            f"not its MicroED calculation"
         )
     built, crystal_density = crystal_material(crystal.composition)
     if built is None:
@@ -1020,6 +1022,16 @@ def _escape(
     )
 
 
+#: How messages name RADDOSE-3D's engines.
+_ENGINES = {
+    "rd3d": "MX calculation (call solve or simulate)",
+    "microed": "MicroED calculation",
+    "montecarlo": "Monte Carlo subprogram (Subprogram MONTECARLO)",
+    "gos": "Monte Carlo subprogram (Subprogram GOS)",
+    "xfel": "XFEL subprogram",
+}
+
+
 def simulate(
     experiment: Experiment,
     overrides: Mapping[str, Any] | None = None,
@@ -1052,13 +1064,21 @@ def simulate(
     KeyError
         If an override names a path that is not tunable.
     NotImplementedError
-        If escape modelling is asked for with tensor overrides.
+        If escape modelling is asked for with tensor overrides, or the
+        experiment runs RADDOSE-3D's Monte Carlo or XFEL subprogram, which
+        this port does not run yet.
     """
     xray = experiment.beam
     if xray.type == "electron":
         raise ValueError(
             "this experiment runs RADDOSE-3D's MicroED engine; call "
             "pyraddose_3d.solve.microed"
+        )
+    if experiment.crystal.subprogram in SIMULATED:
+        raise NotImplementedError(
+            f"this experiment runs RADDOSE-3D's "
+            f"{_ENGINES[experiment.crystal.subprogram]}, which pyRADDOSE-3D "
+            f"is still being taught (ROADMAP.md, Milestone 7)"
         )
     overrides = dict(overrides or {})
     as_run = apply_overrides(experiment, overrides)
