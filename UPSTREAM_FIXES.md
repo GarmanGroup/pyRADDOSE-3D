@@ -72,6 +72,12 @@ defect found while fixing these is recorded but not fixed (see *Found while fixi
   realisations. Every case still agrees with the Java within the existing tolerances, at worst
   2e-4 on a quantised quantity, but the self-sensitivity behind those tolerances was measured on
   the old realisations.
+- **An NMR or EM model gives a dose for a cell of water.** Found reading 211 random PDB entries with
+  Gemmi. `CoefCalcFromPDB` counts symmetry operators from `REMARK 290`, which NMR and EM models do
+  not have. With no operators there is no macromolecule, and the placeholder 1 A cell is filled
+  with solvent, so RADDOSE-3D reports a dose. 42 of the 211 entries were such models. **Not
+  fixed** in the Java: it should refuse a file with no crystal cell. The port, which now takes
+  the operators from the space group, refuses them.
 - **With escape modelled, voxel doses depend on the JVM.** CI's Java 21 job failed #38's golden
   escape run: `Dose Threshold` was 1.05e-5 from the golden value, against a 1e-5 tolerance. x86-64
   Temurin 21 on macOS gives the same value, so it is the JVM. On the golden escape input, it and JDK

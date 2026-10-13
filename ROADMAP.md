@@ -6,7 +6,7 @@ check a claim rather than take it on trust.
 ## Where the port stands
 
 11,000 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
-RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 1,258 tests,
+RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 1,303 tests,
 none expected to fail. All 59 conformance cases match the Java within measured tolerances — on
 the sixteen summary numbers, on the dose field and per-image series behind them, and on the
 output files themselves — photoelectron and fluorescence escape included, value by value. The
@@ -377,6 +377,24 @@ status.
 Gated on Milestone 0's relicensing, not on code. Paper on the differentiable strategy
 optimisation; CCP4 submission via Working Group 2 once the licence permits.
 
+**No bespoke file parsers.** CCP4's developers have said they may not accept code that
+implements its own file parsers, and encourage Gemmi for coordinate and reflection data.
+RADDOSE-3D reads no reflection data. PDB, mmCIF, small-molecule CIF and sequence files are read
+with Gemmi. Against the hand-written readers they replaced, every crystal structure in a random
+sample of 211 PDB entries, and all 50 COD files, gave the same composition; NMR and EM models are
+now refused. The comparison tool is kept on the local branch `gemmi-readers-comparison`. Still
+read by hand:
+
+- **RADDOSE-3D's `.txt` input** (`_raddose_txt.py`). No library reads it. Whether a program's
+  own keyword input counts is a question for CCP4; if it does, a grammar for a parsing library
+  such as Lark, mirroring the Java's `Inputfile.g`.
+- **PGM beam images** (`beam.read_pgm`): to `netpbmfile`. Pillow rescales any maxval but 255 and
+  65535 and rounds, which moves the profile.
+- **`.obj` meshes** (`wireframe.read_obj`): to `meshio` or `trimesh`, either of which reproduces
+  the current reader on the test mesh.
+- **The data tables vendored from the Java**, read by splitting lines: to `csv` or NumPy. Not a
+  file format in CCP4's sense, but cheap to settle.
+
 # Milestone 6 — The other three subprograms
 
 **Why.** RADDOSE-3D is not only the MX dose calculation. `Subprogram <name>` on the crystal
@@ -445,6 +463,9 @@ Still open:
 - Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's
   requests, which then fail with a `NullPointerException`. The port vendors the tables; the Java
   should too.
+- An NMR or EM model given to `AbsCoefCalc EXP` gives a dose for a cell of water. Its placeholder
+  1 A cell and missing `REMARK 290` leave `CoefCalcFromPDB` no symmetry operators and so no
+  macromolecule. The port refuses such files.
 
 ## Verification, throughout
 
