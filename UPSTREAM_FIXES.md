@@ -14,15 +14,26 @@ crystal (`CalcSurrounding`), and *a pink beam* one with an energy spread (`Energ
 
 ## Status
 
-The RADDOSE-3D branches are local and not yet pushed. They are stacked, each on the one before:
-`master` → `jd_upstream_input_fixes` → `jd_upstream_escape_fixes` → `jd_upstream_pink_fixes` →
-`jd_upstream_pgm_collimation` → `jd_upstream_wedge_count`, so they can go up as five PRs in that
-order. Each port commit carries the corpus regenerated from the commit named beside it.
+The RADDOSE-3D fixes are up as three stacked PRs. They were reordered for review so that the
+two physics changes awaiting sign-off come last, and the uncontroversial fixes need not wait for
+them:
 
-The last three branches were rebased after the escape branch gained `63fa851`, which undid a
-slowdown that item 3 introduced: its direction table was built of boxed integers, and
-photoelectron escape ran six times slower. The table, and every result, are unchanged. Port
-commits made before the rebase name the old hashes, given here in brackets.
+| PR | branch, onto | items | state |
+|---|---|---|---|
+| [#36](https://github.com/GarmanGroup/RADDOSE-3D/pull/36) | `jd_upstream_input_fixes`, onto `master` | 7–11, 13; `voxelfluences`; help text | open |
+| [#37](https://github.com/GarmanGroup/RADDOSE-3D/pull/37) | `jd_upstream_beam_wedge_fixes`, onto #36 | 6, 12; the wedge image count | open |
+| [#38](https://github.com/GarmanGroup/RADDOSE-3D/pull/38) | `jd_upstream_escape`, onto #37 | 1, 5, 2, 3, 4; item 3's slowdown undone | draft: items 1 and 2 await sign-off |
+
+The reordering changed no code. The top of #38 has the same tree as `eec659b`, which the corpus
+was last generated from, and every commit in the three PRs passes RADDOSE-3D's tests on its own.
+Once they are merged, regenerate the corpus from `master` so that `reference_commit` names a
+commit that exists upstream; no number should move.
+
+The table below records the local commits each port commit followed, which the PRs supersede.
+The escape branch gained `63fa851`, which undid a slowdown that item 3 introduced: its direction
+table was built of boxed integers, and photoelectron escape ran six times slower. The branches
+above it were then rebased, and port commits made before that name the old hashes, given here in
+brackets.
 
 | items | RADDOSE-3D branch | port | state |
 |---|---|---|---|
@@ -33,11 +44,11 @@ commits made before the rebase name the old hashes, given here in brackets.
 | 2: fluorescence direction | `jd_upstream_escape_fixes` 31fdb9b | `81afd79` | done; physics change awaiting sign-off |
 | 3: separate direction tables | `jd_upstream_escape_fixes` 8ee300b | `07bfc7b` | done |
 | 4: path in front of the surrounding | `jd_upstream_escape_fixes` 7322e36 | `8ed9b2c` | done |
-| item 3's slowdown undone | `jd_upstream_escape_fixes` 63fa851 | this commit | done; no result changes |
+| item 3's slowdown undone | `jd_upstream_escape_fixes` 63fa851 | `cdf03b6` | done; no result changes |
 | 6: pink beams | `jd_upstream_pink_fixes` 8f78795 (d1e5ad5) | `59949f3`, `5348d95` | done |
 | 12: collimation on measured beams | `jd_upstream_pgm_collimation` 32ed072 (cb8e2db) | `a931c11` | done; decisions C and D taken as recommended |
 | a case that shows the reversed-wedge defect first: 067 | `jd_upstream_pgm_collimation` 32ed072 (cb8e2db) | `747dd6e` | done |
-| the wedge image count, and a reversed wedge's step | `jd_upstream_wedge_count` eec659b | this commit | done |
+| the wedge image count, and a reversed wedge's step | `jd_upstream_wedge_count` eec659b | `cdf03b6` | done |
 
 Every item above is done. Two older items remain open (see *Older upstream items*), and one
 defect found while fixing these is recorded but not fixed (see *Found while fixing*).
@@ -101,7 +112,7 @@ Java. RADDOSE-3D PRs #31–#35 were fixed in both this way.
 | # | defect | how much it matters | random draws change? | corpus cases that move |
 |---|---|---|---|---|
 | 1 | With PE escape alone, the atom's relaxation energy is deleted | **3.2% of the dose for insulin; 15.5% for a SeMet crystal above the Se K edge** | no | 100, 102–108 |
-| 2 | FL goes only along +z | high for heavy-atom crystals; FL is 15% of the absorbed energy for SeMet above the edge | only if the direction set changes | 101, 102, 103, 105 |
+| 2 | FL goes only along +z | measured small: under 0.1% of the dose for SeMet above the edge, though FL escape removes 16% of it | only if the direction set changes | 101, 102, 103, 105 |
 | 3 | The crystal's PEs use the surrounding's direction weights | probably small; not measured | yes | 103, 104, 107, 108 |
 | 4 | The surrounding's attenuation is clamped to the wrong box | at most part of the surrounding's 9% share; not measured | no | 103, 104, 107, 108 |
 | 5 | L-shell FL of every element from Mg to Co is NaN | energy small; prints `NaN` | no | 101, 102, 103, 105, slightly |
@@ -199,7 +210,14 @@ directions runs `FL_ANGLE_RESOLUTION² = 1` time (`:162`), so it always uses tra
 crystal's voxel grid. All fluorescence from every voxel travels toward the crystal's +z face. How
 much escapes then depends only on how far each voxel is from that face. A plate that is thin along
 z overstates escape, and a needle along z understates it. For a SeMet crystal above the edge,
-fluorescence is 15% of the absorbed energy, so this geometry error is large.
+fluorescence is 15% of the absorbed energy, so this geometry error looked large.
+
+**Measured after fixing, it is not.** SeMet at 12.7 keV, in the Java on `master` and on the fix,
+with `--seed 20260917`: fluorescence escape removes about 16% of the dose, but sending it the
+right way moves the whole-crystal dose by +0.01% for a 20 × 16 × 12 µm crystal and +0.08% for a
+200 × 160 × 120 µm one, and the maximum dose by at most 0.18%. Se Kα mostly leaves crystals of
+this size whichever way it goes. The effect should be larger where fluorescence is absorbed
+within the crystal, at lower emission energies or in larger crystals; that is not measured.
 
 **Java fix:**
 

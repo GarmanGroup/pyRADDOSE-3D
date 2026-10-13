@@ -368,7 +368,7 @@ reproduced each of these and marked it in its source:
   kept only the last energy's fluences;
 - the L-shell fluorescence of every element from Mg to Co went to voxel (0, 0, 0).
 
-All are now fixed in RADDOSE-3D on local branches, not yet merged, with the port following
+All are now fixed in RADDOSE-3D, in PRs #36–#38, not yet merged, with the port following
 each fix and the corpus regenerated from it. `UPSTREAM_FIXES.md` has the detail, measurements and
 status.
 
@@ -429,10 +429,11 @@ not block 5.
 ## Upstream: Java defects
 
 `UPSTREAM_FIXES.md` explains each defect the port found, measures it, and records its fix and
-status. All are fixed on RADDOSE-3D branches that are local and not yet pushed, stacked as five
-PRs; the port follows each, with the corpus regenerated from it. Items 1 and 2 there change doses
-materially -- photoelectron escape alone lost 15% of a SeMet crystal's dose above the Se K edge
--- and need the group's sign-off before merging.
+status. All are fixed in three stacked RADDOSE-3D PRs, #36, #37 and #38; the port follows each,
+with the corpus regenerated from it. Items 1 and 2 there are physics changes and need the group's
+sign-off before #38 leaves draft. Item 1 changes doses materially -- photoelectron escape alone
+lost 15% of a SeMet crystal's dose above the Se K edge -- while item 2, measured, moves them by
+under 0.1%.
 
 Still open:
 
