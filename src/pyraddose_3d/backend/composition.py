@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import gemmi
+
 from pyraddose_3d.backend._array import array_namespace, promote
 from pyraddose_3d.backend.elements import ATOMIC_MASS_UNIT, element_database
 from pyraddose_3d.backend.residues import ResidueType, residue_database
@@ -574,13 +576,13 @@ def _monomers_in(
 
 
 def parse_sequence(text: str) -> Chains:
-    """Split a sequence file into lines of residue codes, each with its type.
+    """Split a sequence file into chains of residue codes, each with its type.
 
-    Ports ``CoefCalcFromSequence.parseSequenceFile``. A line starting ``>``
-    is a header, and says what the residues after it are: DNA if it contains
-    ``ISDNA``, RNA if it contains ``ISRNA``, and protein otherwise, in any
-    case. Residues before any header are protein. A file can therefore hold
-    several chains of different kinds. Blank lines are skipped.
+    Ports ``CoefCalcFromSequence.parseSequenceFile``, reading the file with
+    Gemmi. A ``>`` header says what the residues after it are: DNA if it
+    contains ``ISDNA``, RNA if it contains ``ISRNA``, and protein otherwise,
+    in any case. Residues before any header are protein. A file can therefore
+    hold several chains of different kinds.
 
     Every nucleotide code is also an amino acid code, so a DNA or RNA chain
     whose header lacks its marker reads as protein without error. As
@@ -596,63 +598,69 @@ def parse_sequence(text: str) -> Chains:
     Returns
     -------
     Chains
-        One entry per line of residues, in file order.
+        One entry per chain, in file order.
 
     Raises
     ------
     ValueError
         If a character is not a residue code of the type its header gives.
+
+    Notes
+    -----
+    Gemmi would refuse three kinds of file RADDOSE-3D reads, so the text is
+    prepared first: Windows and classic Mac line endings become Unix ones,
+    blank lines before the first header are dropped, and residues before any
+    header are given an empty one.
+
+    Two inputs read differently from RADDOSE-3D. A header such as ``>P1;``
+    marks the PIR format, whose next line is a description, not residues.
+    And a ``*`` closing a chain is dropped, where RADDOSE-3D refused it.
     """
+    text = text.replace("\r\n", "\n").replace("\r", "\n").lstrip()
+    if not text:
+        return ()
+    if not text.startswith(">"):
+        text = ">\n" + text
+    try:
+        records = gemmi.read_pir_or_fasta(text)
+    except (RuntimeError, ValueError) as error:
+        raise ValueError(f"the sequence file cannot be read: {error}") from None
+
     chains: list[tuple[ResidueType, str]] = []
-    residue_type = ResidueType.PROTEIN
-    protein_chain: list[str] = []
-
-    def warn_if_nucleotides() -> None:
-        chain = "".join(protein_chain)
-        protein_chain.clear()
-        if len(chain) >= NUCLEOTIDE_LOOKALIKE_LENGTH and set(chain) <= set("ACGTU"):
-            warnings.warn(
-                f"a chain of {len(chain)} residues was read as protein, but "
-                "every residue is A, C, G, T or U; if it is DNA or RNA, put "
-                "ISDNA or ISRNA in its '>' header line",
-                stacklevel=3,
-            )
-
-    # As BufferedReader.readLine: a line ends at \n, \r or \r\n.
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    for number, line in enumerate(lines, start=1):
-        # String.trim, which strips every character up to the space.
-        if not line.strip(_JAVA_TRIMMED):
-            continue
-        if line.startswith(">"):
-            warn_if_nucleotides()
-            header = line.upper()
-            if "ISDNA" in header:
-                residue_type = ResidueType.DNA
-            elif "ISRNA" in header:
-                residue_type = ResidueType.RNA
-            else:
-                residue_type = ResidueType.PROTEIN
-            continue
+    for number, record in enumerate(records, start=1):
+        header = record.header.upper()
+        if "ISDNA" in header:
+            residue_type = ResidueType.DNA
+        elif "ISRNA" in header:
+            residue_type = ResidueType.RNA
+        else:
+            residue_type = ResidueType.PROTEIN
         try:
-            sequence_residue_counts(line, residue_type)
+            sequence_residue_counts(record.seq, residue_type)
         except ValueError as error:
-            raise ValueError(f"line {number} of the sequence file: {error}") from None
+            raise ValueError(f"chain {number} of the sequence file: {error}") from None
         if residue_type is ResidueType.PROTEIN:
-            protein_chain.extend(c.upper() for c in line if not c.isspace())
-        chains.append((residue_type, line))
-    warn_if_nucleotides()
+            _warn_if_nucleotides(record.seq.upper())
+        if record.seq:
+            chains.append((residue_type, record.seq))
     return tuple(chains)
+
+
+def _warn_if_nucleotides(chain: str) -> None:
+    """Warn that a chain read as protein looks like DNA or RNA."""
+    if len(chain) >= NUCLEOTIDE_LOOKALIKE_LENGTH and set(chain) <= set("ACGTU"):
+        warnings.warn(
+            f"a chain of {len(chain)} residues was read as protein, but "
+            "every residue is A, C, G, T or U; if it is DNA or RNA, put "
+            "ISDNA or ISRNA in its '>' header line",
+            stacklevel=3,
+        )
 
 
 #: ``CoefCalcFromSequence.NUCLEOTIDE_LOOKALIKE_LENGTH``: chains this long or
 #: longer, read as protein but made only of nucleotide codes, are reported.
 #: Shorter ones could well be peptides.
 NUCLEOTIDE_LOOKALIKE_LENGTH = 10
-
-
-#: The characters Java's ``String.trim`` removes: everything up to the space.
-_JAVA_TRIMMED = "".join(chr(code) for code in range(33))
 
 
 def read_sequence_file(path: str | Path) -> Chains:
@@ -666,7 +674,7 @@ def read_sequence_file(path: str | Path) -> Chains:
     Returns
     -------
     Chains
-        One entry per line of residues, in file order.
+        One entry per chain, in file order.
     """
     return parse_sequence(Path(path).read_text("ascii"))
 

@@ -527,10 +527,33 @@ def test_any_line_ending(ending: str) -> None:
 
 def test_residues_before_any_header_are_protein() -> None:
     """As RADDOSE-3D now reads them. They used to have no type at all."""
-    assert parse_sequence("GIVEQ\nCCTSV\n") == (
-        (ResidueType.PROTEIN, "GIVEQ"),
-        (ResidueType.PROTEIN, "CCTSV"),
-    )
+    assert parse_sequence("GIVEQ\nCCTSV\n") == ((ResidueType.PROTEIN, "GIVEQCCTSV"),)
+
+
+def test_blank_lines_before_the_first_header_are_skipped() -> None:
+    """As RADDOSE-3D skips them. Gemmi alone would refuse the file."""
+    assert parse_sequence("\n\n>a\nGIVEQ\n") == ((ResidueType.PROTEIN, "GIVEQ"),)
+
+
+def test_a_header_with_no_residues_adds_no_chain() -> None:
+    assert parse_sequence(">empty\n>a\nGIVEQ\n") == ((ResidueType.PROTEIN, "GIVEQ"),)
+    assert parse_sequence("") == ()
+    assert parse_sequence(">only a header\n") == ()
+
+
+def test_a_closing_star_is_dropped() -> None:
+    """A deliberate divergence: FASTA files often end a chain with ``*``.
+    RADDOSE-3D refuses it as an unknown residue; Gemmi drops it.
+    """
+    assert parse_sequence(">a\nGIVEQ*\n") == ((ResidueType.PROTEIN, "GIVEQ"),)
+
+
+def test_a_pir_header_takes_its_next_line_as_a_description() -> None:
+    """A deliberate divergence: ``>P1;`` marks the PIR format, whose second
+    line describes the chain. RADDOSE-3D read that line as residues.
+    """
+    text = ">P1;insulin\ninsulin A chain\nGIVEQ*\n"
+    assert parse_sequence(text) == ((ResidueType.PROTEIN, "GIVEQ"),)
 
 
 def test_a_nucleotide_lookalike_chain_is_reported() -> None:
@@ -546,8 +569,8 @@ def test_a_nucleotide_lookalike_chain_is_reported() -> None:
         parse_sequence(">peptide\nGAGAG\n>marked isdna\nACGTACGTACGTACGT\n")
 
 
-def test_a_bad_code_names_its_line() -> None:
-    with pytest.raises(ValueError, match=r"line 4 .* 'X' at position 3 .* DNA"):
+def test_a_bad_code_names_its_chain() -> None:
+    with pytest.raises(ValueError, match=r"chain 2 .* 'X' at position 3 .* DNA"):
         parse_sequence(">protein\nGIVEQ\n>isdna\nGAX\n")
 
 

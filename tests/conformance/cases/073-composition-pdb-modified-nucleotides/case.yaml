@@ -1,0 +1,6 @@
+case_id: 073-composition-pdb-modified-nucleotides
+tier: A
+exercises: 'PDB 1EHZ: tRNA whose modified nucleotides are not in the residue table'
+seed: 20260917
+reference_version: 5.0.1095
+reference_commit: eec659b

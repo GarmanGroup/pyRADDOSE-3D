@@ -399,6 +399,53 @@ _CASES: list[Case] = [
             }
         },
     ),
+    # PDB entries, public domain, chosen for what 3I40 lacks: NCS operators
+    # to apply, nucleic acids, partly occupied ligands and residue codes the
+    # residue table does not have. They pin the PDB route to the Java beyond
+    # one simple protein, which matters now that the port reads the files
+    # with Gemmi rather than RADDOSE-3D's own way.
+    Case(
+        "071-composition-pdb-ncs-rna-ligands",
+        "A",
+        "PDB 1A34: 14 NCS operators to apply, RNA chains, partly occupied ligands",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "pdb",
+                    "pdb": "tests/data/1A34.pdb",
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            }
+        },
+    ),
+    Case(
+        "072-composition-pdb-capsid-ncs",
+        "A",
+        "PDB 2BUK: a capsid with 59 NCS operators to apply",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "pdb",
+                    "pdb": "tests/data/2BUK.pdb",
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            }
+        },
+    ),
+    Case(
+        "073-composition-pdb-modified-nucleotides",
+        "A",
+        "PDB 1EHZ: tRNA whose modified nucleotides are not in the residue table",
+        {
+            "crystal": {
+                "composition": {
+                    "method": "pdb",
+                    "pdb": "tests/data/1EHZ.pdb",
+                    "solvent_heavy_conc": {"P": 425.0},
+                }
+            }
+        },
+    ),
     # COD 1008123, bis(urea) antimony tetrafluoride oxide, public domain.
     # Heavy atoms (Sb), so absorption differs sharply from the organic
     # baseline. Case 035 covers the single-letter-tail formula that used to

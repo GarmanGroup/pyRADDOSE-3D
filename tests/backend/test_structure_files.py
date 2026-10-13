@@ -158,7 +158,7 @@ def test_pdb_without_a_cell_is_refused() -> None:
         pathlib.Path(pytest.importorskip("tempfile").mkdtemp()) / "no_cryst1.pdb"
     )
     headerless.write_text("SEQRES   1 A   2  ALA GLY\nEND\n", encoding="ascii")
-    with pytest.raises(ValueError, match="no usable CRYST1"):
+    with pytest.raises(ValueError, match="no crystal unit cell"):
         composition_from_pdb(headerless)
 
 
@@ -254,6 +254,7 @@ def test_cif_without_formula_units_assumes_one(tmp_path: pathlib.Path) -> None:
     """
     cif = tmp_path / "no_z.cif"
     cif.write_text(
+        "data_test\n"
         "_chemical_formula_sum            'C H4 N2 O'\n"
         "_cell_volume                     145.9\n",
         encoding="ascii",
@@ -270,6 +271,7 @@ def test_cif_formula_units_may_precede_the_formula(
     """
     cif = tmp_path / "z_first.cif"
     cif.write_text(
+        "data_test\n"
         "_cell_formula_units_Z            4\n"
         "_chemical_formula_sum            'C H4 N2 O'\n"
         "_cell_volume                     145.9\n",
@@ -278,7 +280,7 @@ def test_cif_formula_units_may_precede_the_formula(
     assert _counts(composition_from_cif(cif))["C"] == 4.0
 
 
-@pytest.mark.parametrize("value", ["0", "-2", "4.5", "many", ""])
+@pytest.mark.parametrize("value", ["0", "-2", "4.5", "many", "?", "."])
 def test_nonsensical_formula_units_fall_back_to_one(
     tmp_path: pathlib.Path, value: str
 ) -> None:
@@ -287,6 +289,7 @@ def test_nonsensical_formula_units_fall_back_to_one(
     """
     cif = tmp_path / f"bad_{abs(hash(value))}.cif"
     cif.write_text(
+        "data_test\n"
         "_chemical_formula_sum            'C H4 N2 O'\n"
         "_cell_volume                     145.9\n"
         f"_cell_formula_units_Z            {value}\n",
@@ -300,6 +303,7 @@ def test_formula_units_may_be_written_with_a_decimal_point(
 ) -> None:
     cif = tmp_path / "z_decimal.cif"
     cif.write_text(
+        "data_test\n"
         "_chemical_formula_sum            'C H4 N2 O'\n"
         "_cell_volume                     145.9\n"
         "_cell_formula_units_Z            4.0\n",
@@ -328,6 +332,7 @@ def test_cif_bare_symbol_means_one_atom(tmp_path: pathlib.Path) -> None:
     """
     cif = tmp_path / "bare.cif"
     cif.write_text(
+        "data_test\n"
         "_chemical_formula_sum            'C H4 N2 O'\n"
         "_cell_volume                     145.9\n",
         encoding="ascii",
@@ -342,6 +347,7 @@ def test_cif_strips_a_standard_uncertainty(tmp_path: pathlib.Path) -> None:
     """Cell volumes are usually written ``2076.9(5)``."""
     cif = tmp_path / "esd.cif"
     cif.write_text(
+        "data_test\n"
         "_chemical_formula_sum            'C H4 N2 O'\n"
         "_cell_volume                     145.90(12)\n",
         encoding="ascii",
@@ -356,7 +362,7 @@ def test_cif_without_a_formula_is_refused(tmp_path: pathlib.Path) -> None:
     raising here matches.
     """
     cif = tmp_path / "no_formula.cif"
-    cif.write_text("_cell_volume 145.9\n", encoding="ascii")
+    cif.write_text("data_test\n_cell_volume 145.9\n", encoding="ascii")
     with pytest.raises(ValueError, match="_chemical_formula_sum"):
         composition_from_cif(cif)
 
@@ -368,8 +374,106 @@ def test_cif_repeated_element_keeps_the_last_count(tmp_path: pathlib.Path) -> No
     """
     cif = tmp_path / "repeated.cif"
     cif.write_text(
+        "data_test\n"
         "_chemical_formula_sum            'C2 H4 C3'\n"
         "_cell_volume                     100.0\n",
         encoding="ascii",
     )
     assert _counts(composition_from_cif(cif))["C"] == 3.0
+
+
+# --- Read with Gemmi: where the result differs from RADDOSE-3D's ---------
+
+PDB_AS_MMCIF = DATA / "3I40.cif"
+
+
+def test_mmcif_gives_what_pdb_format_gives() -> None:
+    """RADDOSE-3D reads PDB format only. Gemmi reads both, and the entity
+    sequences of an mmCIF file stand in for SEQRES.
+    """
+    from_mmcif = composition_from_pdb(PDB_AS_MMCIF)
+    from_pdb = composition_from_pdb(PDB_FILE)
+    assert _counts(from_mmcif) == _counts(from_pdb)
+    assert float(from_mmcif.cell_volume) == float(from_pdb.cell_volume)
+
+
+def test_symmetry_operators_come_from_the_space_group(tmp_path: pathlib.Path) -> None:
+    """RADDOSE-3D counted the SMTRY1 records in REMARK 290, and a file
+    without them had no operators -- and no macromolecule in its cell. The
+    space group gives the same count where those records exist.
+    """
+    original = PDB_FILE.read_text(encoding="ascii")
+    without = tmp_path / "no_remark_290.pdb"
+    without.write_text(
+        "".join(
+            line
+            for line in original.splitlines(keepends=True)
+            if not line.startswith("REMARK 290")
+        ),
+        encoding="ascii",
+    )
+    assert _counts(composition_from_pdb(without)) == _counts(
+        composition_from_pdb(PDB_FILE)
+    )
+
+
+def test_a_placeholder_cell_is_refused(tmp_path: pathlib.Path) -> None:
+    """An NMR or EM model carries a 1 A cell. RADDOSE-3D, finding no symmetry
+    records either, filled it with solvent alone.
+    """
+    nmr = tmp_path / "nmr.pdb"
+    nmr.write_text(
+        "CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1           1\n"
+        "SEQRES   1 A   2  ALA GLY\nEND\n",
+        encoding="ascii",
+    )
+    with pytest.raises(ValueError, match="no crystal unit cell"):
+        composition_from_pdb(nmr)
+
+
+def test_a_missing_element_is_inferred_from_the_atom_name(
+    tmp_path: pathlib.Path,
+) -> None:
+    """RADDOSE-3D skipped a heteroatom whose element columns were blank."""
+    cell = "CRYST1   40.000   40.000   40.000  90.00  90.00  90.00 P 1           1\n"
+    zinc = "HETATM    1 ZN    ZN A 201      10.000  10.000  10.000  1.00 20.00"
+    with_element = tmp_path / "with.pdb"
+    with_element.write_text(cell + zinc + "          ZN  \nEND\n", encoding="ascii")
+    without_element = tmp_path / "without.pdb"
+    without_element.write_text(cell + zinc + "\nEND\n", encoding="ascii")
+    assert _counts(composition_from_pdb(without_element)) == _counts(
+        composition_from_pdb(with_element)
+    )
+    assert _counts(composition_from_pdb(with_element))["ZN"] == 1.0
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "_chemical_formula_sum 'C H4 N2 O'",
+        '_chemical_formula_sum "C H4 N2 O"',
+        "_chemical_formula_sum\n'C H4 N2 O'",
+        "_chemical_formula_sum\n;\nC H4 N2 O\n;",
+        "_CHEMICAL_FORMULA_SUM 'C H4 N2 O'",
+    ],
+    ids=["single quotes", "double quotes", "next line", "text field", "upper case"],
+)
+def test_a_cif_formula_is_found_however_cif_writes_it(
+    tmp_path: pathlib.Path, written: str
+) -> None:
+    """RADDOSE-3D found the formula only in single quotes on its tag's line,
+    and refused every other valid way of writing it.
+    """
+    cif = tmp_path / "urea.cif"
+    cif.write_text(f"data_urea\n{written}\n_cell_volume 145.9\n", encoding="ascii")
+    counts = _counts(composition_from_cif(cif))
+    assert counts["C"] == 1.0
+    assert counts["H"] == 4.0
+
+
+def test_a_file_that_is_not_cif_is_refused(tmp_path: pathlib.Path) -> None:
+    """RADDOSE-3D read whatever lines it recognised in any text file."""
+    cif = tmp_path / "not.cif"
+    cif.write_text("_chemical_formula_sum 'C H4 N2 O'\n", encoding="ascii")
+    with pytest.raises(ValueError, match="data_"):
+        composition_from_cif(cif)

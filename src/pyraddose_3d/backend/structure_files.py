@@ -1,31 +1,46 @@
-"""Reading a unit cell composition from a PDB or CIF file.
+"""Reading a unit cell composition from a structure file or a CIF file.
 
 Ports ``CoefCalcFromPDB`` and ``CoefCalcFromCIF``, the two ``AbsCoefCalc``
-routes that read a structure file rather than taking parameters. RADDOSE-3D
-spells them ``EXP`` and ``EXPSM`` respectively -- not ``PDB`` and ``CIF``,
-which is a naming accident in the grammar rather than a choice.
+routes that read a file rather than taking parameters. RADDOSE-3D spells them
+``EXP`` and ``EXPSM`` respectively -- not ``PDB`` and ``CIF``, which is a
+naming accident in the grammar rather than a choice.
 
-Neither parser is a general structure-file reader. The PDB one wants six
-record types and ignores the rest; the CIF one wants two data items. They are
-ported at exactly that scope, because widening them would change results.
+The files are read with Gemmi, as CCP4 asks of code it distributes, rather
+than by hand as RADDOSE-3D reads them. What is taken from a file is what
+RADDOSE-3D takes; how it is found differs, and on some files so does the
+result.
 
-Known defect
-------------
-**The PDB path aborts on a short line.** ``readPDBFile`` catches
-``IndexOutOfBoundsException`` *outside* its read loop, so the first line too
-short for a fixed-column slice stops parsing of the whole remaining file, and
-the composition is built from however much was read. Well-formed PDB files
-are padded to 80 columns so this does not fire; files from tools that do not
-pad are at risk. Python's slicing does not raise on a short string, so the
-port simply reads such a line as blank -- see :func:`composition_from_pdb`.
+Where results differ from RADDOSE-3D
+------------------------------------
+- **Symmetry operators are counted from the space group**, not from the
+  ``SMTRY1`` records in ``REMARK 290``. The two agree on any file that has
+  those records. A file without them gave RADDOSE-3D no operators, and so no
+  macromolecule in the cell.
+- **A file without a crystal cell is refused.** RADDOSE-3D refused a file
+  with no ``CRYST1`` record, but accepted the placeholder 1 A cell of an NMR
+  or EM model and, finding no symmetry operators, filled it with solvent.
+- **A blank occupancy counts as unoccupied**, because Gemmi reads a blank as
+  zero. RADDOSE-3D counted it as full. Well-formed files have no blanks.
+- **An atom with blank element columns has its element inferred** from its
+  name by Gemmi. RADDOSE-3D skipped it.
+- **The whole file is read.** RADDOSE-3D stopped at the first line too short
+  for its fixed columns. Well-formed files are padded to 80 columns.
+- **mmCIF is read as well as PDB format.** RADDOSE-3D reads PDB format only.
+- **CIF items are found wherever CIF allows them**: a formula in double
+  quotes, on the line after its tag, or in a text field, and a tag in any
+  case. RADDOSE-3D found ``_chemical_formula_sum`` only in single quotes on
+  its tag's line, and otherwise refused the file. A file that is not valid
+  CIF is refused, where RADDOSE-3D read whatever lines it recognised.
 """
 
 from __future__ import annotations
 
-import re
+import math
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import gemmi
+import numpy as np
 
 from pyraddose_3d.backend._array import promote
 from pyraddose_3d.backend.coefficients import unit_cell_volume
@@ -40,36 +55,20 @@ from pyraddose_3d.backend.residues import ResidueType, residue_database
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 __all__ = ["composition_from_cif", "composition_from_pdb"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
 
-# --- PDB fixed-column positions, transcribed from CoefCalcFromPDB.java ---
-_DIRECTIVE = slice(0, 6)
-_CRYST1_FIELDS = (
-    slice(6, 15),  # a
-    slice(15, 24),  # b
-    slice(24, 33),  # c
-    slice(33, 40),  # alpha
-    slice(40, 47),  # beta
-    slice(47, 54),  # gamma
-)
-_ATOM_RESIDUE_NAME = slice(17, 20)
-_OCCUPANCY = slice(54, 60)
-_ELEMENT_SYMBOL = slice(76, 78)
-_SMTRY_FLAG = slice(13, 19)
-_MTRIX_FLAG = slice(59, 60)
-_SEQRES_START = 19
-_SEQRES_RESIDUE_LENGTH = 3
-#: SEQRES residue names are three characters with one space between them.
-_SEQRES_STRIDE = _SEQRES_RESIDUE_LENGTH + 1
+#: The element Gemmi gives an atom whose element it cannot tell.
+_UNKNOWN_ELEMENT = gemmi.Element("X")
 
 
 @dataclass
-class _PdbRecords:
-    """What a PDB file contributes to a composition, before scaling."""
+class _StructureRecords:
+    """What a structure file contributes to a composition, before scaling."""
 
     macromolecular: dict[str, float]
     hetero_atoms: dict[str, float]
@@ -84,71 +83,84 @@ class _PdbRecords:
         return self.crystallographic_operators * self.non_crystallographic_operators
 
 
-def _pdb_records(text: str) -> _PdbRecords:
-    """Read the records a composition needs out of a PDB file."""
-    database = residue_database()
+def _structure_records(
+    structure: gemmi.Structure, path: str | Path
+) -> _StructureRecords:
+    """Collect what a composition needs from a structure Gemmi has read."""
+    cell = structure.cell
+    if not cell.is_crystal():
+        raise ValueError(
+            f"{path} has no crystal unit cell -- no CRYST1 record, or the "
+            f"placeholder cell of an NMR or EM model -- so there is no volume "
+            f"to fill and no composition can be built from it"
+        )
+    # Computed as RADDOSE-3D computes it, rather than taken from Gemmi, so the
+    # two agree to the last bit.
+    cell_volume = unit_cell_volume(
+        cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma
+    )
 
-    hetero_atoms: dict[str, float] = {}
+    space_group = structure.find_spacegroup()
+    if space_group is None:
+        raise ValueError(
+            f"{path} gives the space group {structure.spacegroup_hm!r}, which "
+            f"Gemmi does not recognise, so the number of molecules in the "
+            f"cell is unknown"
+        )
+    # One copy per operator, centring translations included: the count of
+    # SMTRY1 records RADDOSE-3D reads from REMARK 290, wherever a file has
+    # them.
+    crystallographic_operators = len(space_group.operations())
+    # Gemmi leaves the identity out. An operator already applied to the
+    # coordinates must not be counted again.
+    non_crystallographic_operators = 1 + sum(
+        1 for operator in structure.ncs if not operator.given
+    )
+
+    # The sequence is the *stated* one -- SEQRES, or an mmCIF file's entity
+    # sequences -- not the modelled one, so disordered residues absent from
+    # the coordinates still count.
+    database = residue_database()
     residue_atoms: dict[str, float] = {}
     amino_acids = rna = dna = 0
-    crystallographic_operators = 0
-    # One is the identity, which the file does not list.
-    non_crystallographic_operators = 1
-    cell_volume: Any = None
-
-    for line in text.splitlines():
-        directive = line[_DIRECTIVE]
-
-        if directive == "CRYST1":
-            values = [line[field] for field in _CRYST1_FIELDS]
+    for entity in structure.entities:
+        # A PDB file's SEQRES gives one entity per chain, and an mmCIF file
+        # one per molecule, listing each copy as a subchain. A SEQRES chain
+        # with no atoms has no subchain and still counts once.
+        copies = len(entity.subchains) or 1
+        for item in entity.full_sequence:
+            # Residue keys are right-justified, as SEQRES writes them: "  A"
+            # for adenosine, " DA" for deoxyadenosine.
+            name = gemmi.Entity.first_mon(item).rjust(3)
             try:
-                cell_volume = unit_cell_volume(*(float(v) for v in values))
-            except ValueError:
-                # The Java prints "CRYST1 line could not be parsed" and
-                # carries on with no cell volume at all.
-                cell_volume = None
-
-        elif directive == "HETATM":
-            # Water is solvent, and is counted by the solvent model rather
-            # than atom by atom.
-            if line[_ATOM_RESIDUE_NAME].strip().upper() == "HOH":
+                tabulated = database.by_key(name)
+            except KeyError:
+                # "could not decipher PDB three letter code".
                 continue
-            symbol = line[_ELEMENT_SYMBOL].strip().upper()
-            if not symbol:
-                continue
-            occupancy = line[_OCCUPANCY].strip()
-            try:
-                amount = float(occupancy) if occupancy else 1.0
-            except ValueError:
-                # "occupancy column does not contain a valid number".
-                amount = 1.0
-            hetero_atoms[symbol] = hetero_atoms.get(symbol, 0.0) + amount
+            if tabulated.residue_type is ResidueType.PROTEIN:
+                amino_acids += copies
+            elif tabulated.residue_type is ResidueType.RNA:
+                rna += copies
+            else:
+                dna += copies
+            for symbol, number in tabulated.atoms.items():
+                residue_atoms[symbol] = residue_atoms.get(symbol, 0.0) + number * copies
 
-        elif directive == "SEQRES":
-            for name in _seqres_names(line):
-                try:
-                    residue = database.by_key(name)
-                except KeyError:
-                    # "could not decipher PDB three letter code".
+    hetero_atoms: dict[str, float] = {}
+    # Every model, as RADDOSE-3D reads every HETATM record in the file.
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                # Water is solvent, and is counted by the solvent model rather
+                # than atom by atom.
+                if residue.het_flag != "H" or residue.name.upper() == "HOH":
                     continue
-                if residue.residue_type is ResidueType.PROTEIN:
-                    amino_acids += 1
-                elif residue.residue_type is ResidueType.RNA:
-                    rna += 1
-                else:
-                    dna += 1
-                for symbol, number in residue.atoms.items():
-                    residue_atoms[symbol] = residue_atoms.get(symbol, 0.0) + number
-
-        elif directive == "REMARK":
-            if line[_SMTRY_FLAG] == "SMTRY1":
-                crystallographic_operators += 1
-
-        elif directive == "MTRIX1":
-            # A flag of "1" marks an operator already applied to the
-            # coordinates, so it must not be counted again.
-            if line[_MTRIX_FLAG] != "1":
-                non_crystallographic_operators += 1
+                for atom in residue:
+                    if atom.element == _UNKNOWN_ELEMENT:
+                        continue
+                    symbol = atom.element.name.upper()
+                    amount = _occupancy(atom)
+                    hetero_atoms[symbol] = hetero_atoms.get(symbol, 0.0) + amount
 
     # Residue atoms and heteroatoms both belong to the macromolecule as far
     # as the occurrence maps are concerned; heteroatoms are additionally
@@ -158,7 +170,7 @@ def _pdb_records(text: str) -> _PdbRecords:
     for symbol, amount in hetero_atoms.items():
         macromolecular[symbol] = macromolecular.get(symbol, 0.0) + amount
 
-    return _PdbRecords(
+    return _StructureRecords(
         macromolecular=macromolecular,
         hetero_atoms=hetero_atoms,
         residues=Macromolecule(
@@ -170,41 +182,40 @@ def _pdb_records(text: str) -> _PdbRecords:
     )
 
 
-def _seqres_names(line: str) -> list[str]:
-    """Split a SEQRES line into three-character residue names."""
-    rest = line[_SEQRES_START:]
-    names = []
-    while len(rest) > _SEQRES_RESIDUE_LENGTH:
-        name = rest[:_SEQRES_RESIDUE_LENGTH]
-        if name.strip():
-            names.append(name)
-        rest = rest[_SEQRES_STRIDE:]
-    return names
+def _occupancy(atom: gemmi.Atom) -> float:
+    """An atom's occupancy as written in its file.
+
+    Gemmi holds occupancies in single precision, so 0.2 comes back as
+    0.20000000298. The shortest decimal that rounds to the same
+    single-precision number is what the file wrote, and reading that gives
+    the double RADDOSE-3D reads.
+    """
+    return float(str(np.float32(atom.occ)))
 
 
 def composition_from_pdb(
     path: str | Path,
     solvent_concentrations: Mapping[str, Array] | None = None,
 ) -> Composition:
-    """Read a unit cell composition from a PDB file.
+    """Read a unit cell composition from a PDB or mmCIF file.
 
     Ports ``CoefCalcFromPDB``, minus its ability to download an entry from
-    RCSB by four-letter code. Six record types are read:
+    RCSB by four-letter code. Five things are read:
 
-    ``CRYST1``
-        Unit cell dimensions.
-    ``SEQRES``
-        The sequence, from which residue compositions are looked up. Note
-        that this is the *stated* sequence, not the modelled one, so
-        disordered residues absent from the coordinates still count.
-    ``HETATM``
-        Everything that is not a standard residue, weighted by occupancy.
-        Waters are skipped, being handled by the solvent model.
-    ``REMARK ... SMTRY1``
-        One per crystallographic symmetry operator.
-    ``MTRIX1``
-        One per non-crystallographic operator, unless flagged as already
+    the unit cell
+        Its dimensions give the volume.
+    the space group
+        One copy of the asymmetric unit per operator.
+    non-crystallographic operators
+        One more copy per operator, unless the file marks it as already
         applied to the coordinates.
+    the sequence
+        From ``SEQRES``, or an mmCIF file's entity sequences. Residue
+        compositions are looked up from it. This is the *stated* sequence,
+        not the modelled one, so disordered residues still count.
+    heteroatoms
+        Everything in a ``HETATM`` record but water, weighted by occupancy.
+        Water is left to the solvent model.
 
     The number of monomers in the cell is the product of the two operator
     counts. The Z value on the ``CRYST1`` line is deliberately ignored: the
@@ -214,7 +225,7 @@ def composition_from_pdb(
     Parameters
     ----------
     path : str | Path
-        Path to a PDB file.
+        Path to a PDB or mmCIF file.
     solvent_concentrations : Mapping[str, Array], optional
         Heavy-atom concentrations in the solvent, in millimolar, keyed by
         element symbol. Displaces water, as in
@@ -228,24 +239,16 @@ def composition_from_pdb(
     Raises
     ------
     ValueError
-        If the file has no usable ``CRYST1`` record, since without a cell
-        volume there is nothing to divide by.
+        If the file has no crystal unit cell, since without a cell volume
+        there is nothing to divide by, or a space group Gemmi does not
+        recognise.
 
     Notes
     -----
-    Python slices do not raise on a short string, so a file whose lines are
-    not padded to 80 columns reads the missing columns as blank. The Java
-    raises ``IndexOutOfBoundsException`` and, because the catch sits outside
-    the read loop, abandons the rest of the file. The two agree on any
-    well-formed PDB file, which is padded.
+    The module docstring lists where this differs from RADDOSE-3D.
     """
-    records = _pdb_records(Path(path).read_text("utf-8", errors="replace"))
-
-    if records.cell_volume is None:
-        raise ValueError(
-            f"{path} has no usable CRYST1 record, so the unit cell volume is "
-            f"unknown and no composition can be built from it"
-        )
+    structure = gemmi.read_structure(str(path), format=gemmi.CoorFormat.Detect)
+    records = _structure_records(structure, path)
 
     monomers = records.monomers
     scaled = {s: n * monomers for s, n in records.macromolecular.items()}
@@ -269,16 +272,15 @@ def composition_from_pdb(
 _CIF_FORMULA_KEY = "_chemical_formula_sum"
 _CIF_VOLUME_KEY = "_cell_volume"
 _CIF_FORMULA_UNITS_KEY = "_cell_formula_units_Z"
-#: A CIF numeric value may carry a parenthesised standard uncertainty.
-_CIF_NUMBER = re.compile(r"[0-9]")
 
 
 def composition_from_cif(path: str | Path) -> Composition:
     """Read a unit cell composition from a small-molecule CIF file.
 
     Ports ``CoefCalcFromCIF``, which RADDOSE-3D selects for ``AbsCoefCalc
-    EXPSM``. Exactly two data items are read: ``_chemical_formula_sum`` for
-    the contents and ``_cell_volume`` for the cell. There is no solvent
+    EXPSM``. Three data items are read: ``_chemical_formula_sum`` for the
+    contents of one formula unit, ``_cell_formula_units_Z`` for the number of
+    formula units, and ``_cell_volume`` for the cell. There is no solvent
     model -- a small-molecule crystal is its formula and nothing else.
 
     Parameters
@@ -315,41 +317,29 @@ def composition_from_cif(path: str | Path) -> Composition:
     that states no Z keeps the reading of one formula unit, which is correct
     when the item is genuinely absent. See RADDOSE-3D ``TEST-TRIAGE.md``
     item 10 and ``CoefCalcCifFormulaUnitsTest``.
-    """
-    text = Path(path).read_text("utf-8", errors="replace")
 
+    The module docstring lists where this differs from RADDOSE-3D.
+    """
+    document = gemmi.cif.read_file(str(path))
     formula: str | None = None
     cell_volume: Any = None
     formula_units = 1
-
-    for line in text.splitlines():
-        space = line.find(" ")
-        if space < 0:
-            continue
-        directive = line[:space].strip()
-
-        if directive == _CIF_FORMULA_KEY:
-            first = line.find("'")
-            last = line.rfind("'")
-            if first >= 0 and last > first:
-                formula = line[first + 1 : last]
-        elif directive == _CIF_FORMULA_UNITS_KEY:
-            formula_units = _parse_formula_units(line[space:].strip())
-        elif directive == _CIF_VOLUME_KEY:
-            digit = _CIF_NUMBER.search(line)
-            if digit is None:
-                continue
-            value = line[digit.start() :]
-            # A parenthesised standard uncertainty follows the value.
-            bracket = value.find("(")
-            if bracket >= 0:
-                value = value[:bracket]
-            try:
-                cell_volume = float(value.strip())
-            except ValueError:
-                # "Not a valid unit cell". The Java leaves the volume at
-                # whatever it already was.
-                continue
+    # RADDOSE-3D reads the whole file, and a later value replaces an earlier
+    # one. Block by block, so does this.
+    for block in document:
+        value = block.find_value(_CIF_FORMULA_KEY)
+        if value is not None and gemmi.cif.as_string(value):
+            formula = gemmi.cif.as_string(value)
+        value = block.find_value(_CIF_FORMULA_UNITS_KEY)
+        if value is not None:
+            formula_units = _parse_formula_units(gemmi.cif.as_string(value))
+        value = block.find_value(_CIF_VOLUME_KEY)
+        if value is not None:
+            # A standard uncertainty in brackets is dropped; "?" and "." are
+            # NaN, and leave the volume as it was.
+            volume = gemmi.cif.as_number(value)
+            if not math.isnan(volume):
+                cell_volume = volume
 
     if formula is None:
         raise ValueError(

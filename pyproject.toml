@@ -42,6 +42,7 @@ classifiers = [
 # against the array-API subset NumPy and torch agree on, so both backends run
 # the same code and the same conformance corpus.
 dependencies = [
+    "gemmi",  # structure, CIF and sequence files: CCP4 asks for no bespoke parsers
     "numpy",
     "pydantic",
     "pyyaml",

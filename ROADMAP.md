@@ -7,7 +7,7 @@ check a claim rather than take it on trust.
 
 11,000 lines across `backend/` (physics, never imports pydantic), `models/` (pydantic, YAML and
 RADDOSE-3D's `.txt`), `solve.py` (the seam) and `outputs.py` (RADDOSE-3D's files). 1,258 tests,
-none expected to fail. All 56 conformance cases match the Java within measured tolerances — on
+none expected to fail. All 59 conformance cases match the Java within measured tolerances — on
 the sixteen summary numbers, on the dose field and per-image series behind them, and on the
 output files themselves — photoelectron and fluorescence escape included, value by value. The
 MX path is complete: every input RADDOSE-3D's MX calculation accepts is ported, except two that
@@ -449,7 +449,7 @@ Still open:
 ## Verification, throughout
 
 - Every step keeps the conformance corpus bit-identical unless it deliberately changes a number,
-  and a changed expectation is a reviewable diff. Baseline is 56/56. The worst deviation is
+  and a changed expectation is a reviewable diff. Baseline is 59/59. The worst deviation is
   2.0e-4 (`102-escape-pe-fl`, `dose_threshold`, a quantised quantity), and 6.5e-5 for the rest;
   `pytest tests/conformance` prints the per-case table.
 - New output writers are checked against the Java's own files for the same case through
