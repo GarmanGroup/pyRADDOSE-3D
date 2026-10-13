@@ -58,6 +58,31 @@ faithful to machine precision, so the assertion has six orders of magnitude of
 headroom and a real divergence will stand out immediately rather than sitting
 just inside a loose tolerance.
 
+## Monte Carlo and XFEL tables
+
+`build_monte_carlo_tables.py` gathers the small tables RADDOSE-3D's Monte Carlo
+and XFEL subprograms read, from a RADDOSE-3D checkout's `constants/`:
+
+| table | from | rows |
+|---|---|---|
+| `auger_transitions.tsv` | `auger_linewidths/{Z}-{shell}.csv`, 92 files | 1664 |
+| `fluorescence_transitions.tsv` | `fl_linewidths/{Z}-{shell}.csv`, 94 files | 369 |
+| `overvoltage_low.tsv` | `low_overvoltage.csv`, a group of columns per shell | 686 |
+| `overvoltage_high.tsv` | `high_overvoltage.csv` | 686 |
+
+The transition files become two tables with the element and vacancy as columns, rows in each
+file's order, which is the order the Java sums their probabilities in. The overvoltage files
+are written one row per element per shell. Together they are about 156 KB.
+
+```
+python tests/backend/data/build_monte_carlo_tables.py \
+    ~/git/RADDOSE-3D/constants src/pyraddose_3d/data
+```
+
+`backend/montecarlo/tables.py` loads them as `MC.populateAugerLinewidths` and
+`CoefCalcCompute.populateCrossSectionCoefficients` hold them: 65 slots per vacancy, zero past
+the table's rows, and cumulative probabilities scaled by multiplying by `1 / sum`.
+
 ## Regenerating
 
 `DumpXS.java` is the generator, kept here so the file is reproducible rather

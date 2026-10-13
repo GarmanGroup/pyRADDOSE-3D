@@ -32,6 +32,13 @@ WHAT IS DERIVED
       from T. A. Carlson, Photoelectron and Auger Spectroscopy (Plenum,
       1975), as Geant4's G4AtomicShells tabulates them.
 
+  Monte Carlo and XFEL tables
+      src/pyraddose_3d/data/auger_transitions.tsv, fluorescence_transitions.tsv,
+      overvoltage_low.tsv and overvoltage_high.tsv hold RADDOSE-3D's
+      constants/auger_linewidths/, fl_linewidths/, low_overvoltage.csv and
+      high_overvoltage.csv, values unmodified, gathered into four tables by
+      tests/backend/data/build_monte_carlo_tables.py.
+
   Photoelectron energy deposition
       src/pyraddose_3d/data/pe_energy_low.csv, pe_energy_medium.csv and
       pe_energy_high.csv are RADDOSE-3D's constants/EnergyCoefsLow.txt,
