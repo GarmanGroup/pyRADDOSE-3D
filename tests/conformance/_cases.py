@@ -668,6 +668,51 @@ _CASES: list[Case] = [
             }
         },
     ),
+    # The next three exist to show RADDOSE-3D defects before they are fixed
+    # (UPSTREAM_FIXES.md), so that each fix appears as a change to them.
+    #
+    # Photoelectron escape alone loses the relaxation energy other than the
+    # K-shell Auger part: here, a SeMet crystal just above the Se K edge,
+    # about 15% of the absorbed energy.
+    Case(
+        "109-escape-pe-semet-above-edge",
+        "A",
+        "photoelectron escape alone, SeMet above the Se K edge",
+        {
+            "beam": {"energy": 12.7},
+            "crystal": {
+                "composition": {"protein_heavy_atoms": {"Se": 1.0, "S": 5.0}},
+                "escape": {"photoelectron": True},
+            },
+        },
+    ),
+    # Iron's L-shell fluorescence has no tabulated energy, so its escape
+    # distances are NaN.
+    Case(
+        "110-escape-fl-iron",
+        "A",
+        "fluorescence escape from iron, whose L-shell lines are untabulated",
+        {
+            "crystal": {
+                "composition": {"protein_heavy_atoms": {"Fe": 2.0, "S": 6.0}},
+                "escape": {"fluorescence": True},
+            },
+        },
+    ),
+    # A pink beam gives the surrounding its whole exposure at every one of
+    # its 200 energies. Two images: the surrounding runs 200 times per image.
+    Case(
+        "111-escape-surrounding-pink",
+        "A",
+        "a pink beam with a surrounding",
+        {
+            "beam": {"energy_fwhm": 0.3},
+            "crystal": {
+                "escape": {"photoelectron": True, "surrounding": True},
+            },
+            "wedges": [{"start": 0.0, "end": 2.0, "exposure_time": 1.0}],
+        },
+    ),
 ]
 
 

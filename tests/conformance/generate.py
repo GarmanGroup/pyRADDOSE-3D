@@ -61,6 +61,27 @@ def java_classpath(root: Path) -> str:
     )
 
 
+def reference_commit(root: Path) -> str:
+    """The RADDOSE-3D commit the reference was built from.
+
+    The version string alone does not say: several fixes can share one.
+    Marked ``-dirty`` when tracked files differ from the commit.
+    """
+    commit = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    changed = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return f"{commit}-dirty" if changed else commit
+
+
 def reference_version(root: Path) -> str:
     """Version string the reference implementation reports."""
     out = subprocess.run(
@@ -216,6 +237,7 @@ def main() -> None:
         yaml.safe_dump(
             {
                 "reference_version": version,
+                "reference_commit": reference_commit(root),
                 "jvm": java,
                 "seed": SEED,
                 "case_count": len(cases),

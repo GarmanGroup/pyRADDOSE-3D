@@ -6,8 +6,8 @@ same" is a testable claim rather than an aspiration.
 
 ## Layout
 
-    MANIFEST.yaml         corpus-wide: reference version, JVM, seed, and
-                          each tolerance with how it was measured
+    MANIFEST.yaml         corpus-wide: reference version and commit, JVM,
+                          seed, and each tolerance with how it was measured
     _cases.py             the single definition of every case
     generate.py           regenerates cases/ from the Java implementation
     _array_stats.py       reduces voxel-level outputs to statistics
