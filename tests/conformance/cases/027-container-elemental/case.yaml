@@ -2,5 +2,5 @@ case_id: 027-container-elemental
 tier: A
 exercises: a 50 um Kapton container by formula, from NIST's per-element tables
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: 3c9afaf
+reference_version: 5.0.1089
+reference_commit: 82ac582

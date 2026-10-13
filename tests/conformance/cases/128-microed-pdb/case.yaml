@@ -2,5 +2,5 @@ case_id: 128-microed-pdb
 tier: A
 exercises: 'MicroED: composition from PDB 3I40'
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: 3c9afaf
+reference_version: 5.0.1089
+reference_commit: 82ac582

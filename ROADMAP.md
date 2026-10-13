@@ -211,7 +211,7 @@ what can make it fast in Python. And the Java is fixed in stages around the port
 first:
 
 1. **Make RADDOSE-3D reproducible and runnable, with no physics change**:
-   [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42), open.
+   [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42), merged as `82ac582`.
    - Elements are chosen in atomic-number order: identity-hash order had meant the same seed gave
      a different run on a different JVM.
    - Every draw is seeded.
@@ -285,9 +285,9 @@ copyright holders, so relicensing is on the critical path for CCP4 alone.
 
 ## Upstream: RADDOSE-3D
 
-The port's fixes are merged into RADDOSE-3D as #36, #37, #38 and #40, all on 2026-10-13
+The port's fixes are merged into RADDOSE-3D as #36, #37, #38, #40 and #42, all on 2026-10-13
 (`UPSTREAM_FIXES.md` has each, with measurements). #41 adds MicroED's beam requirements and
-output files to the user guide. The corpus follows `master` at `e2df6e4`.
+output files to the user guide. The corpus follows `master` at `82ac582`.
 
 **Still open in the Java**, each with the milestone that takes it up:
 

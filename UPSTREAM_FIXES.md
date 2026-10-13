@@ -28,10 +28,11 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | PR | branch, onto | items | state |
 |---|---|---|---|
 | [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | merged as `e2df6e4` |
-| [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42) | `jd_mc_xfel_reproducible`, onto `master` | *Monte Carlo and XFEL*: reproducibility and running | open at `3c9afaf` |
+| [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42) | `jd_mc_xfel_reproducible`, onto `master` | *Monte Carlo and XFEL*: reproducibility and running | merged as `82ac582` |
 
-#40 was squash-merged with the same source as `ca553bc`, which the corpus had been generated
-from. The corpus is now regenerated from `master` at `e2df6e4`, and no number moved.
+#40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
+had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
+moved.
 
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
@@ -676,7 +677,7 @@ physics defects until they are fixed in RADDOSE-3D, and is compared with it stat
 
 ### Reproducibility and running: fixed first, in [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42)
 
-The `jd_mc_xfel_reproducible` branch at `3c9afaf`. Every fix but the last two changes no number,
+Merged as `82ac582`. Every fix but the last two changes no number,
 only which realisation a seed gives. Forty runs a side on `master` and the branch agreed for each
 mode.
 

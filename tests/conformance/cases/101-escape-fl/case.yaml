@@ -2,5 +2,5 @@ case_id: 101-escape-fl
 tier: A
 exercises: fluorescence escape only
 seed: 20260917
-reference_version: 5.0.1088
-reference_commit: 3c9afaf
+reference_version: 5.0.1089
+reference_commit: 82ac582
