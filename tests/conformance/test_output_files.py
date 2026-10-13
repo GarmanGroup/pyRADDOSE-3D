@@ -22,7 +22,6 @@ Four comparisons, from strictest to loosest:
 
 from __future__ import annotations
 
-import functools
 import json
 import re
 from typing import TYPE_CHECKING, Any
@@ -31,15 +30,20 @@ import pytest
 from _array_stats import compare as compare_arrays
 from _array_stats import from_simulation
 from _java_files import R_TIMESTAMP, parse_summary, reduce_java_outputs
-from test_conformance import CASE_DIRS, CASE_PARAMS, load_case, manifest, tolerance_for
+from test_conformance import (
+    CASE_DIRS,
+    CASE_PARAMS,
+    load_case,
+    manifest,
+    simulated,
+    tolerance_for,
+)
 
 from pyraddose_3d import outputs
-from pyraddose_3d.solve import simulate
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyraddose_3d.solve import Simulation
 
 pytestmark = pytest.mark.conformance
 
@@ -49,11 +53,8 @@ _LAYOUT = re.compile(
 )
 
 
-@functools.cache
-def _simulation(case_dir: Path) -> Simulation:
-    """One run per case, shared by every test here."""
-    _, experiment, _ = load_case(case_dir)
-    return simulate(experiment, record_images=True)
+#: One run per case, shared with ``test_conformance``.
+_simulation = simulated
 
 
 def _layout(token: str) -> tuple[int, str]:

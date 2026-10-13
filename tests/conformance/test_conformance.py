@@ -25,6 +25,7 @@ the calculation is, not by how carefully the port was written; the manifest's
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 from typing import Any
@@ -36,7 +37,7 @@ from _array_stats import compare as compare_arrays
 from _array_stats import from_simulation
 
 from pyraddose_3d.models.experiment import Experiment
-from pyraddose_3d.solve import simulate, solve
+from pyraddose_3d.solve import Simulation, simulate, solve
 
 HERE = Path(__file__).parent
 CASES_DIR = HERE / "cases"
@@ -165,6 +166,18 @@ def tolerance_for(tier: str, field: str, manifest_data: dict[str, Any]) -> float
 CASE_PARAMS = [pytest.param(case_dir, id=case_dir.name) for case_dir in CASE_DIRS]
 
 
+@functools.cache
+def simulated(case_dir: Path) -> Simulation:
+    """One run per case, shared by every test that compares it.
+
+    The slowest cases take tens of seconds -- a pink beam runs the whole
+    surrounding once per sampled energy -- so they are run once, not once
+    per comparison.
+    """
+    _, experiment, _ = load_case(case_dir)
+    return simulate(experiment, record_images=True)
+
+
 @pytest.mark.parametrize("case_dir", CASE_PARAMS)
 def test_matches_reference(case_dir: Path) -> None:
     """Compare the Python result against the Java reference.
@@ -173,8 +186,8 @@ def test_matches_reference(case_dir: Path) -> None:
     sitting just inside tolerance is telling you something that a green tick
     would hide.
     """
-    meta, experiment, expected = load_case(case_dir)
-    actual = compute_summary(experiment)
+    meta, _, expected = load_case(case_dir)
+    actual = [summary.as_dict() for summary in simulated(case_dir).summaries]
     tolerances = manifest()
 
     assert len(actual) == len(expected)
@@ -211,11 +224,10 @@ def test_arrays_match_reference(case_dir: Path) -> None:
     time. See ``_array_stats`` for what each one is, and the manifest's
     ``array_tolerance_rationale`` for how the limits were measured.
     """
-    _, experiment, _ = load_case(case_dir)
     expected = json.loads(
         (case_dir / "expected" / "array_stats.json").read_text("utf-8")
     )
-    actual = from_simulation(simulate(experiment, record_images=True))
+    actual = from_simulation(simulated(case_dir))
 
     failures, achieved = compare_arrays(
         expected, actual, manifest()["array_tolerances"]

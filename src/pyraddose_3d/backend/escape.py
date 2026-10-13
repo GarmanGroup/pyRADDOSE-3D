@@ -990,6 +990,7 @@ class Escape:
         nx, ny, nz = shape
         grid = np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz), indexing="ij")
         self.ijk = np.stack([g.reshape(-1) for g in grid], axis=-1)
+        self._surrounding_geometry: tuple[Any, tuple[np.ndarray, ...]] | None = None
         if surrounding is not None:
             self._prepare_surrounding()
 
@@ -1204,14 +1205,25 @@ class Escape:
         pe = self.photoelectron
         assert surrounding is not None and pe is not None
         assert self.surrounding_absorption is not None and self.clamp is not None
-        placed = _place(self._surrounding_coordinates, np.asarray(shift), angle)
-        intensity = np.asarray(beam.intensity(placed[:, 0], placed[:, 1], off_axis))
-        lit = intensity > 0
-        placed, intensity = placed[lit], intensity[lit]
-        in_crystal_grid = self._surrounding_in_crystal[lit]
-
-        low, high = self.clamp
-        depth = np.asarray(find_depth(rotated, np.clip(placed, low, high)))
+        # Where the surrounding is, how much beam reaches it and through how
+        # much crystal depend on the angle alone, so a pink beam's energies
+        # share them.
+        key = (angle, tuple(np.asarray(shift, dtype=np.float64).tolist()), off_axis)
+        if self._surrounding_geometry is None or self._surrounding_geometry[0] != key:
+            placed = _place(self._surrounding_coordinates, np.asarray(shift), angle)
+            intensity = np.asarray(beam.intensity(placed[:, 0], placed[:, 1], off_axis))
+            lit = intensity > 0
+            placed, intensity = placed[lit], intensity[lit]
+            low, high = self.clamp
+            depth = np.asarray(find_depth(rotated, np.clip(placed, low, high)))
+            offsets = _rotated_offsets(
+                pe.tracks, surrounding.distances, self.ppm, angle
+            )
+            self._surrounding_geometry = (
+                key,
+                (intensity, self._surrounding_in_crystal[lit], depth, offsets),
+            )
+        intensity, in_crystal_grid, depth, offsets = self._surrounding_geometry[1]
         # Not divided between a pink beam's energies -- reproduced.
         attenuation_factor = (
             math.pow(surrounding.pixels_per_micron, -2) * exposure_seconds / angle_count
@@ -1241,7 +1253,6 @@ class Escape:
         draws = self.random.next_ints(
             np.full(len(energy) * PE_ANGLE_RESOLUTION**2, len(bias), dtype=np.int64)
         ).reshape(len(energy), PE_ANGLE_RESOLUTION**2)
-        offsets = _rotated_offsets(pe.tracks, surrounding.distances, self.ppm, angle)
         energy_to_dose = 1e-15 * (math.pow(self.ppm, -3) * self.density)
         for q in range(PE_ANGLE_RESOLUTION**2):
             tracks = bias[draws[:, q]]
