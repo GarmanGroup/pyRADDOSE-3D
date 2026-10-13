@@ -2,5 +2,5 @@ case_id: 041-ddm-leal
 tier: A
 exercises: Leal diffraction decay model
 seed: 20260917
-reference_version: 5.0.1092
-reference_commit: d1e5ad5
+reference_version: 5.0.1093
+reference_commit: cb8e2db

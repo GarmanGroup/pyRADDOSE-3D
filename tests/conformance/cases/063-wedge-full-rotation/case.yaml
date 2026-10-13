@@ -2,5 +2,5 @@ case_id: 063-wedge-full-rotation
 tier: A
 exercises: full 360 degree rotation
 seed: 20260917
-reference_version: 5.0.1092
-reference_commit: d1e5ad5
+reference_version: 5.0.1093
+reference_commit: cb8e2db

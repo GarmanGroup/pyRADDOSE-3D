@@ -666,7 +666,9 @@ def crystal_beam(
             backend_beam.read_pgm(beam.file),
             beam.pixel_size[0],
             beam.pixel_size[1],
-            beam.circular,
+            None if aperture_x is None else float(aperture_x),
+            None if aperture_y is None else float(aperture_y),
+            circular,
         )
 
     fwhm = _setting(overrides, "beam.fwhm", beam.fwhm)

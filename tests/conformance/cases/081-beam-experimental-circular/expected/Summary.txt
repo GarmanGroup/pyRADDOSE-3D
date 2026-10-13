@@ -11,28 +11,28 @@ Elastic Coefficient: 2.01e-05 /um.
 Attenuation Coefficient: 3.48e-04 /um.
 Density: 1.09 g/ml.
 
-Average Diffraction Weighted Dose         : 20.097620 MGy
-Last Diffraction Weighted Dose            : 38.147821 MGy
-Elastic Yield                             : 4.45e+09 photons
-Diffraction Efficiency (Elastic Yield/DWD): 2.22e+08 photons/MGy
-Average Dose (Whole Crystal)              : 31.758302 MGy
-Average Dose (Exposed Region)             : 31.758302 MGy
-Max Dose                                  : 76.415332 MGy
-Average Dose (95.0 % of total absorbed energy threshold (11.93 MGy)): 37.420635 MGy
-Dose Contrast (Max/Threshold Av.)         : 2.04
-Used Volume                               : 100.0%
-Absorbed Energy (this Wedge)              : 1.36e-04 J.
-Dose Inefficiency (Max Dose/mJ Absorbed)  : 561735797.9 1/g
-Dose Inefficiency PE (Max Dose/mJ Deposited): 573810763.5 1/g
+Average Diffraction Weighted Dose         : 26.721555 MGy
+Last Diffraction Weighted Dose            : 49.755492 MGy
+Elastic Yield                             : 5.74e+09 photons
+Diffraction Efficiency (Elastic Yield/DWD): 2.15e+08 photons/MGy
+Average Dose (Whole Crystal)              : 40.972424 MGy
+Average Dose (Exposed Region)             : 41.143856 MGy
+Max Dose                                  : 102.533188 MGy
+Average Dose (95.0 % of total absorbed energy threshold (15.71 MGy)): 49.689961 MGy
+Dose Contrast (Max/Threshold Av.)         : 2.06
+Used Volume                               : 99.6%
+Absorbed Energy (this Wedge)              : 1.76e-04 J.
+Dose Inefficiency (Max Dose/mJ Absorbed)  : 584227058.8 1/g
+Dose Inefficiency PE (Max Dose/mJ Deposited): 596785492.3 1/g
 Final Dose Histogram:
 Bin  1,  0.0 to  0.1 MGy:  0.0 % 
-Bin  2,  0.1 to  3.4 MGy:  0.8 % 
-Bin  3,  3.4 to  6.7 MGy:  4.6 % 
-Bin  4,  6.7 to 10.1 MGy:  7.9 % 
-Bin  5, 10.1 to 13.4 MGy:  9.4 % 
-Bin  6, 13.4 to 16.7 MGy:  5.8 % 
-Bin  7, 16.7 to 20.0 MGy:  6.5 % 
-Bin  8, 20.0 to 23.4 MGy:  5.8 % 
-Bin  9, 23.4 to 26.7 MGy:  5.2 % 
-Bin 10, 26.7 to 30.0 MGy:  4.0 % 
-Bin 11, 30.0 MGy upwards: 50.0 %
+Bin  2,  0.1 to  3.4 MGy:  1.5 % 
+Bin  3,  3.4 to  6.7 MGy:  4.2 % 
+Bin  4,  6.7 to 10.1 MGy:  4.0 % 
+Bin  5, 10.1 to 13.4 MGy:  7.7 % 
+Bin  6, 13.4 to 16.7 MGy:  6.3 % 
+Bin  7, 16.7 to 20.0 MGy:  4.6 % 
+Bin  8, 20.0 to 23.4 MGy:  3.6 % 
+Bin  9, 23.4 to 26.7 MGy:  4.4 % 
+Bin 10, 26.7 to 30.0 MGy:  5.4 % 
+Bin 11, 30.0 MGy upwards: 58.4 %

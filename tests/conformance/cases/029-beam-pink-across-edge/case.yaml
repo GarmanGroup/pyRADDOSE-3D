@@ -3,5 +3,5 @@ tier: A
 exercises: a pink beam straddling the zinc K edge, so the crystal absorbs differently
   on either side of it
 seed: 20260917
-reference_version: 5.0.1092
-reference_commit: d1e5ad5
+reference_version: 5.0.1093
+reference_commit: cb8e2db

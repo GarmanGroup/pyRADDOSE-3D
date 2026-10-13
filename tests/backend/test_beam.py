@@ -294,8 +294,8 @@ BOTH = np.add.outer(np.arange(4.0), np.arange(4.0)) + 2
 PIXEL = 5.0
 
 
-def _experimental(circular: bool = False) -> ExperimentalBeam:
-    return ExperimentalBeam(1e12, 10.0, BOTH, PIXEL, PIXEL, circular)
+def _experimental() -> ExperimentalBeam:
+    return ExperimentalBeam(1e12, 10.0, BOTH, PIXEL, PIXEL)
 
 
 def _per_pixel(value: float) -> float:
@@ -336,10 +336,30 @@ def test_an_experimental_beam_fades_into_its_border() -> None:
     assert beam.minimum_dimension == 30.0
 
 
-def test_a_circular_experimental_beam_keeps_the_inscribed_ellipse() -> None:
-    assert _experimental().intensity(8.0, 8.0) > 0
-    assert _experimental(circular=True).intensity(8.0, 8.0) == 0.0
-    assert _experimental(circular=True).intensity(9.0, 0.0) > 0
+def test_an_aperture_clips_the_profile_and_carries_the_flux() -> None:
+    """As RADDOSE-3D's ``anApertureClipsTheProfileAndCarriesTheFlux``.
+
+    A 10 um square lets through the four central pixels, of 4, 5, 5 and 6,
+    and they carry the whole flux -- the flux after collimation.
+    """
+    beam = ExperimentalBeam(1e12, 10.0, BOTH, PIXEL, PIXEL, 10.0, 10.0)
+    per_unit = KEV_TO_JOULES * 10.0 * 1e12 / ((4 + 5 + 5 + 6) * PIXEL * PIXEL)
+    assert beam.intensity(-2.5, -2.5) == pytest.approx(4 * per_unit, rel=1e-15)
+    assert beam.intensity(2.5, 2.5) == pytest.approx(6 * per_unit, rel=1e-15)
+    assert beam.intensity(5.001, 0.0) == 0.0
+    assert beam.intensity(0.0, -7.5) == 0.0
+
+
+def test_a_circular_aperture_is_the_ellipse_its_sizes_give() -> None:
+    beam = ExperimentalBeam(1e12, 10.0, BOTH, PIXEL, PIXEL, 16.0, 16.0, circular=True)
+    assert beam.intensity(7.5, 0.0) > 0
+    assert beam.intensity(7.5, 7.5) == 0.0
+
+
+def test_an_aperture_admitting_nothing_is_refused() -> None:
+    beam = ExperimentalBeam(1e12, 10.0, BOTH, PIXEL, PIXEL, 1.0, 1.0)
+    with pytest.raises(ValueError, match="lets none of its image through"):
+        beam.intensity(0.0, 0.0)
 
 
 def test_an_experimental_beam_carries_a_gradient_in_flux() -> None:

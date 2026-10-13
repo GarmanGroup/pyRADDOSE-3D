@@ -26,7 +26,8 @@ commit carries the corpus regenerated from the branch named beside it.
 | 2: fluorescence direction | `jd_upstream_escape_fixes` 31fdb9b | `81afd79` | done; physics change awaiting sign-off |
 | 3: separate direction tables | `jd_upstream_escape_fixes` 8ee300b | `07bfc7b` | done |
 | 4: path in front of the surrounding | `jd_upstream_escape_fixes` 7322e36 | `8ed9b2c` | done |
-| 6: pink beams | `jd_upstream_pink_fixes` d1e5ad5 | this commit | done |
+| 6: pink beams | `jd_upstream_pink_fixes` d1e5ad5 | `59949f3`, `5348d95` | done |
+| 12: collimation on measured beams | `jd_upstream_pgm_collimation` cb8e2db | this commit | done; decisions C and D taken as recommended |
 
 ---
 

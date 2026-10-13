@@ -42,14 +42,16 @@ crystal:
 beam:
   flux: 2000000000000.0
   energy: 12.1
-  collimation: null
+  collimation:
+    shape: circular
+    x: 18.0
+    y: 20.0
   energy_fwhm: null
   type: experimental
   file: tests/data/beam_profile.pgm
   pixel_size:
   - 1.5
   - 1.4
-  circular: true
 wedges:
 - start: 0.0
   end: 90.0

@@ -308,10 +308,13 @@ _CASES: list[Case] = [
             }
         },
     ),
+    # The image is 24 by 30.8 um. RADDOSE-3D used to ignore a collimation's
+    # sizes here (UPSTREAM_FIXES.md item 12): Circular meant the ellipse
+    # inscribed in the image, and Rectangular nothing.
     Case(
         "081-beam-experimental-circular",
         "A",
-        "measured beam clipped to the ellipse inscribed in its image",
+        "measured beam behind a circular aperture smaller than its image",
         {
             "beam": {
                 "type": "experimental",
@@ -319,7 +322,22 @@ _CASES: list[Case] = [
                 "energy": 12.1,
                 "file": "tests/data/beam_profile.pgm",
                 "pixel_size": [1.5, 1.4],
-                "circular": True,
+                "collimation": {"shape": "circular", "x": 18.0, "y": 20.0},
+            }
+        },
+    ),
+    Case(
+        "082-beam-experimental-rectangular",
+        "A",
+        "measured beam behind a rectangular aperture smaller than its image",
+        {
+            "beam": {
+                "type": "experimental",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "file": "tests/data/beam_profile.pgm",
+                "pixel_size": [1.5, 1.4],
+                "collimation": {"shape": "rectangular", "x": 16.0, "y": 14.0},
             }
         },
     ),

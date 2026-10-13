@@ -1,0 +1,6 @@
+case_id: 082-beam-experimental-rectangular
+tier: A
+exercises: measured beam behind a rectangular aperture smaller than its image
+seed: 20260917
+reference_version: 5.0.1093
+reference_commit: cb8e2db

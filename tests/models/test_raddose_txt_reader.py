@@ -475,26 +475,25 @@ Energy 12.1
 def test_an_experimental_beam_is_read() -> None:
     beam = read(CRYSTAL + PGM_BEAM + WEDGE).beam
     assert beam.type == "experimental"
-    assert (beam.file, beam.pixel_size, beam.circular) == (
+    assert (beam.file, beam.pixel_size, beam.collimation) == (
         "beam.pgm",
         (1.5, 1.4),
-        False,
+        None,
     )
 
 
-def test_circular_collimation_clips_an_experimental_beam() -> None:
-    """Whatever sizes it gives: BeamExperimentalpgm reads only the shape."""
-    text = with_lines(PGM_BEAM, "Collimation Circular 5 5")
+@pytest.mark.parametrize("shape", ["Rectangular", "Circular"])
+def test_an_experimental_beam_takes_a_collimation(shape: str) -> None:
+    """With its sizes, which RADDOSE-3D used to ignore."""
+    text = with_lines(PGM_BEAM, f"Collimation {shape} 12 10")
     beam = read(CRYSTAL + text + WEDGE).beam
-    assert beam.circular
+    assert beam.collimation is not None
+    assert (beam.collimation.shape, beam.collimation.x, beam.collimation.y) == (
+        shape.lower(),
+        12.0,
+        10.0,
+    )
     assert read(read(CRYSTAL + text + WEDGE).to_raddose_txt()).beam == beam
-
-
-def test_other_collimation_of_an_experimental_beam_is_ignored_with_a_warning() -> None:
-    text = with_lines(PGM_BEAM, "Collimation Rectangular 5 5")
-    with pytest.warns(RaddoseTxtWarning, match="line 13: collimation other than"):
-        beam = read(CRYSTAL + text + WEDGE).beam
-    assert beam == read(CRYSTAL + PGM_BEAM + WEDGE).beam
 
 
 @pytest.mark.parametrize(
@@ -506,13 +505,6 @@ def test_an_experimental_beam_needs_its_image(remove: str, named: str) -> None:
     )
     with pytest.raises(RaddoseTxtError, match=f"{named} is required"):
         read(CRYSTAL + text + WEDGE)
-
-
-def test_an_experimental_beam_takes_no_collimation_in_yaml() -> None:
-    config = read(CRYSTAL + PGM_BEAM + WEDGE).model_dump()
-    config["beam"]["collimation"] = {"shape": "rectangular", "x": 5.0, "y": 5.0}
-    with pytest.raises(ValueError, match="takes no collimation"):
-        Experiment.model_validate(config)
 
 
 def test_small_molecule_refuses_solvent() -> None:

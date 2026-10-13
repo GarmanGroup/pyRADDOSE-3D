@@ -107,27 +107,15 @@ class ExperimentalBeam(_BeamBase):
     pixel_size : tuple[float, float]
         Pixel size in x and y, in micrometres: the first down the image, the
         second across it.
-    circular : bool
-        Clip the profile to the ellipse inscribed in the image. This is what
-        ``Collimation Circular`` does to an experimental beam in RADDOSE-3D,
-        whatever size it gives; no other collimation has any effect on one,
-        so ``collimation`` must be left out.
+    collimation : Collimation | None
+        An aperture, which clips the measured profile with its own sizes.
+        The flux, the flux after collimation, is spread over the pixels it
+        lets through. RADDOSE-3D used to ignore the sizes.
     """
 
     type: Literal["experimental"] = "experimental"
     file: str
     pixel_size: tuple[Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]]
-    circular: bool = False
-
-    @model_validator(mode="after")
-    def _no_aperture(self) -> Self:
-        if self.collimation is not None:
-            raise ValueError(
-                "an experimental beam takes no collimation: RADDOSE-3D ignores "
-                "its size and shape, except that circular clips the image to "
-                "its inscribed ellipse, which is what circular: true says"
-            )
-        return self
 
 
 Beam = Annotated[

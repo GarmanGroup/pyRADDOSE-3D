@@ -389,6 +389,10 @@ class ExperimentalBeam:
     by bilinear interpolation between pixel centres. Outside the image less
     its outermost pixel the intensity is zero.
 
+    An aperture clips the profile with its own sizes, and the flux -- the
+    flux after collimation -- is spread over the pixels whose centres it
+    lets through.
+
     Attributes
     ----------
     flux : Array
@@ -399,11 +403,10 @@ class ExperimentalBeam:
         Relative intensities, ``[y, x]``, as :func:`read_pgm` returns them.
     pixel_x, pixel_y : float
         Pixel size in micrometres.
+    collimation_x, collimation_y : float | None
+        The aperture's full widths in micrometres, or ``None`` for none.
     circular : bool
-        Whether to clip the profile to the ellipse inscribed in the image, as
-        RADDOSE-3D does for an experimental beam with ``Collimation
-        Circular``. The ellipse's size is the image's, whatever the
-        collimation says.
+        Whether the aperture is elliptical rather than rectangular.
     """
 
     flux: Array
@@ -411,7 +414,18 @@ class ExperimentalBeam:
     profile: np.ndarray
     pixel_x: float
     pixel_y: float
+    collimation_x: float | None = None
+    collimation_y: float | None = None
     circular: bool = False
+
+    def _inside_aperture(self, x: Any, y: Any) -> Any:
+        """``insideAperture``: whether points pass the aperture."""
+        if self.collimation_x is None or self.collimation_y is None:
+            return np.ones(np.shape(x), dtype=bool) if np.ndim(x) else True
+        half_x, half_y = self.collimation_x / 2, self.collimation_y / 2
+        if self.circular:
+            return (x * x) / (half_x * half_x) + (y * y) / (half_y * half_y) <= 1
+        return (abs(x) <= half_x) & (abs(y) <= half_y)
 
     @property
     def width_x(self) -> float:
@@ -439,20 +453,29 @@ class ExperimentalBeam:
             Joules per second per square micrometre.
         """
         bordered = np.pad(self.profile, 1)
-        # beamSum, accumulated in the Java's order.
-        total = float(np.cumsum(self.profile.ravel())[-1])
+        # beamSum, accumulated in the Java's order over the pixels the
+        # aperture lets through. Pixel [i, j] is centred at bordered index
+        # (i + 1, j + 1).
+        rows, columns = np.indices(self.profile.shape)
+        centre_x = (columns + 1 + 0.5) * self.pixel_x - self.width_x / 2
+        centre_y = (rows + 1 + 0.5) * self.pixel_y - self.width_y / 2
+        admitted = self._inside_aperture(centre_x, centre_y)
+        total = float(np.cumsum(np.where(admitted, self.profile, 0.0).ravel())[-1])
+        if total <= 0:
+            raise ValueError(
+                "the experimental beam's collimation lets none of its image through"
+            )
         xp, (x, y, off_axis, energy, flux) = promote(
             x, y, off_axis, self.energy, self.flux
         )
         shifted = x - off_axis
         reach_x = self.width_x / 2 - self.pixel_x
         reach_y = self.width_y / 2 - self.pixel_y
-        if self.circular:
-            inside = (shifted * shifted) / (reach_x * reach_x) + (y * y) / (
-                reach_y * reach_y
-            ) <= 1
-        else:
-            inside = (xp.abs(shifted) <= reach_x) & (xp.abs(y) <= reach_y)
+        inside = (xp.abs(shifted) <= reach_x) & (xp.abs(y) <= reach_y)
+        if self.collimation_x is not None:
+            inside = inside & to_namespace(
+                xp, self._inside_aperture(_numpy(shifted), _numpy(y))
+            )
 
         real_x = shifted + self.width_x / 2
         real_y = y + self.width_y / 2

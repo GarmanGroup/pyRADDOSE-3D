@@ -2,5 +2,5 @@ case_id: 012-crystal-default-resolution
 tier: A
 exercises: 'no PixelsPerMicron: RADDOSE-3D uses ten voxels across the first dimension'
 seed: 20260917
-reference_version: 5.0.1092
-reference_commit: d1e5ad5
+reference_version: 5.0.1093
+reference_commit: cb8e2db
