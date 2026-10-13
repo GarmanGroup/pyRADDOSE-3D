@@ -100,10 +100,10 @@ TABLES: dict[str, list[tuple[str, int]]] = {
         ("e_min_high_kev", 62),
         ("b_k_high", 63),
         ("c_k_high", 64),
-        ("mean_ionisation_potential", 71),
-        ("mean_ionisation_potential_l1", 72),
-        ("mean_ionisation_potential_m1", 73),
-        ("mean_ionisation_potential_n1", 74),
+        ("mean_excitation_energy_ev", 71),
+        ("l1_binding_kev", 72),
+        ("m1_binding_kev", 73),
+        ("n1_binding_kev", 74),
     ],
     "elsepa_elastic.tsv": [
         ("ev_50", 65),
@@ -179,13 +179,18 @@ HEADERS: dict[str, str] = {
 # values are carried through untouched.
 """,
     "electron_ionisation.tsv": """\
-# Electron-impact K-shell ionisation, and mean ionisation potentials.
+# Electron-impact K-shell ionisation, mean excitation energies, and the L1, M1
+# and N1 binding energies.
 #
 # e_min_low/e_max_low/e_min_high   validity ranges in keV
 # b_k_*, c_k_*                     fitted constants for each range
-# mean_ionisation_potential*       overall, then the L1, M1 and N1 shells
+# mean_excitation_energy_ev        I, for the stopping power (Element.getI)
+# l1/m1/n1_binding_kev             subshell binding energies (getL1Binding,
+#                                  getM1Binding, getN1Binding)
 #
-# Used by the Monte Carlo subprogram's electron transport, which is not ported.
+# The binding energies and I are used by the MicroED subprogram's stopping
+# power and inelastic model; the K-shell constants by the Monte Carlo
+# subprogram, which is not ported.
 """,
     "elsepa_elastic.tsv": """\
 # ELSEPA elastic scattering cross-sections, by electron energy in eV.

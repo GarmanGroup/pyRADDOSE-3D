@@ -161,8 +161,15 @@ class _CrystalBase(RD3DModel):
         What the crystal is mounted in, which the beam crosses first.
         ``None`` is RADDOSE-3D's ``ContainerMaterialType None``: no
         attenuation.
+    subprogram : {"rd3d", "microed"}
+        Which of RADDOSE-3D's engines to run: ``rd3d``, the MX dose
+        calculation, or ``microed``, its MicroED calculation for a thin
+        crystal in an electron beam -- ``Subprogram EMED`` (or ``EMSP``) in a
+        ``.txt`` input. MicroED needs an electron beam, and ignores the
+        wedges, escape, the container and the decay model.
     """
 
+    subprogram: Literal["rd3d", "microed"] = "rd3d"
     pixels_per_micron: Annotated[float, Field(gt=0.0)] | None = None
     angle_p: float = 0.0
     angle_l: float = 0.0

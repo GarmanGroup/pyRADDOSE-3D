@@ -16,11 +16,11 @@ is the right length, and gadolinium's is not -- it carries 82 fields.
 | `cross_section_coefficients.tsv` | one row per element per shell | yes |
 | `fluorescence.tsv` | line energies and yields | yes, by escape modelling |
 | `edge_ratios.tsv` | edge jump ratios | yes, by escape modelling |
-| `electron_ionisation.tsv` | K-shell ionisation, ionisation potentials | not yet |
+| `electron_ionisation.tsv` | K-shell ionisation; mean excitation energy; L1, M1 and N1 binding energies | yes, by MicroED: the last four |
 | `elsepa_elastic.tsv` | elastic cross-sections by energy | not yet |
 
-The two marked "not yet" belong to the Monte Carlo subprogram's electron
-transport. They ship because
+The one marked "not yet", and the K-shell columns, belong to the Monte Carlo
+subprogram's electron transport. They ship because
 throwing away data that is hard to re-derive is not a saving, and
 `test_elements.py` reads all seven so none can rot unnoticed.
 

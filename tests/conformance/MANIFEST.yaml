@@ -2,7 +2,7 @@ reference_version: 5.0.1086
 reference_commit: 167fb7a
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 59
+case_count: 67
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
@@ -24,6 +24,20 @@ array_tolerances:
   RDE/minimum: 0.0005
   counts: 0
   angle_degrees: 1.0e-09
+microed_tolerances:
+  counts_relative: 5.0e-08
+  inelastic_mean_free_path_relative: 1.0e-08
+  elastic_mean_free_path_relative: 1.0e-12
+  slice_dose_relative: 1.0e-09
+microed_tolerance_rationale: 'MicroED is deterministic. The dose, every slice and
+  the elastic mean free path agree with the Java at full printed precision. The inelastic
+  mean free path does not quite: whether a distant-collision integral takes its last
+  point turns on the last bit of a resonance energy, which depends on the order elements
+  are summed in, and the Java''s is a HashSet''s. That moves the path by at most 3.1e-9
+  (case 125). The productive count and the information coefficient go as exp(-thickness
+  / path), which multiplies that by the thickness over the path: 1.0e-8 in case 125,
+  a 765 nm plate. The tolerances allow 3x or more. The grid searches'' answers must
+  be exact.'
 array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the worst
   disagreement with the reference across the corpus, with headroom, justified because
   it is smaller than the port''s disagreement with itself when every rotation angle

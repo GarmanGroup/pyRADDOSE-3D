@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from pyraddose_3d.models._base import RD3DModel
-from pyraddose_3d.models.beam import Beam
+from pyraddose_3d.models.beam import Beam, ElectronBeam
 from pyraddose_3d.models.crystal import Crystal
 from pyraddose_3d.models.wedge import Wedge
 
@@ -39,6 +39,25 @@ class Experiment(RD3DModel):
     beam: Beam
     wedges: Annotated[list[Wedge], Field(min_length=1)]
     seed: int | None = None
+
+    @model_validator(mode="after")
+    def _beam_suits_the_engine(self) -> Self:
+        """MicroED takes an electron beam, and only MicroED does."""
+        microed = self.crystal.subprogram == "microed"
+        electron = isinstance(self.beam, ElectronBeam)
+        if microed and not electron:
+            raise ValueError(
+                "MicroED needs an electron beam (type: electron, with an exposure "
+                "in electrons per square Angstrom). RADDOSE-3D's MicroED takes its "
+                "exposure from a top-hat beam only: a Gaussian beam gives it none, "
+                "and an experimental beam crashes it"
+            )
+        if electron and not microed:
+            raise ValueError(
+                "an electron beam is for the MicroED engine; set the crystal's "
+                "subprogram to microed"
+            )
+        return self
 
     @classmethod
     def from_raddose_txt(cls, path: str | os.PathLike[str]) -> Self:

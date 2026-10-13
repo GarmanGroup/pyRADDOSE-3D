@@ -58,6 +58,8 @@ from pyraddose_3d.backend.escape import (
 from pyraddose_3d.backend.exposure import ExposureResult, expose, exposure_angles
 from pyraddose_3d.backend.geometry import Mesh
 from pyraddose_3d.backend.java_random import JavaRandom
+from pyraddose_3d.backend.microed import MicroEDResult, electron_material
+from pyraddose_3d.backend.microed import microed as run_microed
 from pyraddose_3d.backend.structure_files import (
     composition_from_cif,
     composition_from_pdb,
@@ -77,6 +79,7 @@ __all__ = [
     "Simulation",
     "apply_overrides",
     "crystal_mesh",
+    "microed",
     "pixels_per_micron",
     "simulate",
     "solve",
@@ -787,6 +790,70 @@ class Simulation:
     seed: int | None = None
 
 
+def microed(experiment: Experiment) -> MicroEDResult:
+    """Run RADDOSE-3D's MicroED engine: ``Subprogram EMED``, or ``EMSP``.
+
+    A deterministic calculation, ported from ``MicroED.CalculateEM``: the dose
+    to a thin crystal from its stopping power, slice by slice; how many
+    electrons scatter elastically and inelastically; and a grid search for the
+    voltage and thickness that would give the most diffraction information per
+    unit dose. See :mod:`pyraddose_3d.backend.microed`.
+
+    The crystal's extent along each axis, after ``angle_p`` and ``angle_l``,
+    sets its size; z is along the beam, so it is the thickness. MicroED
+    ignores the wedges, escape, the container and the decay model.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        A configuration whose crystal has ``subprogram: microed`` and whose
+        beam is an electron beam.
+
+    Returns
+    -------
+    MicroEDResult
+        Everything RADDOSE-3D reports.
+
+    Raises
+    ------
+    ValueError
+        If the experiment is not a MicroED one; if its composition is the
+        average one, which has no elements to scatter from; or if the crystal
+        is thinner than one 5 nm slice.
+    """
+    crystal = experiment.crystal
+    beam = experiment.beam
+    if crystal.subprogram != "microed" or beam.type != "electron":
+        raise ValueError(
+            "this experiment runs the MX calculation; call solve or simulate"
+        )
+    built, crystal_density = crystal_material(crystal.composition)
+    if built is None:
+        raise ValueError(
+            "MicroED needs the crystal's elements, and the average composition "
+            "has none; describe the composition another way"
+        )
+    material = electron_material(built, crystal_density)
+    vertices = np.asarray(crystal_mesh(crystal).vertices)
+    x, y, z = (
+        1000 * (float(vertices[:, axis].max()) - float(vertices[:, axis].min()))
+        for axis in range(3)
+    )
+    if crystal.type == "cylinder":
+        # MicroED's constructor takes 0.001 nm off a cylinder's thickness --
+        # in RADDOSE-3D, only when the input gave two dimensions, the
+        # documented form; a third, otherwise ignored, makes it a cuboid.
+        z -= 0.001
+    return run_microed(
+        material,
+        dimensions_nm=(x, y, z),
+        aperture=(beam.collimation.x, beam.collimation.y),
+        circular=beam.collimation.shape == "circular",
+        energy=beam.energy,
+        exposure=beam.exposure,
+    )
+
+
 def solve(
     experiment: Experiment,
     overrides: Mapping[str, Any] | None = None,
@@ -988,6 +1055,12 @@ def simulate(
     NotImplementedError
         If escape modelling is asked for with tensor overrides.
     """
+    xray = experiment.beam
+    if xray.type == "electron":
+        raise ValueError(
+            "this experiment runs RADDOSE-3D's MicroED engine; call "
+            "pyraddose_3d.solve.microed"
+        )
     overrides = dict(overrides or {})
     as_run = apply_overrides(experiment, overrides)
 
@@ -999,13 +1072,13 @@ def simulate(
     occupied = occupancy(mesh, coordinates)
 
     built, crystal_density = crystal_material(crystal.composition)
-    beam = crystal_beam(experiment.beam, overrides, crystal.container)
+    beam = crystal_beam(xray, overrides, crystal.container)
 
     # A pink beam is sampled at 200 energies about its mean, and the crystal
     # absorbs and scatters differently at each.
     energies = None
-    if experiment.beam.energy_fwhm is not None:
-        energies = pink_beam_energies(beam.energy, experiment.beam.energy_fwhm)
+    if xray.energy_fwhm is not None:
+        energies = pink_beam_energies(beam.energy, xray.energy_fwhm)
     if built is None:
         coefficients = AVERAGE_COEFFICIENTS
         if energies is not None:

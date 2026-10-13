@@ -45,6 +45,30 @@ def test_run_dose_writes_what_raddose_writes(
     assert summary.count("Wedge ") == 2
 
 
+def test_the_two_microed_examples_describe_the_same_experiment() -> None:
+    from_yaml = Experiment.from_file(DOSE / "microed_example_config.yaml")
+    from_txt = Experiment.from_file(DOSE / "microed_example_input.txt")
+    assert from_yaml == from_txt
+
+
+def test_run_dose_runs_microed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A MicroED experiment prints RADDOSE-3D's report and writes its two files."""
+    script = runpy.run_path(str(DOSE / "run_dose.py"))
+    script["main"].__globals__.update(
+        CONFIG_PATH=str(DOSE / "microed_example_config.yaml"),
+        OUTPUT_PREFIX=str(tmp_path / "output-"),
+    )
+    script["main"]()
+
+    names = sorted(path.name for path in tmp_path.iterdir())
+    assert names == ["outputMicroED.CSV", "outputMicroED_slices.csv"]
+    printed = capsys.readouterr().out
+    assert "The Dose in the exposed area by stopping power" in printed
+    assert "The optimal accelerating voltage is" in printed
+
+
 OPTIMISE = Path(__file__).parent.parent / "programs" / "optimise"
 
 

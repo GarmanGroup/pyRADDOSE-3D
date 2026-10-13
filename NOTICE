@@ -33,6 +33,12 @@ WHAT IS DERIVED
       EnergyCoefsMed.txt and EnergyCoefsHigh.txt, unmodified below a header
       saying so. Escape modelling reads them.
 
+  ELSEPA electron cross-sections
+      src/pyraddose_3d/data/elsepa_cross_sections.csv is RADDOSE-3D's
+      constants/fullelsepa.csv, unmodified below a header saying so: ELSEPA
+      elastic scattering cross-sections for electrons, for every element.
+      The MicroED engine reads them.
+
   BEST intensity curve
       src/pyraddose_3d/data/best_intensity.tsv is the average intensity
       against resolution from the BEST program (Popov, A. N. and Bourenkov,
@@ -56,7 +62,8 @@ WHAT IS DERIVED
   Example input files
       tests/data/raddose_txt/ holds the example .txt inputs that ship with
       RADDOSE-3D, copied unmodified, as test data for the .txt reader.
-      programs/dose/dose_example_input.txt is one of them, MyInput.txt.
+      programs/dose/dose_example_input.txt is one of them, MyInput.txt, and
+      programs/dose/microed_example_input.txt another, ED_input_cell.txt.
 
   Conformance corpus
       The reference values in tests/conformance/cases/*/expected/ were

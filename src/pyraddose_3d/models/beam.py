@@ -14,7 +14,15 @@ from pydantic import Field, model_validator
 
 from pyraddose_3d.models._base import RD3DModel
 
-__all__ = ["Beam", "Collimation", "ExperimentalBeam", "GaussianBeam", "TophatBeam"]
+__all__ = [
+    "Beam",
+    "Collimation",
+    "ElectronBeam",
+    "ExperimentalBeam",
+    "GaussianBeam",
+    "TophatBeam",
+    "XrayBeam",
+]
 
 
 class Collimation(RD3DModel):
@@ -118,6 +126,38 @@ class ExperimentalBeam(_BeamBase):
     pixel_size: tuple[Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]]
 
 
-Beam = Annotated[
+class ElectronBeam(RD3DModel):
+    """An electron beam, for RADDOSE-3D's MicroED engine.
+
+    In a ``.txt`` input, a ``Type TopHat`` beam with ``Exposure`` in an
+    experiment whose crystal has ``Subprogram EMED``. RADDOSE-3D's MicroED
+    takes its exposure from a top-hat beam only: a Gaussian beam's is zero,
+    and an experimental one crashes it.
+
+    Attributes
+    ----------
+    energy : float
+        Electron energy in keV.
+    exposure : float
+        Fluence, in electrons per square Angstrom.
+    collimation : Collimation
+        The beam's size and shape. Where it is larger than the crystal, the
+        crystal limits the exposed area, axis by axis.
+    """
+
+    type: Literal["electron"] = "electron"
+    energy: Annotated[float, Field(gt=0.0)]
+    exposure: Annotated[float, Field(gt=0.0)]
+    collimation: Collimation
+
+
+XrayBeam = Annotated[
     GaussianBeam | TophatBeam | ExperimentalBeam, Field(discriminator="type")
 ]
+"""A beam for the MX calculation."""
+
+Beam = Annotated[
+    GaussianBeam | TophatBeam | ExperimentalBeam | ElectronBeam,
+    Field(discriminator="type"),
+]
+"""Any beam: an X-ray beam, or an electron beam for MicroED."""

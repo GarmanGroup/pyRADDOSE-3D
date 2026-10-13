@@ -623,9 +623,67 @@ These were found before Milestone 4. The first three are now fixed: the first tw
 | the help text advertises `Summary`, `SummaryCSV:…` and `DoseStateCSV`, which are not modules | `RD3D.java:399–401` | **fixed** |
 | a 0–30° wedge at 2° per image takes 15 images, not 16: the count is computed in radians and truncated | `Crystal.java:891–893` | **fixed**, with the reversed wedge's count and step; only case 066 moved, plus new case 067 |
 | characters the lexer does not know are skipped with a message, not refused | the generated parser | refuse, as #34 did for parser errors. The port warns today. |
-| `MicroED.getSolventFraction()`, and the `getBeamArea()`/`getExposure()` stubs | MicroED, `BeamGaussian.java:298–306` | Milestone 6 |
+| `MicroED.getSolventFraction()`, and the `getBeamArea()`/`getExposure()` stubs | MicroED, `BeamGaussian.java:298–306` | the stubs: see *MicroED* below. `getSolventFraction` is read only by MicroED's disabled charge model. |
 
 ---
+
+## MicroED: found porting it
+
+Found porting `Subprogram EMED` (`backend/microed.py`), against RADDOSE-3D `master` at
+`167fb7a`. None is fixed in RADDOSE-3D yet. "Run" means seen in a Java run; "read" means found
+in the source.
+
+| defect | where | effect | the port |
+|---|---|---|---|
+| Every subprogram crashes in the summary writer once its own files are written | `Crystal.expose` returns without exposing the wedge; `OutputSummaryCSV.publishWedge` reads a null elastic yield | the run exits with an error, after a half-written `Summary.csv` (run) | writes MicroED's two files and nothing else |
+| The PDB route never multiplies its electron-scattering atoms by the molecules in the cell, and gives them no ligands | `CoefCalcFromPDB:381–394`; `multiplyAtomsEM` is never called | the elastic mean free path is far too long -- 45% for 3I40 -- and the counts and grid searches with it (run) | uses the whole cell, and so differs; no corpus case until fixed |
+| The sequence, SAXS-sequence and CIF routes give the electron physics no macromolecule at all | no `...OccurrenceEM` calls in those classes | as above, worse (read) | as above |
+| The CIF route counts its molecular weight twice | `calculateDensity` called twice (`CoefCalcFromCIF:37`); it adds to `molecularWeight` | wrong mass fractions in the stopping power, so the dose too (read) | counts it once |
+| Eight elements have a zero binding energy for their outermost subshell, and aluminium a blank one | `MuCalcConstants.txt`; `getShellBindingSubshell` | Na, Ca, Sc, Ti, V, Cr, Ga, Ge: a NaN inelastic mean free path, so NaN counts and a grid search that ends on 1990 kV and 1995 nm (run, Na). Al: a crash (read) | reproduces the NaN, with a warning; refuses Al |
+| A Gaussian beam gives MicroED no exposure | `BeamGaussian.getExposure` is a stub returning 0 | a dose of zero, NaN, 1990 kV and 1995 nm (run) | refuses it |
+| An experimental beam has no size | `BeamExperimental.getBeamX` returns null | a crash (read) | refuses it |
+| The distant-collision integral mixes two shell models | `integrateDist`, `getpDisW` use `getShellBinding`, everything else `getShellBindingSubshell` | the inelastic mean free path is 7.5% shorter than the subshell model alone gives, for protein at 300 keV (run) | reproduces it |
+| Elements from Z = 35 have no inner subshells in the GOS model | `getNumValenceElectronsSubshells` | every electron counted as valence (read) | reproduces it |
+| A third `Dimensions` value makes a cylinder a cuboid | `Crystal:310–328` | MicroED takes 0.001 nm off a cylinder's thickness only when it has two dimensions (run) | always takes it off |
+| The slice file's depth column assumes 5 nm slices | `MicroED.CalculateEM` | a thickness not a multiple of 5 nm is cut into wider slices than the depths say (read) | reproduces it |
+| A crystal thinner than 5 nm has no slices | `EMStoppingPowerWay` | division by zero, NaN (read) | refuses it |
+| MicroED's class cannot load without Selenium, which only its commented-out NIST lookup uses | `MicroED.java:14–25` | Selenium and its dependencies, 9 MB of the 53 MB jar, are needed to run MicroED at all (run) | needs nothing |
+
+The defects that move numbers want the group's sign-off, as #38 did: the electron-scattering
+composition, the shell models, and the binding energies.
+
+## Monte Carlo and XFEL: found surveying them
+
+From reading `MC.java` and `XFEL.java` on `master`, not yet from running them, ahead of porting
+them (`ROADMAP.md`, step 6). `MC.java` is a near copy of `XFEL.java`, so most of these are in
+both.
+
+- **The element a random number picks depends on the JVM.** `Element` and `ElementEM` have no
+  `hashCode`, and the cascade iterates `HashMap`s keyed by them, so a run is not reproducible
+  across JVMs, and cannot be matched value by value until the order is fixed.
+- **"Isotropic" directions are not.** The polar angle is drawn uniformly on [0, 2π)
+  (`MC.java:1242`, `1306`), and Compton scattering angles are uniform (`:1445`).
+- **The elastic scattering angle is sampled without its sin(θ) weight, and one bin low** above
+  1° (`returnDeflectionAngle`).
+- **Fluorescence transitions are looked up in the Auger table**: `getTransitionIndex` ignores its
+  `auger` flag (`MC.java:1395`), so sulphur's 4-row fluorescence table is indexed by its 21 Auger
+  rows, giving zero energies and infinite times.
+- **The elastic probability divides by photoelectric plus Compton, not the total** (`:411`).
+- **Escape distances use the unrotated face normals** while occupancy uses the rotated ones
+  (`:4117`).
+- **A circular top-hat beam bounds y by |x|** (`:2771`), and a circular Gaussian draws its
+  radius from a one-dimensional normal.
+- **The multivariate normal beam uses a clock-seeded generator**, so it cannot be repeated with
+  `--seed` (`:2850`).
+- **Electrons above 20 keV in elements beyond Z = 52 crash**: there is no high-energy angular
+  table for them.
+- **`SimPhotons 1e6` is refused**: it is read with `Long.parseLong`.
+- **The surrounding's per-step dead work** -- FSE terms, and the overvoltage table re-read from
+  disk for every electron -- costs time but draws nothing.
+- **XFEL allocates three 4-D arrays with 15,300 time bins** before it knows the pulse length:
+  about 0.5 GB at 11 voxels a side. Observed: 1 GB for a 20 um crystal.
+- **The Monte Carlo mode may stall**: its stopping power turns negative just above the 50 eV
+  cutoff. A 20 um run finished normally in 19 s, so not confirmed.
 
 ## Order of work
 

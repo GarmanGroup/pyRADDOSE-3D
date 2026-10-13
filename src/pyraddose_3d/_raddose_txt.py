@@ -27,7 +27,13 @@ Anything this port cannot represent is refused with the reason, never
 dropped. The exceptions are keywords confirmed to reach nothing but the
 Monte Carlo and XFEL subprograms -- ``GoniometerAxis``,
 ``PolarisationDirection``, and ``Subprogram RD3D`` -- which a RADDOSE-3D MX
-run ignores and so does this one. That was checked keyword by keyword rather
+run ignores and so does this one.
+
+``Subprogram EMED`` (or ``EMSP``) runs the MicroED engine. Its beam is
+``Type TopHat`` with an ``Exposure``, read as an electron beam. What MicroED
+ignores -- a ``Flux``, an ``EnergyFWHM``, and the settings of RADDOSE-3D's
+disabled MicroED Monte Carlo -- is accepted with a warning, as RADDOSE-3D
+accepts it silently. That was checked keyword by keyword rather
 than assumed: ``EnergyFWHM`` looks like one of them and is not, because it
 turns the MX calculation into a 200-energy pink-beam sum.
 """
@@ -39,7 +45,12 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from pyraddose_3d.models.beam import ExperimentalBeam, GaussianBeam, TophatBeam
+from pyraddose_3d.models.beam import (
+    ElectronBeam,
+    ExperimentalBeam,
+    GaussianBeam,
+    TophatBeam,
+)
 from pyraddose_3d.models.composition import (
     AverageComposition,
     CifComposition,
@@ -223,11 +234,13 @@ def _crystal_lines(crystal: Crystal) -> list[str]:
         lines.append("Type Spherical")
         lines.append(f"Dimensions {d} {d} {d}")
     elif isinstance(crystal, CylinderCrystal):
-        # Dimensions are (diameter, height, ignored) -- see CylinderCrystal.
+        # Diameter and height. RADDOSE-3D ignores a third value, with a
+        # warning, but it also makes the crystal type CUBOID rather than
+        # CYLINDER, which only the subprograms read: MicroED takes 0.001 nm
+        # off a CYLINDER's thickness.
         lines.append("Type Cylinder")
         lines.append(
-            f"Dimensions {_number(crystal.diameter)} {_number(crystal.height)} "
-            f"{_number(crystal.diameter)}"
+            f"Dimensions {_number(crystal.diameter)} {_number(crystal.height)}"
         )
     elif isinstance(crystal, PolyhedronCrystal):
         lines.append("Type Polyhedron")
@@ -254,6 +267,8 @@ def _crystal_lines(crystal: Crystal) -> list[str]:
 
     lines.extend(_escape_lines(crystal.escape))
     lines.extend(_container_lines(crystal.container))
+    if crystal.subprogram == "microed":
+        lines.append("Subprogram EMED")
     return lines
 
 
@@ -276,9 +291,20 @@ def _container_lines(container: Container | None) -> list[str]:
     return lines
 
 
-def _beam_lines(beam: GaussianBeam | TophatBeam | ExperimentalBeam) -> list[str]:
+def _beam_lines(
+    beam: GaussianBeam | TophatBeam | ExperimentalBeam | ElectronBeam,
+) -> list[str]:
     """Emit the whole Beam block."""
     lines = ["Beam"]
+    if isinstance(beam, ElectronBeam):
+        lines.append("Type TopHat")
+        lines.append(f"Energy {_number(beam.energy)}")
+        lines.append(f"Exposure {_number(beam.exposure)}")
+        lines.append(
+            f"Collimation {beam.collimation.shape.capitalize()} "
+            f"{_number(beam.collimation.x)} {_number(beam.collimation.y)}"
+        )
+        return lines
     if isinstance(beam, GaussianBeam):
         lines.append("Type Gaussian")
         lines.append(f"Flux {_number(beam.flux)}")
@@ -574,6 +600,11 @@ _CRYSTAL_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "SURROUNDINGELEMENTS": ("surrounding_elements", _read_elements),
     "SURROUNDINGDENSITY": ("surrounding_density", _read_number),
     "SUBPROGRAM": ("subprogram", _read_word),
+    # Monte Carlo and XFEL settings: refused unless the run is MicroED, whose
+    # Monte Carlo is disabled in RADDOSE-3D, so that they reach nothing.
+    "SIMELECTRONS": ("sim_electrons", _read_number),
+    "SIMPHOTONS": ("sim_electrons", _read_number),
+    "RUNS": ("runs", _read_number),
     "CONTAINERMATERIALTYPE": ("container_type", _read_word),
     "MATERIALTYPE": ("container_type", _read_word),
     "CONTAINERTHICKNESS": ("container_thickness", _read_number),
@@ -600,6 +631,11 @@ _BEAM_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "ENERGYFWHM": ("energy_fwhm", _read_number),
     "FILE": ("file", _read_word),
     "PIXELSIZE": ("pixel_size", lambda s, k: _read_numbers(s, k, 2, 2)),
+    # MicroED's: the fluence, and settings only its disabled Monte Carlo read.
+    "EXPOSURE": ("exposure", _read_number),
+    "SEMIANGLE": ("semi_angle", _read_number),
+    "APERTURERADIUS": ("aperture_radius", _read_number),
+    "IMAGEDIM": ("image_dim", lambda s, k: _read_numbers(s, k, 2, 2)),
 }
 
 _WEDGE_KEYWORDS: dict[str, tuple[str, Reader]] = {
@@ -618,17 +654,9 @@ _NOT_PORTED = "which this port does not implement"
 
 #: Keywords that would change a result this port cannot compute.
 _REFUSED: dict[str, dict[str, str]] = {
-    "Crystal": {
-        "SIMELECTRONS": f"sets up the Monte Carlo simulation, {_NOT_PORTED}",
-        "SIMPHOTONS": f"sets up the Monte Carlo simulation, {_NOT_PORTED}",
-        "RUNS": f"repeats the Monte Carlo or XFEL simulation, {_NOT_PORTED}",
-    },
+    "Crystal": {},
     "Beam": {
-        "EXPOSURE": f"belongs to a MicroED beam, {_NOT_PORTED}",
         "PULSEENERGY": f"belongs to an XFEL beam, {_NOT_PORTED}",
-        "SEMIANGLE": f"belongs to a MicroED beam, {_NOT_PORTED}",
-        "APERTURERADIUS": f"belongs to a MicroED beam, {_NOT_PORTED}",
-        "IMAGEDIM": f"belongs to a MicroED beam, {_NOT_PORTED}",
     },
     "Wedge": {},
 }
@@ -657,13 +685,14 @@ _COEFCALC_REFUSED = {
     "RDV3": "runs the original Fortran RADDOSE as an external program",
 }
 
+#: Subprograms this port does not run.
 _SUBPROGRAMS = {
     "MONTECARLO": "Monte Carlo",
     "GOS": "Monte Carlo",
     "XFEL": "XFEL",
-    "EMSP": "MicroED",
-    "EMED": "MicroED",
 }
+#: Both run the same MicroED calculation.
+_MICROED = frozenset({"EMED", "EMSP"})
 
 _DECAY = {"SIMPLE": "simple", "LINEAR": "linear", "LEAL": "leal", "BFACTOR": "bfactor"}
 
@@ -978,6 +1007,7 @@ def _container(
 def _crystal(
     stream: _Stream, values: dict[str, tuple[Any, int]], line: int
 ) -> dict[str, Any]:
+    microed = False
     if "subprogram" in values:
         written, at = values["subprogram"]
         engine = _SUBPROGRAMS.get(written.upper())
@@ -987,8 +1017,19 @@ def _crystal(
                 f"Subprogram {written} runs RADDOSE-3D's {engine} engine, "
                 f"{_NOT_PORTED}",
             )
-        if written.upper() != "RD3D":
+        microed = written.upper() in _MICROED
+        if not microed and written.upper() != "RD3D":
             raise stream.error(at, f"Subprogram {written!r} is not one RADDOSE-3D has")
+    for key, label in (("sim_electrons", "SimElectrons"), ("runs", "Runs")):
+        if key not in values:
+            continue
+        if not microed:
+            raise stream.error(
+                values[key][1],
+                f"{label} sets up RADDOSE-3D's Monte Carlo or XFEL simulation, "
+                f"{_NOT_PORTED}",
+            )
+        _ignored(values[key][1], label, "RADDOSE-3D's MicroED Monte Carlo is disabled")
 
     written = _require(
         stream, values, "type", "Type", line, "RADDOSE-3D needs the crystal's shape"
@@ -1086,12 +1127,38 @@ def _crystal(
         crystal["container"] = container
 
     crystal["composition"] = _composition(stream, values, line)
+    if microed:
+        crystal["subprogram"] = "microed"
     return crystal
 
 
+def _ignored(line: int, label: str, why: str) -> None:
+    warnings.warn(
+        RaddoseTxtWarning(f"line {line}: {label} is ignored: {why}"), stacklevel=4
+    )
+
+
+#: MicroED's beam keywords, which an X-ray beam does not take.
+_MICROED_BEAM = (
+    ("exposure", "Exposure"),
+    ("semi_angle", "SemiAngle"),
+    ("aperture_radius", "ApertureRadius"),
+    ("image_dim", "ImageDim"),
+)
+
+
 def _beam(
-    stream: _Stream, values: dict[str, tuple[Any, int]], line: int
+    stream: _Stream, values: dict[str, tuple[Any, int]], line: int, microed: bool
 ) -> dict[str, Any]:
+    if microed:
+        return _electron_beam(stream, values, line)
+    for key, label in _MICROED_BEAM:
+        if key in values:
+            raise stream.error(
+                values[key][1],
+                f"{label} belongs to a MicroED beam, which RADDOSE-3D runs when the "
+                f"crystal has Subprogram EMED",
+            )
     written = _require(
         stream, values, "type", "Type", line, "RADDOSE-3D needs the beam profile"
     )
@@ -1128,9 +1195,89 @@ def _beam(
     if profile == "EXPERIMENTALPGM":
         _experimental_beam(stream, values, line, beam)
 
-    # Merged as the Java merges properties: Rectangular and Circular set both
-    # sides, Horizontal and Vertical one each, and Circular also marks the
-    # aperture elliptical.
+    collimation = _collimation(stream, values, line)
+    if collimation is not None:
+        beam["collimation"] = collimation
+    if "energy_fwhm" in values:
+        beam["energy_fwhm"] = values["energy_fwhm"][0]
+    return beam
+
+
+def _electron_beam(
+    stream: _Stream, values: dict[str, tuple[Any, int]], line: int
+) -> dict[str, Any]:
+    """A MicroED beam: ``Type TopHat`` with an ``Exposure``."""
+    written = _require(
+        stream, values, "type", "Type", line, "RADDOSE-3D needs the beam profile"
+    )
+    profile = written.upper()
+    if profile != "TOPHAT":
+        why = {
+            "GAUSSIAN": "it gives a Gaussian beam no exposure, so a dose of zero "
+            "and an information coefficient of NaN",
+            "EXPERIMENTALPGM": "an experimental beam has no size and crashes it",
+        }.get(profile, f"{written!r} is not a beam profile")
+        raise stream.error(
+            values["type"][1],
+            f"RADDOSE-3D's MicroED engine takes its exposure from a TopHat beam "
+            f"only: {why}",
+        )
+    beam: dict[str, Any] = {
+        "type": "electron",
+        "energy": _require(
+            stream,
+            values,
+            "energy",
+            "Energy",
+            line,
+            "MicroED needs the electrons' energy",
+        ),
+        "exposure": _require(
+            stream,
+            values,
+            "exposure",
+            "Exposure",
+            line,
+            "MicroED needs the fluence in electrons per square Angstrom, and "
+            "RADDOSE-3D crashes without it",
+        ),
+        "collimation": _collimation(stream, values, line),
+    }
+    if beam["collimation"] is None:
+        raise stream.error(line, "a TopHat beam fills its collimation, so it needs one")
+    for key, label, why in (
+        ("flux", "Flux", "MicroED's fluence is its Exposure"),
+        ("energy_fwhm", "EnergyFWHM", "MicroED's beam is monochromatic"),
+        ("fwhm", "FWHM", "a TopHat beam has no FWHM"),
+        (
+            "semi_angle",
+            "SemiAngle",
+            "only RADDOSE-3D's disabled MicroED Monte Carlo read it",
+        ),
+        (
+            "aperture_radius",
+            "ApertureRadius",
+            "only RADDOSE-3D's disabled MicroED Monte Carlo read it",
+        ),
+        (
+            "image_dim",
+            "ImageDim",
+            "only RADDOSE-3D's disabled MicroED Monte Carlo read it",
+        ),
+    ):
+        if key in values:
+            _ignored(values[key][1], label, why)
+    return beam
+
+
+def _collimation(
+    stream: _Stream, values: dict[str, tuple[Any, int]], line: int
+) -> dict[str, Any] | None:
+    """The aperture, merged as the Java merges properties.
+
+    Rectangular and Circular set both sides, Horizontal and Vertical one
+    each, and Circular also marks the aperture elliptical.
+    """
     horizontal = vertical = None
     circular = False
     for key in ("rectangular", "circular", "horizontal", "vertical"):
@@ -1150,15 +1297,13 @@ def _beam(
             "the collimation has only one side; give both Horizontal and Vertical, "
             "or Rectangular or Circular with two sizes",
         )
-    if horizontal is not None:
-        beam["collimation"] = {
-            "shape": "circular" if circular else "rectangular",
-            "x": horizontal,
-            "y": vertical,
-        }
-    if "energy_fwhm" in values:
-        beam["energy_fwhm"] = values["energy_fwhm"][0]
-    return beam
+    if horizontal is None:
+        return None
+    return {
+        "shape": "circular" if circular else "rectangular",
+        "x": horizontal,
+        "y": vertical,
+    }
 
 
 def _experimental_beam(
@@ -1246,8 +1391,17 @@ def parse_raddose_txt(text: str, source: str = "<input>") -> dict[str, Any]:
     """
     stream = _Stream(_tokenise(text, source), source)
     crystal: dict[str, Any] | None = None
+    # The beam is read with its block but built once the crystal says which
+    # engine runs: a MicroED beam is read differently.
+    beam_block: tuple[dict[str, tuple[Any, int]], int] | None = None
     beam: dict[str, Any] | None = None
     wedges: list[dict[str, Any]] = []
+
+    def build_beam() -> dict[str, Any] | None:
+        if beam_block is None or crystal is None:
+            return None
+        microed = crystal.get("subprogram") == "microed"
+        return _beam(stream, beam_block[0], beam_block[1], microed)
 
     while not stream.done():
         token = stream.take()
@@ -1265,7 +1419,7 @@ def parse_raddose_txt(text: str, source: str = "<input>") -> dict[str, Any]:
                     f"change the {name.lower()} part way through the experiment; "
                     f"pyRADDOSE-3D runs one crystal and one beam per experiment",
                 )
-            if (crystal if block == "CRYSTAL" else beam) is not None:
+            if (crystal if block == "CRYSTAL" else beam_block) is not None:
                 raise stream.error(
                     token.line, f"a second {name} block before any Wedge"
                 )
@@ -1274,9 +1428,11 @@ def parse_raddose_txt(text: str, source: str = "<input>") -> dict[str, Any]:
             if block == "CRYSTAL":
                 crystal = _crystal(stream, values, token.line)
             else:
-                beam = _beam(stream, values, token.line)
+                beam_block = (values, token.line)
             continue
 
+        if beam is None:
+            beam = build_beam()
         if crystal is None or beam is None:
             raise stream.error(
                 token.line, "a Wedge needs a Crystal and a Beam before it"
@@ -1285,6 +1441,8 @@ def parse_raddose_txt(text: str, source: str = "<input>") -> dict[str, Any]:
         values = _read_block(stream, "Wedge", _WEDGE_KEYWORDS)
         wedges.append(_wedge(stream, values, angles, token.line))
 
+    if beam is None:
+        beam = build_beam()
     if crystal is None or beam is None or not wedges:
         missing = [
             n

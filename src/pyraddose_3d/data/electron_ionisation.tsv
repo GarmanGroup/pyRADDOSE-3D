@@ -1,12 +1,17 @@
-# Electron-impact K-shell ionisation, and mean ionisation potentials.
+# Electron-impact K-shell ionisation, mean excitation energies, and the L1, M1
+# and N1 binding energies.
 #
 # e_min_low/e_max_low/e_min_high   validity ranges in keV
 # b_k_*, c_k_*                     fitted constants for each range
-# mean_ionisation_potential*       overall, then the L1, M1 and N1 shells
+# mean_excitation_energy_ev        I, for the stopping power (Element.getI)
+# l1/m1/n1_binding_kev             subshell binding energies (getL1Binding,
+#                                  getM1Binding, getN1Binding)
 #
-# Used by the Monte Carlo subprogram's electron transport, which is not ported.
+# The binding energies and I are used by the MicroED subprogram's stopping
+# power and inelastic model; the K-shell constants by the Monte Carlo
+# subprogram, which is not ported.
 
-z	symbol	e_min_low_kev	e_max_low_kev	b_k_low	c_k_low	e_min_high_kev	b_k_high	c_k_high	mean_ionisation_potential	mean_ionisation_potential_l1	mean_ionisation_potential_m1	mean_ionisation_potential_n1
+z	symbol	e_min_low_kev	e_max_low_kev	b_k_low	c_k_low	e_min_high_kev	b_k_high	c_k_high	mean_excitation_energy_ev	l1_binding_kev	m1_binding_kev	n1_binding_kev
 1	H	0.0	0.0	0.0	0.0	0.0	0.0	0.0	19.2			
 2	HE								41.8			
 3	LI								40.0	0.00539		

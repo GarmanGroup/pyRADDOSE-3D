@@ -27,6 +27,7 @@ from pyraddose_3d._raddose_txt import (
     RaddoseTxtWarning,
     parse_raddose_txt,
 )
+from pyraddose_3d.models.beam import Collimation, ElectronBeam
 from pyraddose_3d.models.experiment import Experiment
 
 DATA = Path(__file__).parent.parent / "data" / "raddose_txt"
@@ -89,11 +90,13 @@ SHIPPED = {
     "input-b3x11.txt": None,
     "input-b3x14.txt": None,
     "input_MC.txt": None,
-    "ED_input.txt": "Subprogram EMED runs RADDOSE-3D's MicroED engine",
-    "ED_input_cell.txt": "Subprogram EMED runs RADDOSE-3D's MicroED engine",
+    # MicroED: a small molecule, and a protein from its unit cell.
+    "ED_input.txt": None,
+    "ED_input_cell.txt": None,
     # "SURROUNDINGELEMENTS C" has no amount; RADDOSE-3D refuses it too.
     "MyInput_hole.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
-    "MyInput_hole_MC.txt": "repeats the Monte Carlo or XFEL simulation",
+    # The same, and a Monte Carlo run besides, which is not ported.
+    "MyInput_hole_MC.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
     # A template for RADDOSE-3D's GUI, with placeholders where values go.
     "input.txt": "Dimensions needs 1 to 3 numbers, found 0",
 }
@@ -677,3 +680,81 @@ def test_a_mixture_nist_does_not_tabulate_is_refused() -> None:
     )
     with pytest.raises(ValidationError, match="NIST does not tabulate 'kapton'"):
         read(text + BEAM + WEDGE)
+
+
+# --- MicroED: Subprogram EMED -----------------------------------------------
+
+MICROED_CRYSTAL = with_lines(CRYSTAL, "Subprogram EMED")
+ELECTRON_BEAM = """Beam
+Type TopHat
+Energy 300
+Exposure 1
+Collimation Rectangular 4 4
+"""
+
+
+def test_subprogram_emed_reads_an_electron_beam() -> None:
+    """A TopHat beam with an Exposure, in electrons per square Angstrom."""
+    experiment = read(MICROED_CRYSTAL + ELECTRON_BEAM + WEDGE)
+    assert experiment.crystal.subprogram == "microed"
+    assert experiment.beam == ElectronBeam(
+        energy=300.0,
+        exposure=1.0,
+        collimation=Collimation(shape="rectangular", x=4.0, y=4.0),
+    )
+
+
+def test_emsp_runs_the_same_engine() -> None:
+    """``MicroED.CalculateEM`` serves both keywords."""
+    crystal = with_lines(CRYSTAL, "Subprogram EMSP")
+    assert read(crystal + ELECTRON_BEAM + WEDGE).crystal.subprogram == "microed"
+
+
+def test_a_microed_beam_may_come_before_its_crystal() -> None:
+    """The beam is built once the crystal says which engine runs."""
+    experiment = read(ELECTRON_BEAM + MICROED_CRYSTAL + WEDGE)
+    assert experiment.beam.type == "electron"
+
+
+@pytest.mark.parametrize(
+    ("profile", "why"),
+    [
+        ("Type Gaussian\nFWHM 2 2", "no exposure"),
+        ("Type ExperimentalPGM\nFile beam.pgm\nPixelSize 1 1", "crashes it"),
+    ],
+)
+def test_microed_takes_its_exposure_from_a_tophat_only(profile: str, why: str) -> None:
+    beam = f"Beam\n{profile}\nEnergy 300\nExposure 1\n"
+    with pytest.raises(RaddoseTxtError, match=why):
+        read(MICROED_CRYSTAL + beam + WEDGE)
+
+
+def test_microed_needs_an_exposure() -> None:
+    """RADDOSE-3D crashes without one."""
+    beam = "Beam\nType TopHat\nEnergy 300\nCollimation Rectangular 4 4\n"
+    with pytest.raises(RaddoseTxtError, match="Exposure is required"):
+        read(MICROED_CRYSTAL + beam + WEDGE)
+
+
+@pytest.mark.parametrize(
+    "extra", ["Flux 1e12", "EnergyFWHM 0.1", "SemiAngle 10", "ApertureRadius 5"]
+)
+def test_what_microed_ignores_is_warned_about(extra: str) -> None:
+    """RADDOSE-3D accepts these silently and never reads them."""
+    keyword = extra.split()[0]
+    with pytest.warns(RaddoseTxtWarning, match=f"{keyword} is ignored"):
+        experiment = read(MICROED_CRYSTAL + with_lines(ELECTRON_BEAM, extra) + WEDGE)
+    assert experiment.beam.type == "electron"
+
+
+def test_monte_carlo_settings_are_ignored_by_microed_and_refused_otherwise() -> None:
+    """MicroED's Monte Carlo is commented out in RADDOSE-3D."""
+    with pytest.warns(RaddoseTxtWarning, match="SimElectrons is ignored"):
+        read(with_lines(MICROED_CRYSTAL, "SimElectrons 1000") + ELECTRON_BEAM + WEDGE)
+    with pytest.raises(RaddoseTxtError, match="Monte Carlo or XFEL simulation"):
+        read(with_lines(CRYSTAL, "SimElectrons 1000") + BEAM + WEDGE)
+
+
+def test_an_exposure_belongs_to_microed() -> None:
+    with pytest.raises(RaddoseTxtError, match="belongs to a MicroED beam"):
+        read(CRYSTAL + with_lines(BEAM, "Exposure 1") + WEDGE)

@@ -57,11 +57,23 @@ def case_dirs() -> list[Path]:
 
 
 def load_case(path: Path) -> tuple[dict[str, Any], Experiment, list[dict[str, float]]]:
-    """Load one case's metadata, configuration and reference summary."""
+    """Load one case's metadata, configuration and reference summary.
+
+    A MicroED case has no summary: it reports through its own files, which
+    ``test_microed_files.py`` compares.
+    """
     meta = yaml.safe_load((path / "case.yaml").read_text(encoding="utf-8"))
     experiment = Experiment.from_yaml(path / "config.yaml")
-    summary = json.loads((path / "expected" / "summary.json").read_text("utf-8"))
+    summary_path = path / "expected" / "summary.json"
+    summary = (
+        json.loads(summary_path.read_text("utf-8")) if summary_path.is_file() else []
+    )
     return meta, experiment, summary
+
+
+def is_microed(case_dir: Path) -> bool:
+    """Whether a case runs the MicroED engine rather than the MX calculation."""
+    return (case_dir / "expected" / "outputMicroED.CSV").is_file()
 
 
 CASE_DIRS = case_dirs()
@@ -89,6 +101,9 @@ def test_case_config_is_valid_and_complete(case_dir: Path) -> None:
 
     assert meta["tier"] in {"A", "B"}
     assert meta["exercises"], "every case must say what it is for"
+    if is_microed(case_dir):
+        assert experiment.crystal.subprogram == "microed"
+        return
     assert summary, "reference summary is empty"
     assert len(summary) == len(experiment.wedges), (
         "reference has a different number of wedges than the configuration"
@@ -163,7 +178,13 @@ def tolerance_for(tier: str, field: str, manifest_data: dict[str, Any]) -> float
     return float(tolerances["tier_A_relative"])
 
 
-CASE_PARAMS = [pytest.param(case_dir, id=case_dir.name) for case_dir in CASE_DIRS]
+#: The MX cases, which the comparisons below run. MicroED's are in
+#: ``test_microed_files.py``.
+CASE_PARAMS = [
+    pytest.param(case_dir, id=case_dir.name)
+    for case_dir in CASE_DIRS
+    if not is_microed(case_dir)
+]
 
 
 @functools.cache
@@ -257,6 +278,8 @@ def test_every_array_statistic_has_a_tolerance() -> None:
     tolerances = manifest()["array_tolerances"]
     seen = set()
     for case_dir in CASE_DIRS:
+        if is_microed(case_dir):
+            continue
         stats = json.loads(
             (case_dir / "expected" / "array_stats.json").read_text("utf-8")
         )

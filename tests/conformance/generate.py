@@ -124,6 +124,68 @@ def run_reference(root: Path, input_text: str, out_dir: Path) -> None:
             )
 
 
+#: What RADDOSE-3D prints on stderr when it falls over after a subprogram:
+#: ``Crystal.expose`` returns without exposing the wedge, and the summary
+#: writer then reads the wedge's elastic yield, which is null. MicroED has
+#: written its own files by then.
+SUBPROGRAM_CRASH = "ExposureSummary.getWedgeElastic()"
+
+#: The files MicroED writes, under fixed names, to the working directory.
+MICROED_FILES = ("outputMicroED.CSV", "outputMicroED_slices.csv")
+
+
+def run_microed_reference(root: Path, input_text: str, out_dir: Path) -> str:
+    """Run the reference on a MicroED input, returning what it printed.
+
+    MicroED writes its files to the working directory rather than under the
+    output prefix, so it runs in ``out_dir``. And RADDOSE-3D crashes after
+    every subprogram, once its files are written; that crash, and only
+    that one, is let through.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    input_path = out_dir / "input.txt"
+    input_path.write_text(input_text, encoding="utf-8")
+    # MicroED.java imports Selenium for its NIST lookup, which is commented
+    # out, but the class does not load without it.
+    selenium = sorted((root / "lib" / "selenium").rglob("*.jar"))
+    classpath = os.pathsep.join([java_classpath(root), *map(str, selenium)])
+    result = subprocess.run(
+        [
+            "java",
+            "-cp",
+            classpath,
+            "se.raddo.raddose3D.RD3D",
+            "--seed",
+            str(SEED),
+            "-i",
+            str(input_path),
+            "-p",
+            str(out_dir / "out-"),
+        ],
+        cwd=out_dir,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    written = all((out_dir / name).is_file() for name in MICROED_FILES)
+    if result.returncode != 0 and not (written and SUBPROGRAM_CRASH in result.stderr):
+        raise RuntimeError(
+            f"reference run failed:\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}"
+        )
+    return result.stdout
+
+
+def microed_report(stdout: str) -> str:
+    """The lines ``MicroED.CalculateEM`` prints, from the density to the
+    optimal thickness."""
+    lines = stdout.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("The density is"))
+    end = next(
+        i for i, line in enumerate(lines) if line.startswith("The optimal thickness")
+    )
+    return "\n".join(lines[start : end + 1]) + "\n"
+
+
 #: Directives whose argument is a path relative to this repository.
 PATH_DIRECTIVES = ("PDB ", "CIF ", "SeqFile ", "ModelFile ", "File ")
 
@@ -160,6 +222,19 @@ def generate_case(case: Case, root: Path, version: str, commit: str) -> None:
     # run with its own tree as the working directory. Absolutise for the run
     # only -- the committed config stays portable.
     input_text = resolve_paths(experiment.to_raddose_txt())
+
+    if experiment.crystal.subprogram == "microed":
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "out"
+            stdout = run_microed_reference(root, input_text, out_dir)
+            for name in MICROED_FILES:
+                shutil.copyfile(out_dir / name, expected / name)
+            (expected / "microed_report.txt").write_text(
+                microed_report(stdout), encoding="utf-8"
+            )
+        write_case_metadata(case, case_dir, version, commit)
+        print(f"  {case.case_id:38s} tier {case.tier}  MicroED")
+        return
 
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp) / "out"
@@ -201,6 +276,12 @@ def generate_case(case: Case, root: Path, version: str, commit: str) -> None:
             json.dumps(stats, indent=2) + "\n", encoding="utf-8"
         )
 
+    write_case_metadata(case, case_dir, version, commit)
+    print(f"  {case.case_id:38s} tier {case.tier}  {len(summary)} wedge(s)")
+
+
+def write_case_metadata(case: Case, case_dir: Path, version: str, commit: str) -> None:
+    """``case.yaml``: what the case exercises, and the reference it came from."""
     (case_dir / "case.yaml").write_text(
         yaml.safe_dump(
             {
@@ -215,7 +296,6 @@ def generate_case(case: Case, root: Path, version: str, commit: str) -> None:
         ),
         encoding="utf-8",
     )
-    print(f"  {case.case_id:38s} tier {case.tier}  {len(summary)} wedge(s)")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -296,6 +376,26 @@ def main(argv: list[str] | None = None) -> None:
                     "counts": 0,
                     "angle_degrees": 1.0e-9,
                 },
+                "microed_tolerances": {
+                    "counts_relative": 5.0e-8,
+                    "inelastic_mean_free_path_relative": 1.0e-8,
+                    "elastic_mean_free_path_relative": 1.0e-12,
+                    "slice_dose_relative": 1.0e-9,
+                },
+                "microed_tolerance_rationale": (
+                    "MicroED is deterministic. The dose, every slice and the "
+                    "elastic mean free path agree with the Java at full printed "
+                    "precision. The inelastic mean free path does not quite: "
+                    "whether a distant-collision integral takes its last point "
+                    "turns on the last bit of a resonance energy, which depends "
+                    "on the order elements are summed in, and the Java's is a "
+                    "HashSet's. That moves the path by at most 3.1e-9 (case "
+                    "125). The productive count and the information coefficient "
+                    "go as exp(-thickness / path), which multiplies that by the "
+                    "thickness over the path: 1.0e-8 in case 125, a 765 nm "
+                    "plate. The tolerances allow 3x or more. The grid searches' "
+                    "answers must be exact."
+                ),
                 "array_tolerance_rationale": (
                     "Set by the same rule as the summary tolerances: the "
                     "worst disagreement with the reference across the corpus, "

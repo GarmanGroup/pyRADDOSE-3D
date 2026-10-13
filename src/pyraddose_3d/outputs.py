@@ -22,6 +22,10 @@ those are not Python's. With the default prefix the files are:
     need per-image fields, so they are written only for a simulation run
     with ``record_images=True``.
 
+A MicroED run writes two files of its own instead, under the fixed names
+``MicroED.java`` gives them: ``outputMicroED.CSV``, one row of results, and
+``outputMicroED_slices.csv``, the dose slice by slice.
+
 Each file mirrors one Java class, ``Output<Name>``, and the notes on each
 function say where it copies a quirk rather than fixing it. Lines always end
 in ``\n``: the Java writes its platform separator in some places and ``\n``
@@ -32,6 +36,7 @@ from __future__ import annotations
 
 import datetime
 import math
+from decimal import ROUND_HALF_EVEN, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -44,7 +49,8 @@ from pyraddose_3d.backend.summary import resolution_rde
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from pyraddose_3d.models.beam import Beam
+    from pyraddose_3d.backend.microed import MicroEDResult
+    from pyraddose_3d.models.beam import XrayBeam
     from pyraddose_3d.models.crystal import Crystal
     from pyraddose_3d.models.wedge import Wedge
     from pyraddose_3d.solve import Simulation
@@ -55,12 +61,16 @@ __all__ = [
     "dwds_csv",
     "final_dose_state",
     "image_series",
+    "microed_csv",
+    "microed_report",
+    "microed_slices_csv",
     "rde_csv",
     "summary_csv",
     "summary_text",
     "voxel_dose_csv",
     "voxel_fluences_csv",
     "voxel_images",
+    "write_microed_outputs",
     "write_outputs",
 ]
 
@@ -530,7 +540,7 @@ def decay_description(crystal: Crystal) -> str:
     )
 
 
-def beam_description(beam: Beam) -> str:
+def beam_description(beam: XrayBeam) -> str:
     """The beam's ``getDescription``, newline included.
 
     The flux is the one asked for, before any container attenuates it.
@@ -682,10 +692,13 @@ def summary_text(simulation: Simulation) -> str:
     def row(label: str, value: str) -> str:
         return f"{label:<42}: {value}\n"
 
+    beam = experiment.beam
+    # A simulation is always an MX run; MicroED reports through its own files.
+    assert beam.type != "electron"
     out = [
         crystal_description(simulation) + "\n",
         decay_description(experiment.crystal) + "\n",
-        beam_description(experiment.beam),
+        beam_description(beam),
     ]
     for wedge, summary, exposure in zip(
         experiment.wedges, simulation.summaries, simulation.exposures, strict=True
@@ -778,5 +791,101 @@ def write_outputs(simulation: Simulation, prefix: str = "output-") -> list[Path]
         path = Path(f"{prefix}{name}")
         with path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(writer(simulation))
+        written.append(path)
+    return written
+
+
+# --- MicroED --------------------------------------------------------------
+
+
+def microed_csv(result: MicroEDResult) -> str:
+    """``MicroED.WriterFile``: ``outputMicroED.CSV``, a header and one row."""
+    values = (
+        result.energy,
+        result.dose,
+        result.elastic,
+        result.single_elastic,
+        result.inelastic,
+        result.productive,
+        result.information_coefficient,
+        result.best_energy,
+        result.best_thickness,
+    )
+    return (
+        "Beam_en, Dose, Elastic, Single_elastic, Inelastic, Productive, "
+        "Info_coef, Best_en, Best_t\n " + ", ".join(java_f(v) for v in values) + "\n"
+    )
+
+
+def microed_slices_csv(result: MicroEDResult) -> str:
+    """``outputMicroED_slices.csv``: each 5 nm slice's dose.
+
+    The depth column assumes 5 nm slices, as RADDOSE-3D's does, although a
+    crystal whose thickness is not a multiple of 5 nm is cut into slices of
+    its thickness over their number.
+    """
+    lines = ["Slice Number,Slice Depth (nm),Slice Dose (MGy)\n"]
+    for i, dose in enumerate(result.slice_doses, start=1):
+        lines.append(f"{i},{java_f((i - 1) * 5.0, 4)},{java_e(dose, 8)}\n")
+    return "".join(lines)
+
+
+def _decimal_format(value: float, places: int) -> str:
+    """``new DecimalFormat("0.00")``: half-even on the exact value, no grouping."""
+    if math.isnan(value):
+        return "NaN"
+    if math.isinf(value):
+        return "\u221e" if value > 0 else "-\u221e"
+    quantum = Decimal(1).scaleb(-places)
+    return str(Decimal(value).quantize(quantum, rounding=ROUND_HALF_EVEN))
+
+
+def microed_report(result: MicroEDResult) -> str:
+    """What ``MicroED.CalculateEM`` prints to the console."""
+    two = _decimal_format
+    return (
+        f"The density is: {java_e(result.density, 2)}\n"
+        f"Elastic Lambda: {java_double(result.elastic_mean_free_path)}\n"
+        f"GOS Inelastic Lambda: {java_double(result.inelastic_mean_free_path)}\n"
+        f"\nThe Dose in the exposed area by stopping power: "
+        f"{java_e(result.dose, 4)} MGy\n"
+        f"The CSDA range is: {two(result.csda_range, 2)} nm\n"
+        f"\nNumber elastic events: {two(result.elastic, 2)}\n"
+        f"Number single elastic events: {two(result.single_elastic, 2)}\n"
+        f"Number Inelastic events: {two(result.inelastic, 2)}\n"
+        f"Number productive events: {two(result.productive, 2)}\n"
+        f"Information Coefficient (productive/MGy): "
+        f"{two(result.information_coefficient, 2)}\n"
+        f"\nThe optimal accelerating voltage is: {two(result.best_energy, 0)} kV\n"
+        f"The optimal thickness is: {two(result.best_thickness, 0)} nm\n"
+    )
+
+
+def write_microed_outputs(
+    result: MicroEDResult, directory: str | Path = "."
+) -> list[Path]:
+    """Write the two files a MicroED run writes.
+
+    Parameters
+    ----------
+    result : MicroEDResult
+        From :func:`pyraddose_3d.solve.microed`.
+    directory : str | Path
+        Where to write them, under the fixed names RADDOSE-3D uses. It must
+        exist.
+
+    Returns
+    -------
+    list[Path]
+        The files written.
+    """
+    written = []
+    for name, text in (
+        ("outputMicroED.CSV", microed_csv(result)),
+        ("outputMicroED_slices.csv", microed_slices_csv(result)),
+    ):
+        path = Path(directory) / name
+        with path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
         written.append(path)
     return written

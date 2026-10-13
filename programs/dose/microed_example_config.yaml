@@ -1,0 +1,39 @@
+#################################################
+### MicroED dose calculation example          ###
+#################################################
+# A protein microcrystal in a 300 keV electron beam, from RADDOSE-3D's own
+# example input ED_input_cell.txt -- microed_example_input.txt here is that
+# file, and describes the same experiment. Load with
+# `Experiment.from_file(path)`, which reads either.
+#
+# MicroED is a separate engine: `subprogram: microed` in the crystal, and an
+# electron beam. It reports the dose by stopping power, how many electrons
+# scatter, and the voltage and thickness that would give the most
+# diffraction per unit dose. The .txt keyword for each setting is given in
+# brackets.
+crystal:
+  type: cuboid                    # [Type] cuboid, spherical, cylinder or polyhedron
+  dimensions: [0.2, 0.2, 0.2]     # [Dimensions] x, y, z in micrometres; z is along the beam
+  pixels_per_micron: 100.0        # [PixelsPerMicron] not used by MicroED
+  subprogram: microed             # [Subprogram EMED] the MicroED engine
+  composition:                    # [AbsCoefCalc RD3D]
+    method: unit_cell
+    unit_cell: [78.02, 78.02, 78.02]  # [UnitCell] a, b, c in Angstroms
+    num_monomers: 24              # [NumMonomers] per unit cell
+    num_residues: 51              # [NumResidues] amino acids per monomer
+    solvent_fraction: 0.5         # [SolventFraction] computed if left out
+
+beam:
+  type: electron                  # [Type TopHat] with an Exposure: an electron beam
+  energy: 300.0                   # [Energy] electron energy in keV
+  exposure: 0.00078               # [Exposure] fluence in electrons per square Angstrom
+  collimation:                    # [Collimation] the beam's size, which the crystal may cut
+    shape: circular
+    x: 2.0
+    y: 2.0
+
+# RADDOSE-3D requires a wedge, and MicroED ignores it.
+wedges:
+  - start: 0.0
+    end: 0.0
+    exposure_time: 1.0

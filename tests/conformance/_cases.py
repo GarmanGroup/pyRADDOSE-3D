@@ -81,6 +81,42 @@ BASELINE_COMPOSITION: dict[str, Any] = {
 }
 
 
+def _microed_crystal(
+    composition: dict[str, Any] | None = None,
+    dimensions: list[float] | None = None,
+) -> dict[str, Any]:
+    """A thin cuboid plate for the MicroED engine."""
+    return {
+        "type": "cuboid",
+        "dimensions": dimensions or [2.0, 2.0, 0.3],
+        "pixels_per_micron": 20.0,
+        "subprogram": "microed",
+        "composition": copy.deepcopy(composition or BASELINE_COMPOSITION),
+    }
+
+
+def _electron_beam(
+    energy: float = 300.0,
+    exposure: float = 1.0,
+    collimation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A MicroED beam: a top-hat of electrons."""
+    return {
+        "type": "electron",
+        "energy": energy,
+        "exposure": exposure,
+        "collimation": collimation or {"shape": "rectangular", "x": 4.0, "y": 4.0},
+    }
+
+
+#: The overrides every MicroED case starts from.
+MICROED: dict[str, Any] = {
+    "crystal": _microed_crystal(),
+    "beam": _electron_beam(),
+    "wedges": [{"start": 0.0, "end": 0.0, "exposure_time": 1.0}],
+}
+
+
 def baseline() -> dict[str, Any]:
     """The experiment every case is a variation of.
 
@@ -811,6 +847,114 @@ _CASES: list[Case] = [
                 "escape": {"photoelectron": True, "surrounding": True},
             },
             "wedges": [{"start": 0.0, "end": 2.0, "exposure_time": 1.0}],
+        },
+    ),
+    # --- MicroED (Subprogram EMED) -----------------------------------------
+    # Deterministic, so every case is tier A. The crystal is a thin plate in
+    # an electron beam; MicroED ignores the wedge, which the grammar requires.
+    Case("120-microed-baseline", "A", "MicroED: protein plate, 300 keV", MICROED),
+    Case(
+        "121-microed-circular-selenium",
+        "A",
+        "MicroED: circular beam inside the crystal, 200 keV, selenium",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    **BASELINE_COMPOSITION,
+                    "protein_heavy_atoms": {"Se": 2.0, "S": 4.0},
+                },
+                dimensions=[3.0, 3.0, 0.2],
+            ),
+            "beam": _electron_beam(
+                energy=200.0,
+                exposure=2.5,
+                collimation={"shape": "circular", "x": 1.0, "y": 1.5},
+            ),
+        },
+    ),
+    Case(
+        "122-microed-uneven-slices",
+        "A",
+        "MicroED: a thickness that is not a whole number of 5 nm slices",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(dimensions=[3.0, 3.0, 0.1237]),
+            "beam": _electron_beam(energy=120.0),
+        },
+    ),
+    Case(
+        "123-microed-electrons-stop",
+        "A",
+        "MicroED: 10 keV electrons that stop inside the crystal",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(dimensions=[3.0, 3.0, 2.0]),
+            "beam": _electron_beam(energy=10.0),
+        },
+    ),
+    Case(
+        "124-microed-cylinder",
+        "A",
+        "MicroED: cylinder, its thickness less 0.001 nm",
+        {
+            **MICROED,
+            "crystal": {
+                "type": "cylinder",
+                "diameter": 0.4,
+                "height": 1.5,
+                "pixels_per_micron": 20.0,
+                "subprogram": "microed",
+                "composition": BASELINE_COMPOSITION,
+            },
+        },
+    ),
+    Case(
+        "125-microed-rotated",
+        "A",
+        "MicroED: a rotated plate, sized by its rotated extent",
+        {
+            **MICROED,
+            "crystal": {**_microed_crystal(), "angle_p": 30.0, "angle_l": 10.0},
+        },
+    ),
+    # No PDB case: RADDOSE-3D's PDB route never multiplies its electron
+    # scattering atoms by the molecules in the cell, so its MicroED counts
+    # are for one asymmetric unit (UPSTREAM_FIXES.md). The port uses the
+    # whole cell, and cannot match until RADDOSE-3D is fixed.
+    # RADDOSE-3D's own example input, ED_input.txt.
+    Case(
+        "126-microed-small-molecule",
+        "A",
+        "MicroED: RADDOSE-3D's ED_input.txt, a small molecule",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    "method": "small_molecule",
+                    "unit_cell": [13.0824, 18.808, 29.608],
+                    "atoms": {"C": 10.0, "O": 50.0},
+                    "num_monomers": 1,
+                },
+                dimensions=[0.2, 0.2, 0.2],
+            ),
+            "beam": _electron_beam(
+                collimation={"shape": "circular", "x": 2.0, "y": 2.0}
+            ),
+        },
+    ),
+    Case(
+        "127-microed-sodium-nan",
+        "A",
+        "MicroED: sodium, whose zero binding energy makes the inelastic path NaN",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    **BASELINE_COMPOSITION,
+                    "solvent_heavy_conc": {"P": 425.0, "Na": 150.0},
+                }
+            ),
         },
     ),
 ]

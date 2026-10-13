@@ -40,7 +40,7 @@ behaviour rather than a difference in input.
 The port also reads `.txt` files (`Experiment.from_raddose_txt`), so existing
 inputs keep working. Every case survives the round trip YAML to `.txt` and
 back -- all but the seed, which RADDOSE-3D takes from its command line --
-which tests the reader against the emitter on 59 configurations.
+which tests the reader against the emitter on 67 configurations.
 
 ## The two tiers
 
@@ -51,9 +51,14 @@ in the Java's order -- one fluorescence draw, then the photoelectron draws, for
 each lit voxel in turn -- so with the case's seed it reproduces the Java's dose
 value by value rather than only its statistics.
 
+MicroED's eight cases (120-127) are tier A too, and simpler: the calculation
+draws no random numbers. They compare RADDOSE-3D's two MicroED files and what
+it prints, which gives the mean free paths to full precision
+(`test_microed_files.py`, tolerances in `MANIFEST.yaml`).
+
 **Tier B — statistical.** For a calculation the port cannot reproduce draw for
-draw, compared loosely. No case uses it at present; the Monte Carlo, XFEL and
-MicroED subprograms would, if ported.
+draw, compared loosely. No case uses it at present; the Monte Carlo and XFEL
+subprograms might, whose draws depend on each electron's history.
 
 ## Regenerating
 
