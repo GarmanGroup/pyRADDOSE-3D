@@ -1,7 +1,7 @@
 # How pyRADDOSE-3D got here
 
-Milestones 0 to 4 of the road-map, as they were completed: what was done, what the plan got
-wrong, and why each choice was made. Kept as the record. `ROADMAP.md` now looks forward, and
+Milestones 0 to 4 of the road-map, and MicroED, as they were completed: what was done, what the
+plan got wrong, and why each choice was made. Kept as the record. `ROADMAP.md` now looks forward, and
 the items still open here -- the relicensing conversation, optimising several settings at once
 -- are tracked there.
 
@@ -206,7 +206,7 @@ without a warning and publishes the notebooks as raw `.ipynb` downloads.
 - **Python floor** unchanged at 3.11, targeting CCP4 2026.
 - **scipy** unchanged: still a dependency for `erf` alone.
 
-# Milestone 3 — Deliver the differentiability — *energy done; several settings at once open*
+# Milestone 3 — Deliver the differentiability — *energy done; several settings at once is now Milestone 8*
 
 **Why.** The capability exists; the result does not. This is what justifies the port over
 running the Java.
@@ -353,6 +353,61 @@ reproduced each of these and marked it in its source:
   kept only the last energy's fluences;
 - the L-shell fluorescence of every element from Mg to Co went to voxel (0, 0, 0).
 
-All are now fixed in RADDOSE-3D, in PRs #36–#38, not yet merged, with the port following
+All are now fixed in RADDOSE-3D, in PRs #36–#38, merged on 2026-10-13, with the port following
 each fix and the corpus regenerated from it. `UPSTREAM_FIXES.md` has the detail, measurements and
 status.
+
+---
+
+# MicroED — *done*
+
+The first of RADDOSE-3D's three subprograms. The road-map called all three Milestone 6; the
+other two are now Milestone 7.
+
+**Why.** MicroED was wanted, and it was the cheapest of the three: the survey for the road-map
+found that RADDOSE-3D's MicroED is a deterministic calculation, with its Monte Carlo commented
+out.
+
+**Done when** a crystal with `Subprogram EMED` (or `EMSP`) and an electron beam gets
+RADDOSE-3D's two files and report. It does: fourteen conformance cases, 120–133, agree to
+3.1e-14 at worst.
+
+### What was ported
+
+`MicroED.CalculateEM` and the electron physics it calls in `CoefCalcCompute`, in
+`backend/microed.py`: the dose by stopping power, slice by slice; the elastic mean free path from
+ELSEPA's cross-sections; the inelastic one from a generalised oscillator strength (GOS) model;
+the scattering counts; and the grid searches for the best voltage and thickness. It needs no
+new dependency and 0.37 MB of data. `solve.microed` is its entry point, `type: electron` its beam,
+and `programs/dose` runs it.
+
+### The plan got the data wrong
+
+The road-map feared MicroED would need ELSEPA's 95 MB of angular tables. It reads them only from
+code RADDOSE-3D has commented out; the calculation needs the 0.37 MB of total cross-sections.
+
+### Fixed upstream first
+
+Porting it found defects that changed MicroED's answers, so they were fixed in RADDOSE-3D,
+with the port following and the corpus regenerated from each fix, as for escape. All are in
+#40, merged as `e2df6e4`. The first three change physics:
+
+- **The electron physics saw part of the crystal, or none of it**, for PDB, sequence and CIF
+  compositions. It kept its own count of the atoms, which the PDB route never multiplied by the
+  molecules in the cell and the sequence and CIF routes never filled.
+- **The distant-collision integral mixed two shell models.** Insulin's inelastic mean free path at
+  300 keV went from 234.20 to 253.15 nm. With one model, the port agrees with the Java to 2 ulp
+  rather than 3e-9.
+- **Nine elements lacked a binding energy the GOS model reads.** Na, Ca, Sc, Ti, V, Cr, Ga and Ge
+  gave NaN, and grid searches that reported 1990 kV and 1995 nm; Al crashed. The 22 values now
+  come from the X-ray Data Booklet and, for Al 3s and Cr 3d, Carlson (1975).
+- **Every XFEL, MicroED and Monte Carlo run ended in a `NullPointerException`**, in the summary
+  writers and then in the voxel writers. Running the corpus caught the second, which a unit test
+  with a stub writer had not.
+- Smaller: a crystal thinner than one 5 nm slice had no slices; slice depths assumed 5 nm slices;
+  a Gaussian beam gave MicroED no exposure; and Selenium, 9 MB of the jar, was needed only to
+  load commented-out code.
+
+Until each fix, the port reproduced the defect, or refused the input where RADDOSE-3D
+crashed, and then followed the fix.
+`UPSTREAM_FIXES.md` has the measurements.

@@ -20,7 +20,7 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
 - **MicroED** (`Subprogram EMED`) is ported: the dose to a thin crystal in an electron beam,
   slice by slice, the scattering counts, and the grid search for the best voltage and
   thickness. Its fourteen cases agree with RADDOSE-3D to the last printed digit or two, now that
-  RADDOSE-3D has its MicroED fixes (#40, step 4). It needs no new dependency and 0.37 MB of
+  RADDOSE-3D has its MicroED fixes (#40). It needs no new dependency and 0.37 MB of
   data.
 - It reads RADDOSE-3D's `.txt` input files as well as YAML, and writes the same eight output
   files RADDOSE-3D writes.
@@ -29,14 +29,17 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
 - Two run scripts, `programs/dose` and `programs/optimise`, and six notebooks, each run as a
   test.
 
-**What it is not yet:**
+**What it is not yet**, and the milestone that changes it:
 
-- **Published.** The repository has never been pushed, so its CI has never run: no Linux, no
-  Windows, and no notebooks in CI. Everything has been tested on one Mac.
-- **In CCP4.** That needs the relicensing, and answers from CCP4 (both under *Waiting on
-  people*).
-- **Optimising several settings at once**, which is the case that most needs gradients.
-- **RADDOSE-3D's other two subprograms**, Monte Carlo and XFEL.
+- **Light.** Two-thirds of the install is scipy, used for one function (Milestone 5).
+- **Tested beyond one Mac.** The repository has never been pushed, so its CI has never run
+  (Milestone 5).
+- **Able to run every RADDOSE-3D input.** It cannot download a PDB entry by its code, still reads
+  three file formats by hand, and lacks RADDOSE-3D's Monte Carlo and XFEL subprograms
+  (Milestones 6 and 7).
+- **Optimising several settings at once**, which is the case that most needs gradients
+  (Milestone 8).
+- **In CCP4.** That needs the relicensing, and answers from CCP4 (Milestone 9).
 
 ## How heavy it is
 
@@ -89,7 +92,7 @@ Every addition still to come has a cost in weight, so the rules are set before t
 4. **Optional capabilities are extras**: torch for gradients now, and any subprogram's data
    later.
 
-### Do now: about 70% off the install, 40% off start-up
+### Milestone 5's changes: about 70% off the install, 40% off start-up
 
 | change | saves | notes |
 |---|---|---|
@@ -132,101 +135,97 @@ Every addition still to come has a cost in weight, so the rules are set before t
   compared statistically, or an optional compiled accelerator -- and numba alone is over
   100 MB.
 
-## Next, in order
+## Milestones ahead
 
-### 1. The weight changes above
+Milestones 0 to 4, and MicroED, are done (`HISTORY.md`). Restated on 2026-10-13, after #40:
 
-Small and independent, with nobody to wait for. Each one keeps the conformance corpus
-unchanged.
+| milestone | in short | done when | waits on |
+|---|---|---|---|
+| 5. Light, and tested beyond one Mac | the weight changes; CI on three platforms | the install is about 35 MB without torch, and 73 of 73 cases pass in CI on Linux, macOS and Windows | a remote for the repository |
+| 6. Every RADDOSE-3D input, read as CCP4 asks | PDB codes; the last hand-written readers; two known divergences | every input RADDOSE-3D accepts runs with its answer, or is refused for good, and nothing but perhaps `.txt` is read by hand | CCP4, on `.txt` |
+| 7. Monte Carlo and XFEL | fixed in RADDOSE-3D first, then ported | their corpus cases pass, and their data sits in optional packages | the group, on fixing the Java |
+| 8. Several settings at once | the rest of Milestone 3 | a worked example beats a parameter scan, against a published result | nobody |
+| 9. Publication and CCP4 | the paper; the Working Group 2 submission | submitted | the relicensing |
 
-### 2. Finish CCP4's no-bespoke-parsers request
+**Order.** Milestone 5 comes first: it is small, and once it is done CI checks everything after
+it. Milestone 6 finishes the claim that any input RADDOSE-3D accepts works here, for everything
+already ported. Milestone 7 is the largest, and starts in RADDOSE-3D, so its first step can run
+alongside 5 and 6. Milestone 8 can be taken up at any point, and Milestone 9 waits on people.
 
-CCP4's developers have said they may not accept code that implements its own file parsers, and
-they encourage Gemmi for coordinate and reflection data. RADDOSE-3D reads no reflection data.
+### Milestone 5 — Light, and tested beyond one Mac
 
-**Done.** PDB, mmCIF, small-molecule CIF and sequence files are read with Gemmi. Checked against
-the hand-written readers they replaced:
+- **The weight changes** in *Keeping it light*: scipy replaced by the standard library, the
+  version written at build time, `types-PyYAML` moved to the dev group, the description fixed,
+  and the guard tests for the dependency list, lazy imports and the data budget. Each keeps the
+  corpus unchanged.
+- **A remote**, even a private one, so that CI runs: Linux, macOS and Windows, and the notebooks.
+- **Escape off macOS.** The escape code takes `cos` and `sin` from the platform's C library, which
+  match the Java on macOS but may differ in the last bit elsewhere, and a last-bit difference can
+  move a track into the next voxel (`UPSTREAM_FIXES.md`, *Found while fixing*). Linux CI shows
+  whether it does.
+- **Re-measure the tolerances.** The escape tolerances predate #38, which redrew the Monte Carlo
+  realisations; every case still passes, but the margins are unmeasured. The dose-centroid
+  tolerance is set by the antimony case and catches the cylinder's mirrored dose field with only
+  a factor of two to spare, so it wants setting per case.
 
-- every crystal structure in a random sample of 211 PDB entries gave the same composition;
-- so did all 50 COD files;
-- NMR and EM models are now refused.
+**Done when** the install is about 35 MB without torch, the import about 75 ms, both pinned by
+tests, and 73 of 73 cases pass in CI on all three platforms.
 
-Three conformance cases pin the PDB route to RADDOSE-3D itself, for NCS, nucleic acids and
-ligands. The comparison tool is kept on the local branch `gemmi-readers-comparison`.
+### Milestone 6 — Every RADDOSE-3D input, read as CCP4 asks
 
-**Still read by hand:**
+For the MX calculation and MicroED: any input file that works in RADDOSE-3D works here, with
+RADDOSE-3D's answer.
 
-- **PGM beam images** (`beam.read_pgm`), to move to `netpbmfile`. Pillow will not do: it
-  rescales any maxval but 255 and 65535 and rounds, which moves the profile.
-- **`.obj` meshes** (`wireframe.read_obj`), to move to `trimesh`.
-- **The data tables vendored from the Java**, read by splitting lines, to move to `csv` or
-  NumPy. Not a file format in CCP4's sense, but cheap to settle.
-- **RADDOSE-3D's `.txt` input** (`_raddose_txt.py`). No library reads it. Whether a program's
-  own keyword input counts is for CCP4 to say. If it does, it becomes a Lark grammar mirroring
-  the Java's `Inputfile.g`.
+- **PDB entries by code.** RADDOSE-3D downloads `PDB 3I40` from RCSB; the port looks for a file
+  called `3I40` and fails. Download with the standard library and read with Gemmi, as now. A test
+  that downloads is not reproducible, so the corpus keeps using local files.
+- **The last hand-written readers**, from CCP4's request: PGM beam images to `netpbmfile`
+  (Pillow will not do: it rescales any maxval but 255 and 65535, and rounds), `.obj` meshes to
+  `trimesh`, and the vendored tables to `csv` or NumPy. Each is checked against the reader it
+  replaces, on the corpus and beyond, as Gemmi was. RADDOSE-3D's `.txt` input waits on CCP4: if
+  it counts as a bespoke parser, it becomes a Lark grammar mirroring the Java's `Inputfile.g`.
+- **Two known divergences**, fixed in RADDOSE-3D first as before, then matched:
+  - a third `Dimensions` value on a cylinder makes RADDOSE-3D treat it as a cuboid in MicroED,
+    which the port does not;
+  - RADDOSE-3D skips a character its grammar does not know, with a message, and carries on.
+    The port warns. `input-b3x14.txt`, which RADDOSE-3D ships, has a stray `ß`.
 
-### 3. Waiting on people
+**Done when** every input RADDOSE-3D accepts runs here with its answer, or is one of the two
+refused for good (`AbsCoefCalc RDV2`/`RDV3`, `Type Experimental`), and no file but perhaps
+`.txt` is read by hand.
 
-These decide what happens after step 2, and none of them is code.
+### Milestone 7 — Monte Carlo and XFEL
 
-| decision | who | blocks |
-|---|---|---|
-| Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | CCP4, and nothing else |
-| Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | step 2's last item; the CLI |
-| A remote for the repository, even a private one | the author | CI on Linux and Windows; the notebooks in CI |
-| Sign-off on fixing Monte Carlo and XFEL's physics defects in RADDOSE-3D (step 6) | the group | porting them faithfully |
+| subprogram | keyword | source | what it models |
+|---|---|---|---|
+| Monte Carlo | `MONTECARLO`, `GOS` | `MC.java`, 4,809 lines | electron transport photon by photon, `outputMC.CSV` |
+| XFEL | `XFEL` | `XFEL.java`, 4,388 lines | the same, timed within a pulse; ionisation per atom, `outputXFEL.CSV` |
 
-The licence itself is settled: AGPL-3.0-only, as RADDOSE-3D is (`HISTORY.md`, Milestone 0).
-CCP4's route needs the work to fit its licence model and a Contributor Agreement signed by the
-copyright holders, so relicensing is on the critical path for CCP4 alone.
+They are one program twice: 76 of MC's methods are identical in XFEL, and both lean on the GOS
+physics MicroED already ported. One shared electron-transport core serves both. In order:
 
-### 4. Upstream: RADDOSE-3D
+1. **Fix them in RADDOSE-3D first**, with the group's sign-off, as #38 and #40 were. Surveying
+   them found physics defects -- "isotropic" directions drawn with the polar angle uniform,
+   Compton angles uniform, the elastic angle sampled without its sin(theta) weight and one bin
+   low, fluorescence looked up in the Auger table -- listed in `UPSTREAM_FIXES.md`. Elements from
+   Z = 35 have no inner subshells in the shared GOS model. And before anything can match them
+   value by value, the element a random number picks depends on a `HashSet`'s identity-hash
+   order, which changes between JVMs, so RADDOSE-3D does not reproduce its own runs. It needs a
+   fixed order.
+2. **Prototype one transport step in NumPy and time it against the Java.** That decides how the
+   port compares with RADDOSE-3D: draw for draw, or statistically.
+3. **Settle the data**: the low-energy angular tables in one optional package, the high-energy
+   ones in another, as *Keeping it light* sets out.
+4. **Build the corpus from the fixed Java**, then port. No gradients: a randomly drawn track has
+   none, as with escape.
 
-The fixes the port found are merged into RADDOSE-3D, as #36, #37, #38 and #40 on 2026-10-13:
+**Done when** their corpus cases pass, by whichever comparison step 2 chooses, and the core
+package stays within its weight budget.
 
-- **#36**: input that was silently ignored, `Type Experimental`, `-o voxelfluences`, and the
-  `PixelSize` docs;
-- **#37**: pink beams, collimation on measured beams, and the wedge image count;
-- **#38**: escape modelling. With photoelectron escape alone, its binding-energy fix raises the
-  dose by 3.5% for protein and by 20% for SeMet above the Se K edge. Its fluorescence-direction
-  fix moves doses by under 0.1%.
+### Milestone 8 — Several settings at once
 
-[#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) is the MicroED fixes, merged as
-`e2df6e4`. The corpus is regenerated from `master` at that commit. The MX numbers moved by at
-most 3e-14, from the order a `HashSet` sums elements in. #40:
-
-- ends the `NullPointerException` that every XFEL, MicroED and Monte Carlo run ended in;
-- gives the electron physics the whole crystal for PDB, sequence and CIF compositions. It used to
-  see one molecule's protein, the solvent alone, or nothing;
-- makes the distant-collision integral use one shell model, which lengthens insulin's inelastic
-  mean free path at 300 keV from 234.20 to 253.15 nm;
-- gives Na, Al, Ca, Sc, Ti, V, Cr, Ga and Ge the binding energies the GOS model reads, which the
-  tables lacked, from the X-ray Data Booklet and, for Al 3s and Cr 3d, Carlson. Al used to
-  crash, and the others gave NaN and grid searches that reported 1990 kV and 1995 nm. Should a
-  table still lack one, MicroED now warns and reports NaN without searching;
-- gives a crystal thinner than 5 nm one slice, steps slice depths by the real width, refuses
-  beams without an exposure, and removes Selenium, 9 MB of the 53 MB jar.
-
-**Still open in the Java:**
-
-- Lexer errors are not refused. A character the grammar does not know is skipped with a
-  message, and the run carries on. `input-b3x14.txt`, which RADDOSE-3D ships, has a stray `ß`.
-- Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's
-  requests, which then fail with a `NullPointerException`. The port vendors the tables; the Java
-  should too.
-- An NMR or EM model given to `AbsCoefCalc EXP` gets a dose for a cell of water. With no
-  `REMARK 290`, `CoefCalcFromPDB` has no symmetry operators, so no macromolecule. The port
-  refuses such files.
-- MicroED, beyond #40: elements from Z = 35 have no inner subshells in the GOS model, and a
-  third `Dimensions` value makes a cylinder a cuboid (`UPSTREAM_FIXES.md`).
-- `MicroED.getSolventFraction()` returns 0 when explicitly set; it is read only by MicroED's
-  disabled charge model.
-- Monte Carlo and XFEL's physics defects, step 6.
-
-### 5. Several settings at once (the rest of Milestone 3)
-
-The beam energy is optimised by gradient (`docs/examples/06_optimising_energy.ipynb`). What is
-left:
+The rest of Milestone 3. The beam energy is optimised by gradient
+(`docs/examples/06_optimising_energy.ipynb`). What is left:
 
 - **Several settings at once**: energy, beam size, exposure and translation together, under a
   dose budget. This is where gradients beat scans by orders of magnitude rather than a factor of
@@ -245,49 +244,49 @@ gradient and why. The integer image count and voxel occupancy are steps an optim
 see. And the torch and NumPy backends are not bit-identical: they agree to about 2e-4 on the
 summary, so the conformance claim is NumPy's.
 
-### 6. Monte Carlo and XFEL (the rest of Milestone 6)
+**Done when** a worked example finds a better strategy by gradient than a parameter scan does
+for the same compute, against a published result.
 
-All three subprograms are wanted. MicroED is done (`backend/microed.py`); RADDOSE-3D's MicroED
-turned out to be a deterministic calculation, its Monte Carlo commented out. The other two
-remain:
+### Milestone 9 — Publication and CCP4
 
-| subprogram | keyword | source | what it models |
-|---|---|---|---|
-| Monte Carlo | `MONTECARLO`, `GOS` | `MC.java`, 4,809 lines | electron transport photon by photon, `outputMC.CSV` |
-| XFEL | `XFEL` | `XFEL.java`, 4,388 lines | the same, timed within a pulse; ionisation per atom, `outputXFEL.CSV` |
+Gated on the relicensing, not on code. The paper is on differentiable strategy optimisation.
+Submission to CCP4 goes through Working Group 2, once the licence permits.
 
-They are one program twice: 76 of MC's methods are identical in XFEL, and both lean on the GOS
-physics MicroED already ported. One shared electron-transport core serves both. In order:
+## Waiting on people
 
-1. **Fix them in RADDOSE-3D first**, with the group's sign-off, as #38 was. Surveying them found
-   physics defects -- "isotropic" directions drawn with the polar angle uniform, Compton angles
-   uniform, the elastic angle sampled without its sin(theta) weight and one bin low,
-   fluorescence looked up in the Auger table -- listed in `UPSTREAM_FIXES.md`. And before
-   anything can match them value by value: the element a random number picks depends on a
-   `HashSet`'s identity-hash order, which changes between JVMs, so RADDOSE-3D does not
-   reproduce its own runs. It needs a fixed order.
-2. **Prototype one transport step in NumPy and time it against the Java.** That decides how the
-   port compares with RADDOSE-3D: draw for draw, or statistically.
-3. **Settle the data**: the low-energy tables in one optional package, the high-energy ones in
-   another.
-4. **Build the corpus from the fixed Java**, then port. No gradients: a randomly drawn track has
-   none, as with escape.
+None of these is code.
 
-### 7. Publication and CCP4 (Milestone 5)
+| decision | who | blocks |
+|---|---|---|
+| Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | Milestone 9 |
+| A remote for the repository, even a private one | the author | Milestone 5's CI |
+| Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | Milestone 6's last item; a CLI |
+| Sign-off on fixing Monte Carlo and XFEL's physics defects in RADDOSE-3D | the group | Milestone 7 |
 
-This step is gated on relicensing, not on code. The paper is on differentiable strategy
-optimisation. Submission to CCP4 goes through Working Group 2, once the licence permits.
+The licence itself is settled: AGPL-3.0-only, as RADDOSE-3D is (`HISTORY.md`, Milestone 0).
+CCP4's route needs the work to fit its licence model and a Contributor Agreement signed by the
+copyright holders, so relicensing is on the critical path for CCP4 alone.
 
-## Known gaps in the port's own testing
+## Upstream: RADDOSE-3D
 
-- **No CI has ever run.** The matrix includes Windows and the notebooks, but it needs a remote.
-- **Off macOS, untested.** The escape code takes `cos` and `sin` from the platform's C library.
-  Those match the Java on macOS but may differ in the last bit on Linux, and a last-bit
-  difference can move a track into the next voxel (`UPSTREAM_FIXES.md`, *Found while fixing*).
-- **Escape tolerances were not re-measured** after RADDOSE-3D's escape fixes redrew the Monte
-  Carlo realisations. Every case still passes.
-- **The dose-centroid tolerance is set by the antimony case**, so it catches the cylinder's
-  mirrored dose field with only a factor of two to spare. Per-case tolerances would tighten it.
+The port's fixes are merged into RADDOSE-3D as #36, #37, #38 and #40, all on 2026-10-13
+(`UPSTREAM_FIXES.md` has each, with measurements). #41 adds MicroED's beam requirements and
+output files to the user guide. The corpus follows `master` at `e2df6e4`.
+
+**Still open in the Java**, each with the milestone that takes it up:
+
+- Monte Carlo and XFEL's physics defects, and the GOS model's missing inner subshells from
+  Z = 35 (Milestone 7).
+- A third `Dimensions` value making a cylinder a cuboid, and lexer errors not being refused
+  (Milestone 6).
+- Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's
+  requests, which then fail with a `NullPointerException`. The port vendors the tables; the Java
+  should too.
+- An NMR or EM model given to `AbsCoefCalc EXP` gets a dose for a cell of water. With no
+  `REMARK 290`, `CoefCalcFromPDB` has no symmetry operators, so no macromolecule. The port
+  refuses such files.
+- `MicroED.getSolventFraction()` returns 0 when explicitly set; it is read only by MicroED's
+  disabled charge model.
 
 ## Verification, throughout
 
