@@ -1185,9 +1185,12 @@ class Escape:
                 (intensity, self._surrounding_in_crystal[lit], depth, offsets),
             )
         intensity, in_crystal_grid, depth, offsets = self._surrounding_geometry[1]
-        # Not divided between a pink beam's energies -- reproduced.
+        # Shared between a pink beam's energies, as the crystal's is.
+        samples = len(self.surrounding_absorption)
         attenuation_factor = (
-            math.pow(surrounding.pixels_per_micron, -2) * exposure_seconds / angle_count
+            math.pow(surrounding.pixels_per_micron, -2)
+            * exposure_seconds
+            / (angle_count * samples)
         )
         fluence = intensity * attenuation_factor * np.exp(depth * -attenuation)
         absorbed = float(self.surrounding_absorption[sample])

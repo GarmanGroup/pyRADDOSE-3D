@@ -2,5 +2,5 @@ case_id: 108-escape-surrounding-experimental-beam
 tier: A
 exercises: escape into a surrounding sized by an experimental beam's image
 seed: 20260917
-reference_version: 5.0.1091
-reference_commit: 7322e36
+reference_version: 5.0.1092
+reference_commit: d1e5ad5

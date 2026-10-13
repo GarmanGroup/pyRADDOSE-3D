@@ -2,5 +2,5 @@ case_id: 062-wedge-offset
 tier: A
 exercises: start offset and rotation axis offset
 seed: 20260917
-reference_version: 5.0.1091
-reference_commit: 7322e36
+reference_version: 5.0.1092
+reference_commit: d1e5ad5

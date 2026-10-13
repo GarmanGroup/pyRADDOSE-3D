@@ -83,7 +83,8 @@ class ImageRecord:
         ``(A, N)`` cumulative dose in MGy after each image -- the crystal's
         whole history up to that point, not the increment.
     fluence : Array
-        ``(A, N)`` fluence each voxel received in that image alone.
+        ``(A, N)`` fluence each voxel received in that image alone, summed
+        over a pink beam's energies.
     decay : Array
         ``(A, N)`` relative diffraction efficiency each voxel had while it
         diffracted in that image, from the decay model.
@@ -93,12 +94,12 @@ class ImageRecord:
     minimum_decay : Array
         ``(A,)`` lowest decay any lit voxel had in the image; infinite if
         none was lit.
-    observations : Array
-        ``(A,)`` lit voxels counted once per observation -- once per sampled
-        energy for a pink beam, as RADDOSE-3D counts the exposed volume.
+    exposed_voxels : Array
+        ``(A,)`` voxels lit in the image, each counted once however many of
+        a pink beam's energies lit it.
 
-    For a pink beam ``dose``, ``fluence`` and ``decay`` are the image's last
-    observation, as in the Java -- so ``fluence`` is the last energy's alone.
+    For a pink beam ``dose`` and ``decay`` are the image's last observation,
+    as in the Java.
     """
 
     dose: Array
@@ -107,7 +108,7 @@ class ImageRecord:
     weighted_decay: Array
     fluence_total: Array
     minimum_decay: Array
-    observations: Array
+    exposed_voxels: Array
 
 
 @dataclass(frozen=True)
@@ -554,10 +555,8 @@ class _Recorder:
     """Builds an :class:`ImageRecord`, as ``ExposureSummary`` observes.
 
     A pink beam observes each voxel once per sampled energy within an
-    image, and RADDOSE-3D's per-voxel images keep only the last of those --
-    so ``fluence`` is the last energy's, a 200th of the image's. Reproduced;
-    the per-image aggregates, which the Java sums over every observation,
-    are what the RDE uses.
+    image. Its fluence is summed over them, and the per-image aggregates
+    the RDE uses are sums over every observation, as in the Java.
     """
 
     def __init__(self) -> None:
@@ -567,32 +566,30 @@ class _Recorder:
         self.weighted: list[Array] = []
         self.fluence_total: list[Array] = []
         self.minimum: list[Array] = []
-        self.observations: list[Array] = []
 
     def start_image(self) -> None:
         for column in (
             self.dose, self.fluence, self.decay, self.weighted,
-            self.fluence_total, self.minimum, self.observations,
+            self.fluence_total, self.minimum,
         ):  # fmt: skip
             column.append(None)
 
     def observe(self, dose: Array, fluence: Array, decay: Array, xp: Any) -> None:
         lit = fluence > 0
         self.dose[-1] = dose
-        self.fluence[-1] = fluence
         self.decay[-1] = decay
         weighted = xp.sum(xp.where(lit, fluence * decay, 0.0))
         total = xp.sum(fluence)
         smallest = xp.min(xp.where(lit, decay, math.inf))
-        count = xp.sum(xp.where(lit, 1, 0))
         if self.weighted[-1] is None:
+            self.fluence[-1] = fluence
             self.weighted[-1], self.fluence_total[-1] = weighted, total
-            self.minimum[-1], self.observations[-1] = smallest, count
+            self.minimum[-1] = smallest
         else:
+            self.fluence[-1] = self.fluence[-1] + fluence
             self.weighted[-1] = self.weighted[-1] + weighted
             self.fluence_total[-1] = self.fluence_total[-1] + total
             self.minimum[-1] = xp.minimum(self.minimum[-1], smallest)
-            self.observations[-1] = self.observations[-1] + count
 
     def result(self, xp: Any) -> ImageRecord:
         return ImageRecord(
@@ -602,7 +599,9 @@ class _Recorder:
             weighted_decay=xp.stack(self.weighted),
             fluence_total=xp.stack(self.fluence_total),
             minimum_decay=xp.stack(self.minimum),
-            observations=xp.stack(self.observations),
+            exposed_voxels=xp.stack(
+                [xp.sum(xp.where(f > 0, 1, 0)) for f in self.fluence]
+            ),
         )
 
 

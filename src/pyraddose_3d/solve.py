@@ -1018,12 +1018,14 @@ def simulate(
         coefficients = material_coefficients(
             built, beam.energy if energies is None else energies
         )
-    # What RADDOSE-3D reports: for a pink beam, the coefficients at the last
-    # energy sampled, which is what its CoefCalc holds when it prints them.
+    # What RADDOSE-3D reports: the coefficients at the beam's energy, the
+    # mean of a pink beam's.
     reported = coefficients
     if energies is not None:
-        reported = MaterialCoefficients(
-            *(value[-1] for value in dataclasses.astuple(coefficients))
+        reported = (
+            AVERAGE_COEFFICIENTS
+            if built is None
+            else material_coefficients(built, beam.energy)
         )
 
     decay = decay_function(crystal.decay_model, crystal.decay_parameters)

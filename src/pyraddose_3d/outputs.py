@@ -209,7 +209,7 @@ def image_series(simulation: Simulation) -> dict[str, np.ndarray]:
         weighted = _numpy(images.weighted_decay)
         fluence_total = _numpy(images.fluence_total)
         minimum = _numpy(images.minimum_decay)
-        observations = _numpy(images.observations)
+        exposed = _numpy(images.exposed_voxels)
         dwd = _numpy(exposure.image_dwd)
         columns["rde"].extend(resolution_rde(dwd, wedge.max_resolution))
 
@@ -221,10 +221,7 @@ def image_series(simulation: Simulation) -> dict[str, np.ndarray]:
             columns["image"].append(index + 1)
             columns["angle"].append(degrees)
             columns["dwd"].append(float(dwd[index]))
-            # Lit voxels counted once per observation: for a pink beam that
-            # is once per sampled energy, so RADDOSE-3D reports a volume that
-            # many times too large. Reproduced.
-            columns["volume"].append(int(observations[index]) * voxel_volume)
+            columns["volume"].append(int(exposed[index]) * voxel_volume)
             if fluence_total[index] > 0:
                 running_min = min(running_min, float(minimum[index]))
                 columns["rde_angle"].append(degrees)

@@ -5,10 +5,10 @@ Wedge 1:
 Collecting data for a total of 2.0s from phi = 0.0 to 10.0 deg.
 
 Crystal coefficients calculated with RADDOSE-3D. 
-Photelectric Coefficient: 2.85e-04 /um.
-Inelastic Coefficient: 1.80e-05 /um.
-Elastic Coefficient: 1.94e-05 /um.
-Attenuation Coefficient: 3.22e-04 /um.
+Photelectric Coefficient: 3.10e-04 /um.
+Inelastic Coefficient: 1.78e-05 /um.
+Elastic Coefficient: 2.01e-05 /um.
+Attenuation Coefficient: 3.48e-04 /um.
 Density: 1.09 g/ml.
 
 Average Diffraction Weighted Dose         : 1.701835 MGy
