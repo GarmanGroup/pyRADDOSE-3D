@@ -2,5 +2,5 @@ case_id: 124-microed-cylinder
 tier: A
 exercises: 'MicroED: cylinder, its thickness less 0.001 nm'
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: e2df6e4
+reference_version: 5.0.1088
+reference_commit: 3c9afaf

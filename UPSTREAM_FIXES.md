@@ -28,6 +28,7 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | PR | branch, onto | items | state |
 |---|---|---|---|
 | [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | merged as `e2df6e4` |
+| [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42) | `jd_mc_xfel_reproducible`, onto `master` | *Monte Carlo and XFEL*: reproducibility and running | open at `3c9afaf` |
 
 #40 was squash-merged with the same source as `ca553bc`, which the corpus had been generated
 from. The corpus is now regenerated from `master` at `e2df6e4`, and no number moved.
@@ -668,36 +669,74 @@ point turned on the last bit of an energy computed from the other shell model.
 
 ## Monte Carlo and XFEL: found surveying them
 
-From reading `MC.java` and `XFEL.java` on `master`, not yet from running them, ahead of porting
-them (`ROADMAP.md`, Milestone 7). `MC.java` is a near copy of `XFEL.java`, so most of these are in
-both.
+From reading `MC.java` (`Subprogram MONTECARLO` and `GOS`) and `XFEL.java` on `master` at
+`e2df6e4`, ahead of porting them (`ROADMAP.md`, Milestone 7). XFEL is a near copy of MC: 76 of
+their methods are identical. "MC:n" and "XFEL:n" are line numbers there. The port reproduces the
+physics defects until they are fixed in RADDOSE-3D, and is compared with it statistically.
 
-- **The element a random number picks depends on the JVM.** `Element` and `ElementEM` have no
-  `hashCode`, and the cascade iterates `HashMap`s keyed by them, so a run is not reproducible
-  across JVMs, and cannot be matched value by value until the order is fixed.
-- **"Isotropic" directions are not.** The polar angle is drawn uniformly on [0, 2π)
-  (`MC.java:1242`, `1306`), and Compton scattering angles are uniform (`:1445`).
-- **The elastic scattering angle is sampled without its sin(θ) weight, and one bin low** above
-  1° (`returnDeflectionAngle`).
-- **Fluorescence transitions are looked up in the Auger table**: `getTransitionIndex` ignores its
-  `auger` flag (`MC.java:1395`), so sulphur's 4-row fluorescence table is indexed by its 21 Auger
-  rows, giving zero energies and infinite times.
-- **The elastic probability divides by photoelectric plus Compton, not the total** (`:411`).
-- **Escape distances use the unrotated face normals** while occupancy uses the rotated ones
-  (`:4117`).
-- **A circular top-hat beam bounds y by |x|** (`:2771`), and a circular Gaussian draws its
-  radius from a one-dimensional normal.
-- **The multivariate normal beam uses a clock-seeded generator**, so it cannot be repeated with
-  `--seed` (`:2850`).
-- **Electrons above 20 keV in elements beyond Z = 52 crash**: there is no high-energy angular
-  table for them.
-- **`SimPhotons 1e6` is refused**: it is read with `Long.parseLong`.
-- **The surrounding's per-step dead work** -- FSE terms, and the overvoltage table re-read from
-  disk for every electron -- costs time but draws nothing.
-- **XFEL allocates three 4-D arrays with 15,300 time bins** before it knows the pulse length:
-  about 0.5 GB at 11 voxels a side. Observed: 1 GB for a 20 um crystal.
-- **The Monte Carlo mode may stall**: its stopping power turns negative just above the 50 eV
-  cutoff. A 20 um run finished normally in 19 s, so not confirmed.
+### Reproducibility and running: fixed first, in [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42)
+
+The `jd_mc_xfel_reproducible` branch at `3c9afaf`. Every fix but the last two changes no number,
+only which realisation a seed gives. Forty runs a side on `master` and the branch agreed for each
+mode.
+
+| defect | where | fix |
+|---|---|---|
+| The element a random number picks depends on the JVM. `Element` and `ElementEM` have no `hashCode`, and elements are chosen by walking `HashMap`s built from `HashSet`s, in identity-hash order. The same seed gave 50.8 and 53.6 MGy under two JVM hash modes (run) | `CoefCalcCompute` 647–683, 2125, 2805, 5269 | elements in atomic-number order; `hashCode` = Z |
+| A circular Gaussian beam with unequal FWHM samples from a clock-seeded generator, so `--seed` cannot repeat it | MC:2850, XFEL:2890 | two seeded normals, the same distribution |
+| `SimPhotons 1e6` and `1000000.0` are refused with an uncaught `NumberFormatException`, and so is any `Runs` not written as an integer | `Inputfile.g` 630, 640 | whole numbers in any notation |
+| The overvoltage tables are re-read from disk for every electron, and the Sternheimer factor searched for again after every inelastic event | MC:1558, XFEL:1617; `getSturnheimera` | read once; cached, since it depends on the composition alone |
+| XFEL allocates three 4-D arrays of 15,300 time bins before it knows the pulse: 719 MB for a 20 um crystal, and an `ArrayIndexOutOfBoundsException` for a 1 fs pulse through more than about 46 um | XFEL:188–192 | sized from the pulse |
+| An experimental beam, a beam above 20 keV with an element beyond Z = 52, an XFEL beam without `PulseEnergy`, and the average composition each crash partway through | MC:865, 3338; XFEL:268 | refused before the run |
+| The CSV files use the default locale, so a German one writes `57,305000` | `WriterFile` | `Locale.ROOT` |
+| The stopping power sums each element's charge into a `long`, truncating as it goes, so a count one ulp below a whole number loses an electron or not depending on element order. Making the order fixed moved MicroED case 129 by 6e-7, against the port (run) | `calcStoppingPower` | a `double`. MicroED's doses move by up to 8e-5 (case 123, where electrons stop) |
+| XFEL keeps the inside/outside answer for the first point tested in each voxel. Electrons start inside, so voxels the surface cuts through lean inside: on a 5 um cylinder the dose came out about 6% high, t = 1.9 over 20 runs each; no effect on a cuboid (run) | XFEL:3828–3875 | tested at each point, as MC does, at no measurable cost |
+
+### Physics: to fix in both, with the group's sign-off
+
+Angles:
+- **"Isotropic" directions are not**: the polar angle is uniform on [0, 2π) (MC:1242, 1306).
+- **Compton scattering angles are uniform** (MC:1445), not Klein–Nishina.
+- **The elastic angle is sampled without its sin θ weight**; above 20 keV the CDF ignores the
+  table's uneven bins and maps index 146 onwards one bin low (`returnDeflectionAngle`, MC:3336).
+- **`getNewDirectionVector` deflects by the wrong angle**: `AN = -(x/y)` and `V1 = AN·sin`,
+  where Joy's formula has `-(cx/cz)` and `AM·sin`. Renormalising hides it: a requested 30°
+  comes out between 6° and 35° (MC:2550).
+- **The polarised emission direction is rotated by 2π − angle** though tracking is in the lab
+  frame (MC:1209).
+
+Energy accounting:
+- **Auger and fluorescence cascades double-count hole energy**: the Auger branch deposits
+  Eb − E_A and then recurses on both holes, which deposit their own binding energies (MC:1292,
+  1323; XFEL:1370).
+- **Phosphorus never relaxes**: Z = 15 is missing from the eligibility list (MC:1275).
+- **MC looks fluorescence up in the Auger table**: `getTransitionIndex` ignores its flag
+  (MC:1395). XFEL does not.
+- **The elastic photon probability divides by photoelectric plus Compton**, not the total
+  (MC:411).
+- **Auger electrons below 50 eV deposit nothing** (MC:1629).
+- **GOS mean free paths are inconsistent**: `1/gosOuterLambda` against `gosOuterLambda`, and an
+  inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
+
+Geometry and beams:
+- **Escape distances use unrotated face normals** (MC:4131), and XFEL's occupancy test does too.
+- **A circular top-hat bounds y by |x|** (MC:2771); a circular Gaussian draws its radius from a
+  one-dimensional normal.
+- **Circular exposed areas are 4× too large**: π·x·y for diameters x and y (MC:2671).
+- **Rotation runs the wrong way when end < start**, and XFEL truncates the angle to whole
+  radians (XFEL:368).
+- **The inverse transform is applied in the wrong order** when there are both offsets and
+  rotation (MC:3914).
+
+XFEL:
+- The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs divides by zero.
+- Coefficients are left at the last photon's energy for the diffraction efficiency, which matters
+  for a pink beam.
+- Lifetimes are fixed delays, not sampled.
+- Two random numbers are drawn and not used in fluorescence.
+
+Refuted: **the stopping power does not turn negative above 50 eV**. The Joy–Luo correction is
+applied twice, which keeps it positive.
 
 ## Order of work
 

@@ -486,13 +486,14 @@ def stopping_power(material: ElectronMaterial, energy: float) -> float:
     mean_ln_i = 0.0
     mean_z = 0.0
     sum_a = 0.0
-    # A long in the Java: each element adds Z times its atoms, truncated.
-    sum_z = 0
+    # Truncated to a long in RADDOSE-3D until 2026-10, which made the
+    # stopping power depend on the order elements were summed in.
+    sum_z = 0.0
     for atom in material.atoms:
         a = atom.atomic_weight
         z = atom.z
         fraction = (atom.count * a) / material.molecular_weight
-        sum_z = int(sum_z + z * atom.count)
+        sum_z += z * atom.count
         sum_a += a * atom.count
         j = atom.shells.mean_excitation
         if z not in _CONDENSED_PHASE:

@@ -2,5 +2,5 @@ case_id: 025-beam-uncollimated
 tier: A
 exercises: 'no Collimation line: RADDOSE-3D''s beam is then uncollimated'
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: e2df6e4
+reference_version: 5.0.1088
+reference_commit: 3c9afaf

@@ -143,7 +143,7 @@ Milestones 0 to 4, and MicroED, are done (`HISTORY.md`). Restated on 2026-10-13,
 |---|---|---|---|
 | 5. Light, and tested beyond one Mac | the weight changes; CI on three platforms | the install is about 35 MB without torch, and 73 of 73 cases pass in CI on Linux, macOS and Windows | a remote for the repository |
 | 6. Every RADDOSE-3D input, read as CCP4 asks | PDB codes; the last hand-written readers; two known divergences | every input RADDOSE-3D accepts runs with its answer, or is refused for good, and nothing but perhaps `.txt` is read by hand | CCP4, on `.txt` |
-| 7. Monte Carlo and XFEL | fixed in RADDOSE-3D first, then ported | their corpus cases pass, and their data sits in optional packages | the group, on fixing the Java |
+| 7. Monte Carlo and XFEL | made reproducible in RADDOSE-3D (#42), ported as they are, then fixed in both | their tier-B cases pass, and their data sits in optional packages | the group, on the physics fixes |
 | 8. Several settings at once | the rest of Milestone 3 | a worked example beats a parameter scan, against a published result | nobody |
 | 9. Publication and CCP4 | the paper; the Working Group 2 submission | submitted | the relicensing |
 
@@ -202,25 +202,41 @@ refused for good (`AbsCoefCalc RDV2`/`RDV3`, `Type Experimental`), and no file b
 | XFEL | `XFEL` | `XFEL.java`, 4,388 lines | the same, timed within a pulse; ionisation per atom, `outputXFEL.CSV` |
 
 They are one program twice: 76 of MC's methods are identical in XFEL, and both lean on the GOS
-physics MicroED already ported. One shared electron-transport core serves both. In order:
+physics MicroED already ported. One shared electron-transport core serves both.
 
-1. **Fix them in RADDOSE-3D first**, with the group's sign-off, as #38 and #40 were. Surveying
-   them found physics defects -- "isotropic" directions drawn with the polar angle uniform,
-   Compton angles uniform, the elastic angle sampled without its sin(theta) weight and one bin
-   low, fluorescence looked up in the Auger table -- listed in `UPSTREAM_FIXES.md`. Elements from
-   Z = 35 have no inner subshells in the shared GOS model. And before anything can match them
-   value by value, the element a random number picks depends on a `HashSet`'s identity-hash
-   order, which changes between JVMs, so RADDOSE-3D does not reproduce its own runs. It needs a
-   fixed order.
-2. **Prototype one transport step in NumPy and time it against the Java.** That decides how the
-   port compares with RADDOSE-3D: draw for draw, or statistically.
-3. **Settle the data**: the low-energy angular tables in one optional package, the high-energy
-   ones in another, as *Keeping it light* sets out.
-4. **Build the corpus from the fixed Java**, then port. No gradients: a randomly drawn track has
-   none, as with escape.
+**Decided:** the port is compared with RADDOSE-3D *statistically*, not draw for draw. Matching
+draw for draw would mean following every electron in the Java's depth-first order with its
+random numbers; comparing statistically lets the port vectorise across particles, which is
+what can make it fast in Python. And the Java is fixed in stages around the port, not all
+first:
 
-**Done when** their corpus cases pass, by whichever comparison step 2 chooses, and the core
-package stays within its weight budget.
+1. **Make RADDOSE-3D reproducible and runnable, with no physics change**:
+   [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42), open.
+   - Elements are chosen in atomic-number order: identity-hash order had meant the same seed gave
+     a different run on a different JVM.
+   - Every draw is seeded.
+   - `SimPhotons 1e6` is accepted.
+   - XFEL's arrays are sized from the pulse, which cuts its memory by two-thirds.
+   - Unrunnable inputs are refused before the run.
+   - Two small numeric fixes it ran into: a truncated charge sum in the stopping power, and
+     XFEL's per-voxel occupancy cache, which biased small non-cuboid crystals by about 6%.
+2. **Port foundations**:
+   - the models and `.txt` keywords;
+   - the Auger, fluorescence and overvoltage tables, about 160 KB, in the core;
+   - ELSEPA's angular tables as optional data packages;
+   - tier-B (statistical) conformance, calibrated: Java against Java and the port against
+     itself must pass, and mutations of the claimed detectable size must fail.
+3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within
+   about 3× of it, continue; otherwise reconsider.
+4. **Port the current physics**, defects and all: the simple Monte Carlo, then GOS, then XFEL.
+5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
+   MicroED. The defects -- "isotropic" directions with a uniform polar angle, uniform Compton
+   angles, elastic angles without their sin θ weight, a wrong direction-vector formula, cascades
+   that double-count hole energy, and more -- are listed in `UPSTREAM_FIXES.md`.
+
+No gradients: a randomly drawn track has none, as with escape.
+
+**Done when** their tier-B cases pass and the core package stays within its weight budget.
 
 ### Milestone 8 — Several settings at once
 

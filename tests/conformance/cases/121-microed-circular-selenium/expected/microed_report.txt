@@ -1,15 +1,15 @@
 The density is: 1.10e+00
-Elastic Lambda: 408.709251766459
-GOS Inelastic Lambda: 209.4117951829035
+Elastic Lambda: 408.7092517664589
+GOS Inelastic Lambda: 209.41179518290326
 
 The Dose in the exposed area by stopping power: 1.0859e+01 MGy
-The CSDA range is: 425046.62 nm
+The CSDA range is: 425029.38 nm
 
 Number elastic events: 113972797.52
 Number single elastic events: 88352056.13
 Number Inelastic events: 181194130.72
 Number productive events: 33997038.92
-Information Coefficient (productive/MGy): 3130897.84
+Information Coefficient (productive/MGy): 3130774.61
 
 The optimal accelerating voltage is: 790 kV
 The optimal thickness is: 140 nm

@@ -1,6 +1,6 @@
 The density is: 1.37e+00
-Elastic Lambda: 406.5665648155143
-GOS Inelastic Lambda: 202.48311478410852
+Elastic Lambda: 406.56656481551437
+GOS Inelastic Lambda: 202.48311478410972
 
 The Dose in the exposed area by stopping power: 3.6107e+00 MGy
 The CSDA range is: 650917.58 nm

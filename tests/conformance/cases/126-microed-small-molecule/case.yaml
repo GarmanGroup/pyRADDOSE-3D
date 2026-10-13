@@ -2,5 +2,5 @@ case_id: 126-microed-small-molecule
 tier: A
 exercises: 'MicroED: RADDOSE-3D''s ED_input.txt, a small molecule'
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: e2df6e4
+reference_version: 5.0.1088
+reference_commit: 3c9afaf

@@ -2,5 +2,5 @@ case_id: 103-escape-surrounding
 tier: A
 exercises: escape into a surrounding medium
 seed: 20260917
-reference_version: 5.0.1087
-reference_commit: e2df6e4
+reference_version: 5.0.1088
+reference_commit: 3c9afaf
