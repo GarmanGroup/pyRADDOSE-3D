@@ -72,6 +72,19 @@ defect found while fixing these is recorded but not fixed (see *Found while fixi
   realisations. Every case still agrees with the Java within the existing tolerances, at worst
   2e-4 on a quantised quantity, but the self-sensitivity behind those tolerances was measured on
   the old realisations.
+- **With escape modelled, voxel doses depend on the JVM.** CI's Java 21 job failed #38's golden
+  escape run: `Dose Threshold` was 1.05e-5 from the golden value, against a 1e-5 tolerance. x86-64
+  Temurin 21 on macOS gives the same value, so it is the JVM. On the golden escape input, it and JDK
+  25 on arm64 disagree on about half of the 120 voxels, by up to 1.5e-4, on `master` as much as on
+  the fixes. Averaged fields agree to 5e-6. `Dose Threshold` is one voxel's dose and does not
+  average. The escape fixes redrew the realisation, so it now lands on a voxel the two JVMs
+  disagree on. #38 gives the fields that follow one voxel (`Max Dose`, `Dose Threshold`, and the
+  three computed from them) a tolerance of 1e-3. **For the port:** the corpus was generated on JDK
+  25 on arm64, and the port matches it on macOS. A corpus regenerated on another JVM could move
+  escape cases' per-voxel values by up to 1.5e-4. Whether the port's tolerances absorb that has
+  not been checked. The port also takes `cos` and `sin` from the platform's C library
+  (`escape.py`), not from fdlibm as `StrictMath` does. It agrees with the Java on macOS but is
+  untested on Linux.
 
 ---
 
