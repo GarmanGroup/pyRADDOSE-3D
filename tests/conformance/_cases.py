@@ -585,6 +585,24 @@ _CASES: list[Case] = [
             "wedges": [{"start": 45.0, "end": 45.0, "exposure_time": 10.0}],
         },
     ),
+    # A wedge that runs backwards. RADDOSE-3D counted its images as
+    # sign * (int)(span / step + 1) of a negative span, two short, and
+    # tested its requested step against a negative span, so ignored it.
+    Case(
+        "067-wedge-reversed",
+        "A",
+        "a wedge from 90 to 0 degrees, asking for 3 degree steps",
+        {
+            "wedges": [
+                {
+                    "start": 90.0,
+                    "end": 0.0,
+                    "exposure_time": 10.0,
+                    "angular_resolution": 3.0,
+                }
+            ]
+        },
+    ),
     # --- solvent ------------------------------------------------------------
     Case(
         "066-wedge-resolution-overridden",
