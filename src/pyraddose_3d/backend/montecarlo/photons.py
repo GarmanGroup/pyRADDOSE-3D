@@ -89,11 +89,11 @@ class BeamShape:
     def exposed_area_nm2(self) -> float:
         """``getExposedArea``: the aperture's area, nm^2.
 
-        An ellipse's is taken as pi times its full widths, four times its
-        area; reproduced.
+        An ellipse's is pi times its half-widths; RADDOSE-3D took its full
+        widths, four times the area, until #45.
         """
         x, y = self.collimation[0] * 1000, self.collimation[1] * 1000
-        return math.pi * x * y if self.circular else x * y
+        return math.pi * (x / 2) * (y / 2) if self.circular else x * y
 
     def exposes(self, x_nm: np.ndarray, y_nm: np.ndarray) -> np.ndarray:
         """``testIfInsideExposedArea``: points within the aperture."""
@@ -113,49 +113,30 @@ def _plus_or_minus(rng: np.random.Generator, n: int) -> np.ndarray:
 def beam_positions(
     rng: np.random.Generator, beam: BeamShape, n: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """``getPhotonBeamXYPos``: where each photon crosses the crystal's plane, nm."""
-    cx, cy = beam.collimation
-    if beam.kind == "tophat":
-        x = 1000 * cx * (rng.random(n) - 0.5)
-        u = rng.random(n)
-        if beam.circular:
-            # Bounded by the line from the centre to the aperture's corner,
-            # not by the ellipse; reproduced.
-            y = (
-                1000
-                * u
-                * np.sqrt(
-                    math.pow(cy / 2, 2) * (np.power(x / 1000, 2) / math.pow(cx / 2, 2))
-                )
-            )
-            y = y * _plus_or_minus(rng, n)
-        else:
-            y = 1000 * ((u * cy) - (cy / 2))
-        return x, y
+    """``getPhotonBeamXYPos``: where each photon crosses the crystal's plane, nm.
 
-    sx, sy = beam.sigma
-    if not beam.circular:
-        return (
-            _truncated_normal(rng, sx, cx, n) * 1000,
-            _truncated_normal(rng, sy, cy, n) * 1000,
-        )
-    if sx == sy:
-        rng.random(n)  # RND1, drawn and never used
-        theta = 2 * math.pi * rng.random(n)
-        r = _truncated_normal(rng, sx, cx, n) * 1000
-        return r * np.cos(theta), r * np.sin(theta)
+    Uniform over a top-hat's aperture; a Gaussian's two normals each
+    truncated to the aperture's extent. Within an elliptical aperture, a
+    point is drawn again until it falls inside, as RADDOSE-3D draws it since
+    #45: a circular top-hat filled a bow tie, and a circular Gaussian drew
+    its radius from a one-dimensional normal.
+    """
+    cx, cy = beam.collimation
     x = np.empty(n)
     y = np.empty(n)
     pending = np.arange(n)
     while len(pending):
-        tx = rng.standard_normal(len(pending)) * sx * 1000
-        ty = rng.standard_normal(len(pending)) * sy * 1000
-        accept = (np.power(tx / 1000, 2) / math.pow(cx / 2, 2)) + (
-            np.power(ty / 1000, 2) / math.pow(cy / 2, 2)
-        ) <= 1
-        x[pending[accept]] = tx[accept]
-        y[pending[accept]] = ty[accept]
-        pending = pending[~accept]
+        m = len(pending)
+        if beam.kind == "tophat":
+            tx = 1000 * cx * (rng.random(m) - 0.5)
+            ty = 1000 * ((rng.random(m) * cy) - (cy / 2))
+        else:
+            tx = _truncated_normal(rng, beam.sigma[0], cx, m) * 1000
+            ty = _truncated_normal(rng, beam.sigma[1], cy, m) * 1000
+        keep = beam.exposes(tx, ty) if beam.circular else np.ones(m, dtype=bool)
+        x[pending[keep]] = tx[keep]
+        y[pending[keep]] = ty[keep]
+        pending = pending[~keep]
     return x, y
 
 

@@ -163,31 +163,34 @@ def test_an_electron_that_stops_inside_deposits_its_energy(setup) -> None:  # ty
 
 def test_beams_stay_within_their_apertures() -> None:
     rng = np.random.default_rng(4)
-    for kind, circular in (("gaussian", False), ("tophat", False)):
-        beam = photons.BeamShape(kind, (40.0, 30.0), circular, (8.0, 8.0))
-        x, y = photons.beam_positions(rng, beam, 10000)
-        assert beam.exposes(x, y).all()
+    for kind in ("gaussian", "tophat"):
+        for circular in (False, True):
+            beam = photons.BeamShape(kind, (40.0, 30.0), circular, (8.0, 8.0))
+            x, y = photons.beam_positions(rng, beam, 10000)
+            assert beam.exposes(x, y).all()
 
 
-def test_a_circular_gaussian_reaches_the_x_aperture_in_every_direction() -> None:
-    """With equal widths its radius is drawn within the x aperture alone, so
-    an elliptical aperture narrower in y is overrun; reproduced."""
+def test_a_circular_tophat_fills_its_circle() -> None:
+    """RADDOSE-3D #45: half the photons have |y| > |x|. It filled a bow tie."""
     rng = np.random.default_rng(4)
-    beam = photons.BeamShape("gaussian", (40.0, 30.0), True, (20.0, 20.0))
-    x, y = photons.beam_positions(rng, beam, 10000)
-    radius = np.hypot(x, y)
-    assert radius.max() <= 20000
-    assert np.abs(y).max() > 15000
+    beam = photons.BeamShape("tophat", (5.0, 5.0), True)
+    x, y = photons.beam_positions(rng, beam, 20000)
+    assert np.mean(np.abs(y) > np.abs(x)) == pytest.approx(0.5, abs=0.02)
 
 
-def test_a_circular_tophat_fills_a_bow_tie() -> None:
-    """Its y is bounded by the line from the centre to the aperture's corner,
-    not by the ellipse; reproduced."""
+def test_a_circular_gaussians_radii_are_two_dimensional() -> None:
+    """RADDOSE-3D #45: 1 - exp(-1/2) within one sigma, not 68%."""
     rng = np.random.default_rng(4)
-    beam = photons.BeamShape("tophat", (40.0, 30.0), True)
-    x, y = photons.beam_positions(rng, beam, 10000)
-    assert np.all(np.abs(y) / 15000 <= np.abs(x) / 20000 + 1e-12)
-    assert not beam.exposes(x, y).all()
+    sigma = 20 / (2 * math.sqrt(2 * math.log(2)))
+    beam = photons.BeamShape("gaussian", (200.0, 200.0), True, (sigma, sigma))
+    x, y = photons.beam_positions(rng, beam, 20000)
+    within = np.mean(np.hypot(x, y) / 1000 < sigma)
+    assert within == pytest.approx(1 - math.exp(-0.5), abs=0.015)
+
+
+def test_a_circular_exposed_area_is_the_ellipses() -> None:
+    beam = photons.BeamShape("tophat", (5.0, 4.0), True)
+    assert beam.exposed_area_nm2() == pytest.approx(math.pi * 2500 * 2000)
 
 
 def test_compton_electrons_stay_within_the_compton_edge() -> None:
