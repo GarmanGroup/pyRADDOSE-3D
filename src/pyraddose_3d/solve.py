@@ -1084,18 +1084,6 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     resolution = wedge_resolution(wedge.start, wedge.end, wedge.angular_resolution)
     ox, oy, oz = wedge.start_offset or (0.0, 0.0, 0.0)
     tx, ty, tz = wedge.translate_per_degree or (0.0, 0.0, 0.0)
-    rotates = not (
-        abs(math.radians(wedge.start) - math.radians(wedge.end))
-        < math.radians(resolution)
-        or wedge.end == 0
-    )
-    if rotates and any((ox, oy, oz, tx, ty, tz)):
-        raise ValueError(
-            "RADDOSE-3D's Monte Carlo cannot rotate an offset or translated "
-            "crystal: it places points by the crystal's offset after rotating "
-            "and voxels by it before, and a point near a face falls outside the "
-            "voxel grid, an ArrayIndexOutOfBoundsException (UPSTREAM_FIXES.md)"
-        )
     return SimpleSetup(
         mesh=Mesh(np.asarray(mesh.vertices), np.asarray(mesh.triangles)),
         pixels_per_micron=pixels_per_micron(crystal, mesh),

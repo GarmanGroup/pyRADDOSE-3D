@@ -11,12 +11,10 @@ lab frame:
 - how far an electron is from leaving it (``getIntersectionDistance``);
 - which voxel they are in (``convertToPixelCoordinates``).
 
-Here every point carries its own angle and offset. The first three are
+Here every point carries its own angle and offset, and every question is
 answered in the crystal's own frame, which gives the same answers away from
-points exactly on a face. The Java's two quirks are kept: the distance to
-leaving uses the planes of the *unrotated* crystal in the lab frame, and the
-voxel lookup translates before rotating where the rotation of the mesh
-translates first and rotates after. Both are listed in ``UPSTREAM_FIXES.md``.
+points exactly on a face. RADDOSE-3D answered the last two wrongly for a
+rotated crystal until #44 (``UPSTREAM_FIXES.md``).
 
 Lengths are in nm, as the Java tracks them; the mesh is in um.
 """
@@ -24,11 +22,14 @@ Lengths are in nm, as the Java tracks them; the mesh is in um.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from pyraddose_3d.backend.geometry import Mesh, triangle_planes
 from pyraddose_3d.backend.voxels import occupancy
+
+if TYPE_CHECKING:
+    from pyraddose_3d.backend.geometry import Mesh
 
 __all__ = [
     "Placement",
@@ -137,22 +138,33 @@ def _line_triangle(
 
 
 def exit_distance(
-    mesh: Mesh, points_nm: np.ndarray, direction: np.ndarray
+    mesh: Mesh, points_nm: np.ndarray, direction: np.ndarray, placement: Placement
 ) -> np.ndarray:
-    """``getIntersectionDistance``: nm along ``direction`` to the nearest plane.
+    """``getIntersectionDistance``: nm along ``direction`` to the crystal's surface.
 
-    The planes of the unrotated crystal, in the lab frame, whether or not
-    the crossing lies within its triangle, and nothing at a distance of 0 or
-    behind. 0 where no plane is ahead.
+    The first face of the crystal as it stands that the ray crosses: from
+    inside, where it leaves; from outside, where it enters. 0 where it
+    crosses none.
     """
-    normals, offsets = (np.asarray(v) for v in triangle_planes(mesh))
-    origin = points_nm / 1000
-    along = direction @ normals.T
-    with np.errstate(divide="ignore", invalid="ignore"):
-        t = -(origin @ normals.T + offsets) / along
-    usable = np.isfinite(t) & (t > 0)
-    nearest = np.where(usable, t, np.inf).min(axis=1)
-    return np.where(np.isfinite(nearest), nearest, 0.0) * 1000
+    origin = _to_crystal(points_nm, placement)
+    cos, sin = np.cos(placement.angle), np.sin(placement.angle)
+    turned = np.stack(
+        [
+            direction[:, 0] * cos - direction[:, 2] * sin,
+            direction[:, 1],
+            direction[:, 0] * sin + direction[:, 2] * cos,
+        ],
+        axis=1,
+    )
+    corners = np.asarray(mesh.corners())
+    distance = np.zeros(len(origin))
+    for start in range(0, len(origin), _BATCH):
+        t, hit = _line_triangle(
+            corners, origin[start : start + _BATCH], turned[start : start + _BATCH]
+        )
+        t = np.where(hit & (t > 0), t, np.inf).min(axis=1)
+        distance[start : start + _BATCH] = np.where(np.isfinite(t), t * 1000, 0.0)
+    return distance
 
 
 def voxel_indices(
@@ -163,14 +175,9 @@ def voxel_indices(
 ) -> np.ndarray:
     """``convertToPixelCoordinates``: ``(N, 3)`` voxel indices.
 
-    Translated back, then rotated by ``2 pi - angle``; rounded half up, as
-    ``StrictMath.round``; negative indices raised to 0.
+    In the crystal's own frame; rounded half up, as ``StrictMath.round``;
+    negative indices raised to 0.
     """
-    shifted = points_nm - 1000 * placement.offset
-    angle = 2 * np.pi - placement.angle
-    cos, sin = np.cos(angle), np.sin(angle)
-    x = shifted[:, 0] * cos + shifted[:, 2] * sin
-    z = -1 * shifted[:, 0] * sin + shifted[:, 2] * cos
-    local = np.stack([x, shifted[:, 1], z], axis=1)
-    index = np.floor(((local / 1000) - minimum_um) * pixels_per_micron + 0.5)
+    local = _to_crystal(points_nm, placement)
+    index = np.floor((local - minimum_um) * pixels_per_micron + 0.5)
     return np.maximum(index, 0).astype(np.int64)

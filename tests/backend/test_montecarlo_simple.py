@@ -114,7 +114,9 @@ def test_the_cuboids_geometry() -> None:
     assert geometry.entry_depth(mesh, np.zeros(1), np.zeros(1), turned)[0] == (
         pytest.approx(-10000.0)
     )
-    along_x = geometry.exit_distance(mesh, np.zeros((1, 3)), np.array([[1.0, 0, 0]]))
+    along_x = geometry.exit_distance(
+        mesh, np.zeros((1, 3)), np.array([[1.0, 0, 0]]), still.take(np.arange(1))
+    )
     assert along_x[0] == pytest.approx(10000.0)
     ijk = geometry.voxel_indices(points[:2], still.take(np.arange(2)), -half, 0.5)
     assert ijk.tolist() == [[5, 4, 3], [10, 8, 6]]
@@ -283,3 +285,50 @@ def test_the_files_are_laid_out_as_raddose_3ds() -> None:
     assert monte_carlo_ions_csv(run) == (
         "Atomic number,ionisationsPerAtom\n 8, 0.250000\n"
     )
+
+
+def _cuboid(x: float, y: float, z: float):  # type: ignore[no-untyped-def]
+    from pyraddose_3d.models.crystal import CuboidCrystal
+    from pyraddose_3d.solve import crystal_mesh
+
+    crystal = CuboidCrystal(
+        dimensions=(x, y, z),
+        composition={"method": "unit_cell", "unit_cell": (78.0, 78.0, 78.0),
+                     "num_monomers": 24, "num_residues": 51},
+    )  # fmt: skip
+    return crystal_mesh(crystal)
+
+
+def test_escape_distances_are_to_the_rotated_crystal() -> None:
+    """RADDOSE-3D #44: from the centre of a 4 x 6 x 8 um crystal rotated 90
+    degrees, along x, 4 um -- half its z, now along x -- not 2."""
+    mesh = _cuboid(4.0, 6.0, 8.0)
+    turned = geometry.Placement(np.full(1, math.pi / 2), np.zeros((1, 3)))
+    distance = geometry.exit_distance(
+        mesh, np.zeros((1, 3)), np.array([[1.0, 0.0, 0.0]]), turned
+    )
+    assert distance[0] == pytest.approx(4000.0)
+
+
+def test_entry_distances_are_to_the_face_crossed() -> None:
+    """From outside, past a corner: not the nearest plane ahead, y = 3."""
+    mesh = _cuboid(4.0, 6.0, 8.0)
+    still = geometry.Placement(np.zeros(1), np.zeros((1, 3)))
+    norm = math.sqrt(1.25)
+    direction = np.array([[1 / norm, -0.5 / norm, 0.0]])
+    distance = geometry.exit_distance(
+        mesh, np.array([[-5000.0, 4000.0, 0.0]]), direction, still
+    )
+    assert distance[0] == pytest.approx(3000 * norm)
+
+
+def test_an_offset_rotated_crystals_points_find_their_voxels() -> None:
+    """RADDOSE-3D #44: the inverse of translating and then rotating."""
+    angle = math.pi / 2
+    place = geometry.Placement(np.full(1, angle), np.array([[0.5, 0.0, 0.0]]))
+    corner = np.array([1.99 + 0.5, 2.99, 3.99])
+    x = corner[0] * math.cos(angle) + corner[2] * math.sin(angle)
+    z = -corner[0] * math.sin(angle) + corner[2] * math.cos(angle)
+    point = np.array([[x * 1000, corner[1] * 1000, z * 1000]])
+    ijk = geometry.voxel_indices(point, place, np.array([-2.0, -3.0, -4.0]), 2.0)
+    assert ijk.tolist() == [[8, 12, 16]]

@@ -11,22 +11,20 @@ last has stopped or left. Each step, as the Java takes it:
   of the elastic cross-section, through ELSEPA's angle for that element at
   the nearest tabulated energy, and loses that energy;
 - if it has just left the crystal, it deposits the stopping power times the
-  distance to the nearest face plane, at the point it left from. With no
+  distance to the crystal's surface, at the point it left from. With no
   surrounding it is followed no further; with one, it carries on there;
 - in the surrounding it scatters and slows the same way but deposits
   nothing, until it leaves the surrounding, or comes back into the crystal
-  -- moved to the nearest face plane ahead, and slowed by the way;
+  -- moved to the face it enters by, and slowed by the way;
 - below 0.05 keV it deposits what is left, if it is in the crystal --
   negative, if the last step overshot, so that the energy deposited adds up
   to the energy it had.
 
-Three quirks are kept, and listed in ``UPSTREAM_FIXES.md``: an electron that
-leaves into the surrounding with under 0.05 keV loses it, one that comes
-back into the crystal with under 0.05 keV loses it too, and the distances
-to a face use the planes of the unrotated crystal whether or not the
-crossing lies on the face. The random number the Java draws each step to
-choose an inelastic event, which in simple mode never happens, is not
-drawn.
+Two quirks are kept, and listed in ``UPSTREAM_FIXES.md``: an electron that
+leaves into the surrounding with under 0.05 keV loses it, and one that comes
+back into the crystal with under 0.05 keV loses it too. The random number
+the Java draws each step to choose an inelastic event, which in simple mode
+never happens, is not drawn.
 """
 
 from __future__ import annotations
@@ -251,11 +249,16 @@ def track(
         finished = np.zeros(len(which), dtype=bool)
         exits = np.zeros(len(which), dtype=bool)
 
-        # Back into the crystal from the surrounding: to the nearest face plane
-        # ahead, slowed by the way, then a fresh step in the crystal.
+        # Back into the crystal from the surrounding: to the face it enters by,
+        # slowed by the way, then a fresh step in the crystal.
         entering = np.flatnonzero(within & outside)
         if len(entering):
-            to_face = exit_distance(media.mesh, previous[entering], direction[entering])
+            to_face = exit_distance(
+                media.mesh,
+                previous[entering],
+                direction[entering],
+                placement.take(which[entering]),
+            )
             previous[entering] += to_face[:, None] * direction[entering]
             energy[entering] -= to_face * power[entering]
             died = energy[entering] < STOPPED_KEV
@@ -282,11 +285,13 @@ def track(
         a = a[energy[a] >= STOPPED_KEV]
         step[a] = physics.step(energy[a], outside[a])
 
-        # Leaving the crystal: the distance to the nearest face plane, deposited
-        # where it left from -- if that is in the crystal, which a point moved
-        # onto a face plane on the way in need not be.
+        # Leaving the crystal: the distance to its surface, deposited where it
+        # left from -- if that is in the crystal, which a point moved onto a
+        # face on the way in need not be.
         b = np.flatnonzero(~within & ~outside & ~finished)
-        to_edge = exit_distance(media.mesh, previous[b], direction[b])
+        to_edge = exit_distance(
+            media.mesh, previous[b], direction[b], placement.take(which[b])
+        )
         lost = to_edge * power[b]
         energy[b] -= lost
         there = crystal_has(previous[b], which[b])
