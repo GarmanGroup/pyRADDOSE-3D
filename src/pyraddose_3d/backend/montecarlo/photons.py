@@ -278,8 +278,8 @@ class PhotonCoefficients:
 
     @property
     def elastic_chance(self) -> np.ndarray:
-        """``elasticProb``: coherent over photoelectric and Compton alone."""
-        return self.elastic / (self.absorption + self.compton)
+        """``MC.elasticChance``: coherent over all three, as since RADDOSE-3D #48."""
+        return self.elastic / (self.absorption + self.compton + self.elastic)
 
     @property
     def compton_chance(self) -> np.ndarray:

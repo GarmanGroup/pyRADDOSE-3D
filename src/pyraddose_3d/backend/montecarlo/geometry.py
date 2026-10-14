@@ -99,8 +99,8 @@ def entry_depth(
 
     The line through ``(x, y, 0)``, in both directions, and its crossings in
     order: the first, the front, by default, or ``crossing=1``, the back.
-    0.0 where the line misses, as in the Java, which takes 0.0 to mean a
-    miss.
+    NaN where the line misses: since #48 RADDOSE-3D's is too, not 0.0,
+    which a face at z = 0 also gives.
     """
     origin = _to_crystal(np.stack([x_nm, y_nm, np.zeros_like(x_nm)], axis=1), placement)
     direction = np.stack(
@@ -114,7 +114,7 @@ def entry_depth(
         d = direction[start : start + _BATCH]
         t, hit = _line_triangle(corners, o, d)
         t = np.sort(np.where(hit, t, np.inf), axis=1)[:, crossing]
-        depth[start : start + _BATCH] = np.where(np.isfinite(t), t * 1000, 0.0)
+        depth[start : start + _BATCH] = np.where(np.isfinite(t), t * 1000, np.nan)
     return depth
 
 

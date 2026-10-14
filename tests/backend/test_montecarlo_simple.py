@@ -15,9 +15,13 @@ import numpy as np
 import pytest
 
 from pyraddose_3d.backend import microed
-from pyraddose_3d.backend.montecarlo import angles, geometry, material, photons
+from pyraddose_3d.backend.montecarlo import angles, geometry, material, photons, tables
 from pyraddose_3d.backend.montecarlo.angles import column_weights
-from pyraddose_3d.backend.montecarlo.simple import simulate_simple
+from pyraddose_3d.backend.montecarlo.simple import (
+    _placements,
+    _relaxation,
+    simulate_simple,
+)
 from pyraddose_3d.backend.montecarlo.transport import Media, new_directions, track
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.solve import monte_carlo_setup
@@ -101,7 +105,8 @@ def test_the_cuboids_geometry() -> None:
     depth = geometry.entry_depth(
         mesh, np.array([0.0, 2000.0, 20000.0]), np.zeros(3), still
     )
-    assert depth.tolist() == pytest.approx([-6000.0, -6000.0, 0.0])
+    assert depth[:2].tolist() == pytest.approx([-6000.0, -6000.0])
+    assert np.isnan(depth[2])
     turned = geometry.Placement(np.full(1, math.pi / 2), np.zeros((1, 3)))
     assert geometry.entry_depth(mesh, np.zeros(1), np.zeros(1), turned)[0] == (
         pytest.approx(-10000.0)
@@ -387,3 +392,64 @@ def test_an_offset_rotated_crystals_points_find_their_voxels() -> None:
     point = np.array([[x * 1000, corner[1] * 1000, z * 1000]])
     ijk = geometry.voxel_indices(point, place, np.array([-2.0, -3.0, -4.0]), 2.0)
     assert ijk.tolist() == [[8, 12, 16]]
+
+
+def test_a_face_at_zero_is_not_a_miss() -> None:
+    """RADDOSE-3D #48: a crystal whose front face is at z = 0 is crossed there."""
+    mesh = _cuboid(4.0, 6.0, 8.0)
+    shifted = type(mesh)(
+        np.asarray(mesh.vertices) + np.array([0, 0, 4.0]), mesh.triangles
+    )
+    still = geometry.Placement(np.zeros(2), np.zeros((2, 3)))
+    front = geometry.entry_depth(shifted, np.array([0.0, 5000.0]), np.zeros(2), still)
+    assert front[0] == pytest.approx(0.0)
+    assert np.isnan(front[1])
+
+
+def test_wedges_turn_from_their_start_to_their_end(setup) -> None:  # type: ignore[no-untyped-def]
+    """RADDOSE-3D #48: a still at its start, a rotation from start to end."""
+    index = np.array([0, 250, 500])
+    still = dataclasses.replace(
+        setup, start_angle=math.radians(30), end_angle=math.radians(30), photons=1000
+    )
+    assert np.degrees(_placements(still, index).angle) == pytest.approx([30] * 3)
+    down = dataclasses.replace(
+        setup, start_angle=math.radians(90), end_angle=0.0, photons=1000
+    )
+    assert np.degrees(_placements(down, index).angle) == pytest.approx([90, 67.5, 45])
+
+
+def test_the_elastic_chance_is_of_every_interaction() -> None:
+    """RADDOSE-3D #48: elastic, photoelectric and Compton 2 : 1 : 1, a half."""
+    one = np.ones(1)
+    coefficients = photons.PhotonCoefficients(
+        one, one, 2 * one, one[:, None], one[:, None]
+    )
+    assert coefficients.elastic_chance[0] == 0.5
+
+
+def test_phosphorus_relaxes() -> None:
+    """RADDOSE-3D #48: some of its K holes fluoresce, and their photons leave."""
+    n = 4000
+    binding = np.full(n, 2.149)
+    left, resolved = _relaxation(
+        np.full(n, 15), np.zeros(n, dtype=np.int64), binding, np.full(n, 0.064),
+        np.random.default_rng(13),
+    )  # fmt: skip
+    assert not resolved.any()
+    assert 0.9 * 2.149 < left.mean() < 0.97 * 2.149
+
+
+def test_fluorescence_transitions_are_the_fluorescence_tables() -> None:
+    """RADDOSE-3D #48: drawn by the fluorescence table, not the Auger one."""
+    n = 20000
+    left, _ = _relaxation(
+        np.full(n, 16), np.zeros(n, dtype=np.int64), np.full(n, 2.472), np.ones(n),
+        np.random.default_rng(17),
+    )  # fmt: skip
+    table = tables.fluorescence_transitions()[(16, 0)]
+    chance = np.diff(np.maximum.accumulate(np.concatenate([[0.0], table.cumulative])))
+    chance = np.maximum(chance, 0)
+    for k in np.flatnonzero(chance):
+        share = np.mean(np.isclose(left, 2.472 - table.energy_kev[k]))
+        assert share == pytest.approx(chance[k], abs=0.01), k

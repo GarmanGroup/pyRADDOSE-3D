@@ -1197,8 +1197,8 @@ _CASES: list[Case] = [
                 "energy": 12.1,
                 "collimation": {"shape": "rectangular", "x": 10.0, "y": 6.0},
             },
-            # Not offset: RADDOSE-3D's Monte Carlo fails on a rotated crystal
-            # that is (UPSTREAM_FIXES.md).
+            # Not offset: before #44 RADDOSE-3D's Monte Carlo failed on a
+            # rotated crystal that was. Case 150 is.
             wedge={"start": 0.0, "end": 90.0, "exposure_time": 10.0},
         ),
     ),
@@ -1267,6 +1267,47 @@ _CASES: list[Case] = [
             600_000,
             dimensions=[3.0, 8.0, 8.0],
             crystal={"escape": {"goniometer_axis": 90.0}},
+        ),
+    ),
+    Case(
+        "150-montecarlo-rotation-back",
+        "B",
+        "Monte Carlo: case 145's crystal offset 0.5 um and turned back from 90 "
+        "degrees to 0",
+        _escaping(
+            1_200_000,
+            dimensions=[4.0, 6.0, 8.0],
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "rectangular", "x": 10.0, "y": 6.0},
+            },
+            # Before #48 a wedge ending at 0 was a still at 0, and one ending
+            # below its start turned away from its end.
+            wedge={
+                "start": 90.0,
+                "end": 0.0,
+                "exposure_time": 10.0,
+                "start_offset": [0.5, 0.0, 0.0],
+            },
+        ),
+    ),
+    Case(
+        "151-montecarlo-still-at-30",
+        "B",
+        "Monte Carlo: case 145's crystal held still at 30 degrees",
+        _escaping(
+            1_200_000,
+            dimensions=[4.0, 6.0, 8.0],
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "rectangular", "x": 10.0, "y": 6.0},
+            },
+            # Before #48 a still stood at 0, whatever its start.
+            wedge={"start": 30.0, "end": 30.0, "exposure_time": 10.0},
         ),
     ),
     Case(

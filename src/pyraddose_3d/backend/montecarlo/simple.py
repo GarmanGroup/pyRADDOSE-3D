@@ -58,9 +58,9 @@ _BATCH = 250_000
 
 _SPEED_OF_LIGHT = 299792458.0
 
-#: The elements RADDOSE-3D relaxes, and through which shells: phosphorus,
-#: though it has tables, is missing (``UPSTREAM_FIXES.md``).
-_RELAXING = (6, 7, 8, 11, 12, 14, 16, 17, 19, 20, 25, 26, 27, 28, 29, 30, 33, 34)
+#: The elements RADDOSE-3D relaxes: those with relaxation tables. Phosphorus
+#: joined them in #48.
+_RELAXING = (6, 7, 8, 11, 12, 14, 15, 16, 17, 19, 20, 25, 26, 27, 28, 29, 30, 33, 34)
 
 
 @dataclass(frozen=True)
@@ -274,15 +274,16 @@ class _Owned:
 
 
 def _placements(setup: SimpleSetup, index: np.ndarray) -> Placement:
-    """How the crystal stands for each photon: its place in its run."""
+    """How the crystal stands for each photon: its place in its run.
+
+    ``MC.photonAngle``: a still at its start angle, a rotation from its start
+    to its end, as RADDOSE-3D has it since #48.
+    """
     start, end = setup.start_angle, setup.end_angle
-    if abs(start - end) < setup.angular_resolution or end == 0:
-        angle = np.zeros(len(index))
+    if abs(start - end) < setup.angular_resolution:
+        angle = np.full(len(index), start)
     else:
-        sign = -1.0 if end < start else 1.0
-        progress = index / setup.photons
-        # Always forwards from the start, whichever way the wedge runs.
-        angle = start + (progress * (sign * (end - start)))
+        angle = start + ((index / setup.photons) * (end - start))
     # "convert to 0-2pi", truncating towards zero as Java's cast does.
     times_over = np.trunc(angle / (2 * math.pi))
     angle = angle - (times_over * 2 * math.pi)
@@ -318,9 +319,9 @@ def _relaxation(
     Returns what goes to the Monte Carlo's dose, and what also to the XFEL
     tallies: the binding energy, where the element or shell does not relax.
     Where it does, the binding energy, less a fluorescence photon's energy
-    if the draw says it fluoresces -- a transition drawn from the Auger
-    table, with its energy read from the fluorescence table's same row;
-    reproduced. An outer shell leaves nothing.
+    if the draw says it fluoresces, by a transition drawn from the
+    fluorescence table, as RADDOSE-3D draws it since #48. An outer shell
+    leaves nothing.
     """
     known = shell != OUTER_SHELL
     left = np.where(known, binding, 0.0)
@@ -340,11 +341,10 @@ def _relaxation(
     chosen = np.flatnonzero(eligible)
     if len(chosen):
         fluoresces = ~(rng.random(len(chosen)) > yields[chosen])
-        auger = tables.auger_transitions()
         fluorescence = tables.fluorescence_transitions()
         for i in chosen[fluoresces]:
             key = (int(z[i]), int(shell[i]))
-            hits = np.flatnonzero(rng.random() < auger[key].cumulative)
+            hits = np.flatnonzero(rng.random() < fluorescence[key].cumulative)
             index = int(hits[0]) if len(hits) else 0
             left[i] = binding[i] - fluorescence[key].energy_kev[index]
     return left, resolved
@@ -447,7 +447,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         box = np.zeros(n, dtype=np.int64)
         if surrounding is None:
             travel = -crystal.total_mean_free_path_nm * np.log(rng.random(n))
-            candidate = np.flatnonzero((front != 0.0) & (travel <= reach * 1000))
+            candidate = np.flatnonzero(~np.isnan(front) & (travel <= reach * 1000))
             points = np.stack(
                 [x[candidate], y[candidate], front[candidate] + travel[candidate]],
                 axis=1,
@@ -663,9 +663,9 @@ def _through_surrounding(
             meshes[index], x[chosen], y[chosen], placement.take(chosen)
         )
     medium = photon_coefficients(surrounding.composition, energy)
-    tracked = outer != 0.0
+    tracked = ~np.isnan(outer)
     through_surrounding = front != outer
-    hitting = front != 0.0
+    hitting = ~np.isnan(front)
     found: list[tuple[np.ndarray, np.ndarray, bool]] = []
 
     # In front of the crystal.
