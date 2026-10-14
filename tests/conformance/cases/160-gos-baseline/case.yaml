@@ -2,21 +2,21 @@ case_id: 160-gos-baseline
 tier: B
 exercises: 'Monte Carlo GOS: inelastic collisions, secondaries, Auger cascades'
 seed: 20260917
-reference_version: 5.0.1089
-reference_commit: 82ac582
+reference_version: 5.0.1094
+reference_commit: 398b800
 gated:
   outputXFEL.CSV/vResolvedNoCut:
-    mean: 12.7236
-    cv: 0.0914
+    mean: 12.2629
+    cv: 0.0889
   stdout/RADDOSE-GOS average dose exposed region (ADER):
-    mean: 12.7236
-    cv: 0.0914
+    mean: 12.2629
+    cv: 0.0889
   outputXFEL.CSV/RD3D-ADWC:
-    mean: 18.1781
-    cv: 0.0631
+    mean: 17.4369
+    cv: 0.0774
   outputXFEL.CSV/Diffraction efficiency:
-    mean: 231580000.0
-    cv: 0.361
+    mean: 184620000.0
+    cv: 0.342
   outputXFEL.CSV/ions per atom:
-    mean: 0.027783
-    cv: 0.086
+    mean: 0.0274457
+    cv: 0.0938

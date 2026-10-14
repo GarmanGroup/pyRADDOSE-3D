@@ -1,0 +1,23 @@
+case_id: 150-montecarlo-rotation-back
+tier: B
+exercises: 'Monte Carlo: case 145''s crystal offset 0.5 um and turned back from 90
+  degrees to 0'
+seed: 20260917
+reference_version: 5.0.1094
+reference_commit: 398b800
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 118.124
+    cv: 0.0338
+  outputMC.CSV/MC-ADER:
+    mean: 118.124
+    cv: 0.0338
+  outputMC.CSV/RD3D-ADWC:
+    mean: 183.042
+    cv: 0.0309
+  outputMC.CSV/numEl:
+    mean: 1324170000.0
+    cv: 0.125
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00108085
+    cv: 0.0322

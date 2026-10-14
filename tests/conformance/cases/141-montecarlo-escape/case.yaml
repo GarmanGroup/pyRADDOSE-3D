@@ -2,21 +2,21 @@ case_id: 141-montecarlo-escape
 tier: B
 exercises: 'Monte Carlo: a 5 um cube, which photoelectrons escape from'
 seed: 20260917
-reference_version: 5.0.1089
-reference_commit: cc2afb6
+reference_version: 5.0.1094
+reference_commit: 398b800
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 268.178
-    cv: 0.027
+    mean: 272.932
+    cv: 0.0247
   outputMC.CSV/MC-ADER:
-    mean: 268.178
-    cv: 0.027
+    mean: 272.932
+    cv: 0.0247
   outputMC.CSV/RD3D-ADWC:
-    mean: 438.847
-    cv: 0.0231
+    mean: 442.138
+    cv: 0.0196
   outputMC.CSV/numEl:
-    mean: 2135000000.0
-    cv: 0.0827
+    mean: 2003330000.0
+    cv: 0.0949
   outputXFEL.CSV/ions per atom:
-    mean: 0.002596
-    cv: 0.0221
+    mean: 0.0026162
+    cv: 0.0172

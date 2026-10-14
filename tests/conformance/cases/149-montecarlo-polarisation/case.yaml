@@ -3,21 +3,21 @@ tier: B
 exercises: 'Monte Carlo: a vertical goniometer, sending K-shell photoelectrons along
   the crystal''s thin x'
 seed: 20260917
-reference_version: 5.0.1089
-reference_commit: cc2afb6
+reference_version: 5.0.1094
+reference_commit: 398b800
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 276.631
-    cv: 0.0309
+    mean: 273.224
+    cv: 0.0255
   outputMC.CSV/MC-ADER:
-    mean: 276.631
-    cv: 0.0309
+    mean: 273.224
+    cv: 0.0255
   outputMC.CSV/RD3D-ADWC:
-    mean: 460.616
-    cv: 0.028
+    mean: 459.511
+    cv: 0.0213
   outputMC.CSV/numEl:
-    mean: 3520000000.0
-    cv: 0.0714
+    mean: 3300000000.0
+    cv: 0.0881
   outputXFEL.CSV/ions per atom:
-    mean: 0.00272125
-    cv: 0.0285
+    mean: 0.00271115
+    cv: 0.0218

@@ -1,0 +1,23 @@
+case_id: 151-montecarlo-still-at-60
+tier: B
+exercises: 'Monte Carlo: case 145''s crystal held still at 60 degrees in a beam 2
+  um wide, which crosses 4.6 um of it rather than 8'
+seed: 20260917
+reference_version: 5.0.1094
+reference_commit: 398b800
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 184.44
+    cv: 0.0257
+  outputMC.CSV/MC-ADER:
+    mean: 254.308
+    cv: 0.0288
+  outputMC.CSV/RD3D-ADWC:
+    mean: 264.306
+    cv: 0.0235
+  outputMC.CSV/numEl:
+    mean: 1835830000.0
+    cv: 0.0826
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00312685
+    cv: 0.0255

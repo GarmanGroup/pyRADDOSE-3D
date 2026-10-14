@@ -1,8 +1,8 @@
-reference_version: 5.0.1089
-reference_commit: cc2afb6
+reference_version: 5.0.1094
+reference_commit: 398b800
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 85
+case_count: 87
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
@@ -64,7 +64,7 @@ array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the 
 tier_b:
   family_alpha: 0.001
   power: 0.8
-  comparisons: 60
+  comparisons: 70
   gated:
     montecarlo:
     - outputMC.CSV/MC-ADWC
@@ -86,77 +86,89 @@ tier_b:
     - outputXFEL.CSV/ions per atom
   detectable_bias:
     140-montecarlo-baseline:
+      outputMC.CSV/MC-ADWC: 0.061
+      outputMC.CSV/MC-ADER: 0.061
+      outputMC.CSV/RD3D-ADWC: 0.0534
+      outputMC.CSV/numEl: 0.232
+      outputXFEL.CSV/ions per atom: 0.0533
+    141-montecarlo-escape:
+      outputMC.CSV/MC-ADWC: 0.0455
+      outputMC.CSV/MC-ADER: 0.0455
+      outputMC.CSV/RD3D-ADWC: 0.0361
+      outputMC.CSV/numEl: 0.175
+      outputXFEL.CSV/ions per atom: 0.0317
+    142-montecarlo-selenium-25-kev:
       outputMC.CSV/MC-ADWC: 0.049
       outputMC.CSV/MC-ADER: 0.049
-      outputMC.CSV/RD3D-ADWC: 0.0442
-      outputMC.CSV/numEl: 0.236
-      outputXFEL.CSV/ions per atom: 0.044
-    141-montecarlo-escape:
-      outputMC.CSV/MC-ADWC: 0.0493
-      outputMC.CSV/MC-ADER: 0.0493
-      outputMC.CSV/RD3D-ADWC: 0.0422
-      outputMC.CSV/numEl: 0.151
-      outputXFEL.CSV/ions per atom: 0.0404
-    142-montecarlo-selenium-25-kev:
-      outputMC.CSV/MC-ADWC: 0.0464
-      outputMC.CSV/MC-ADER: 0.0464
-      outputMC.CSV/RD3D-ADWC: 0.042
-      outputMC.CSV/numEl: 0.206
-      outputXFEL.CSV/ions per atom: 0.038
+      outputMC.CSV/RD3D-ADWC: 0.0415
+      outputMC.CSV/numEl: 0.232
+      outputXFEL.CSV/ions per atom: 0.0394
     143-montecarlo-iodine-sodium:
-      outputMC.CSV/MC-ADWC: 0.0285
-      outputMC.CSV/MC-ADER: 0.0285
-      outputMC.CSV/RD3D-ADWC: 0.0309
-      outputMC.CSV/numEl: 0.146
-      outputXFEL.CSV/ions per atom: 0.0323
+      outputMC.CSV/MC-ADWC: 0.0374
+      outputMC.CSV/MC-ADER: 0.0374
+      outputMC.CSV/RD3D-ADWC: 0.0369
+      outputMC.CSV/numEl: 0.175
+      outputXFEL.CSV/ions per atom: 0.0365
     144-montecarlo-circular-tophat:
-      outputMC.CSV/MC-ADWC: 0.034
-      outputMC.CSV/MC-ADER: 0.0398
-      outputMC.CSV/RD3D-ADWC: 0.0471
-      outputMC.CSV/numEl: 0.168
-      outputXFEL.CSV/ions per atom: 0.0439
+      outputMC.CSV/MC-ADWC: 0.0448
+      outputMC.CSV/MC-ADER: 0.0487
+      outputMC.CSV/RD3D-ADWC: 0.0394
+      outputMC.CSV/numEl: 0.167
+      outputXFEL.CSV/ions per atom: 0.0407
     145-montecarlo-rotation:
-      outputMC.CSV/MC-ADWC: 0.064
-      outputMC.CSV/MC-ADER: 0.064
-      outputMC.CSV/RD3D-ADWC: 0.0566
-      outputMC.CSV/numEl: 0.263
-      outputXFEL.CSV/ions per atom: 0.0594
+      outputMC.CSV/MC-ADWC: 0.0525
+      outputMC.CSV/MC-ADER: 0.0525
+      outputMC.CSV/RD3D-ADWC: 0.0466
+      outputMC.CSV/numEl: 0.236
+      outputXFEL.CSV/ions per atom: 0.0468
     146-montecarlo-cylinder:
-      outputMC.CSV/MC-ADWC: 0.066
-      outputMC.CSV/MC-ADER: 0.066
-      outputMC.CSV/RD3D-ADWC: 0.0568
-      outputMC.CSV/numEl: 0.142
-      outputXFEL.CSV/ions per atom: 0.0572
+      outputMC.CSV/MC-ADWC: 0.0627
+      outputMC.CSV/MC-ADER: 0.0627
+      outputMC.CSV/RD3D-ADWC: 0.0551
+      outputMC.CSV/numEl: 0.192
+      outputXFEL.CSV/ions per atom: 0.0534
     147-montecarlo-pink:
-      outputMC.CSV/MC-ADWC: 0.0369
-      outputMC.CSV/MC-ADER: 0.0369
-      outputMC.CSV/RD3D-ADWC: 0.032
-      outputMC.CSV/numEl: 0.149
-      outputXFEL.CSV/ions per atom: 0.0316
+      outputMC.CSV/MC-ADWC: 0.0544
+      outputMC.CSV/MC-ADER: 0.0544
+      outputMC.CSV/RD3D-ADWC: 0.0494
+      outputMC.CSV/numEl: 0.165
+      outputXFEL.CSV/ions per atom: 0.0466
     148-montecarlo-surrounding:
-      outputMC.CSV/MC-ADWC: 0.0667
-      outputMC.CSV/MC-ADER: 0.0667
-      outputMC.CSV/RD3D-ADWC: 0.0583
-      outputMC.CSV/numEl: 0.214
-      outputXFEL.CSV/ions per atom: 0.0603
+      outputMC.CSV/MC-ADWC: 0.0533
+      outputMC.CSV/MC-ADER: 0.0533
+      outputMC.CSV/RD3D-ADWC: 0.052
+      outputMC.CSV/numEl: 0.254
+      outputXFEL.CSV/ions per atom: 0.0518
     149-montecarlo-polarisation:
-      outputMC.CSV/MC-ADWC: 0.0565
-      outputMC.CSV/MC-ADER: 0.0565
-      outputMC.CSV/RD3D-ADWC: 0.0512
-      outputMC.CSV/numEl: 0.13
-      outputXFEL.CSV/ions per atom: 0.0521
+      outputMC.CSV/MC-ADWC: 0.047
+      outputMC.CSV/MC-ADER: 0.047
+      outputMC.CSV/RD3D-ADWC: 0.0393
+      outputMC.CSV/numEl: 0.162
+      outputXFEL.CSV/ions per atom: 0.0402
+    150-montecarlo-rotation-back:
+      outputMC.CSV/MC-ADWC: 0.0623
+      outputMC.CSV/MC-ADER: 0.0623
+      outputMC.CSV/RD3D-ADWC: 0.0569
+      outputMC.CSV/numEl: 0.23
+      outputXFEL.CSV/ions per atom: 0.0593
+    151-montecarlo-still-at-60:
+      outputMC.CSV/MC-ADWC: 0.0474
+      outputMC.CSV/MC-ADER: 0.0531
+      outputMC.CSV/RD3D-ADWC: 0.0433
+      outputMC.CSV/numEl: 0.152
+      outputXFEL.CSV/ions per atom: 0.047
     160-gos-baseline:
-      outputXFEL.CSV/vResolvedNoCut: 0.167
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.167
-      outputXFEL.CSV/RD3D-ADWC: 0.115
-      outputXFEL.CSV/Diffraction efficiency: 0.66
-      outputXFEL.CSV/ions per atom: 0.157
+      outputXFEL.CSV/vResolvedNoCut: 0.164
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.164
+      outputXFEL.CSV/RD3D-ADWC: 0.143
+      outputXFEL.CSV/Diffraction efficiency: 0.63
+      outputXFEL.CSV/ions per atom: 0.173
     180-xfel-baseline:
-      outputXFEL.CSV/XFEL-ADWC: 0.219
-      outputXFEL.CSV/XFEL-ADER: 0.219
-      outputXFEL.CSV/RD3D-ADWC: 0.159
-      outputXFEL.CSV/Diffraction efficiency: 0.217
-      outputXFEL.CSV/ions per atom: 0.219
+      outputXFEL.CSV/XFEL-ADWC: 0.171
+      outputXFEL.CSV/XFEL-ADER: 0.171
+      outputXFEL.CSV/RD3D-ADWC: 0.135
+      outputXFEL.CSV/Diffraction efficiency: 0.172
+      outputXFEL.CSV/ions per atom: 0.172
 tier_b_rationale: 'The Monte Carlo and XFEL subprograms follow each electron with
   random numbers whose order depends on its history, so the port is compared with
   them statistically. Each case is run with Runs K on each side, and the means of

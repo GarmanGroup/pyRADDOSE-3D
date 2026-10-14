@@ -29,7 +29,12 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 |---|---|---|---|
 | [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | merged as `e2df6e4` |
 | [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42) | `jd_mc_xfel_reproducible`, onto `master` | *Monte Carlo and XFEL*: reproducibility and running | merged as `82ac582` |
-| [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43) | `jd_mc_outer_shell`, onto `master` | *Monte Carlo and XFEL*: a photoelectron of negative energy | open |
+| [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43) | `jd_mc_outer_shell`, onto `master` | *Monte Carlo and XFEL*: a photoelectron of negative energy | merged as `2fc08a4` |
+| [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) | `jd_mc_geometry`, onto `master` | *Monte Carlo*: escape distances to the rotated crystal; offset and rotation | open |
+| [#45](https://github.com/GarmanGroup/RADDOSE-3D/pull/45) | `jd_mc_beams`, onto #44 | *Monte Carlo and XFEL*: circular beams and their area | open |
+| [#46](https://github.com/GarmanGroup/RADDOSE-3D/pull/46) | `jd_mc_angles`, onto #45 | *Monte Carlo and XFEL*: elastic deflections | open |
+| [#47](https://github.com/GarmanGroup/RADDOSE-3D/pull/47) | `jd_mc_directions`, onto #46 | *Monte Carlo and XFEL*: directions | open |
+| [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48) | `jd_mc_bookkeeping`, onto #47 | *Monte Carlo and XFEL*: fluorescence energies, phosphorus, the elastic chance, wedges, a face at z = 0 | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -674,7 +679,8 @@ point turned on the last bit of an energy computed from the other shell model.
 From reading `MC.java` (`Subprogram MONTECARLO` and `GOS`) and `XFEL.java` on `master` at
 `e2df6e4`, ahead of porting them (`ROADMAP.md`, Milestone 7). XFEL is a near copy of MC: 76 of
 their methods are identical. "MC:n" and "XFEL:n" are line numbers there. The port reproduces the
-physics defects until they are fixed in RADDOSE-3D, and is compared with it statistically.
+physics defects until a fix is opened in RADDOSE-3D, follows each fix, and is compared with it
+statistically.
 
 ### Reproducibility and running: fixed first, in [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42)
 
@@ -696,24 +702,46 @@ mode.
 
 ### A photoelectron of negative energy: fixed in [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)
 
-Found porting the simple Monte Carlo. Branch `jd_mc_outer_shell` at `cc2afb6`.
+Found porting the simple Monte Carlo. Branch `jd_mc_outer_shell` at `cc2afb6`; squash-merged as `2fc08a4`, with the same source.
 
 | defect | where | fix |
 |---|---|---|
 | A photoelectric draw past every shell's running chance took the K shell, even below the K edge, where it freed a photoelectron of negative energy. The running chances fall short of 1 only where the model leaves shells out: sodium's L shells (8.4% of its absorption), and below their K edges iodine, xenon, samarium, gadolinium, and tantalum to uranium where the tables give M shells. Iodine at 12.1 keV gave 22% of its photoelectrons -21 keV; platinum's would be -66 keV. The K binding energy was then deposited where the atom relaxed, so energy balanced, but none of it travelled | MC:1156, XFEL:1190 | an outer shell: no binding energy, a photoelectron with the photon's whole energy, no relaxation. A 5 um crystal soaked in 1 M iodide loses 9% of its Monte Carlo dose (run); every element of the corpus's cases has shells for every draw, and their runs are unchanged to the last digit |
 
-### Found porting the simple Monte Carlo
+### Physics, fixed in both: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48)
 
-Reproduced by the port, to fix with the rest of the physics below:
+Opened on 14 October 2026 as a stack, each on the last, for the group's sign-off; the port follows
+each in its own commit. Each effect is RADDOSE-3D's, 20 runs on either side of the PR from the
+same seed, on the conformance case named; "paired" means both sides drew the same random
+numbers, so each run is compared with its counterpart. At every stage the port, changed the same
+way, agreed with RADDOSE-3D on those cases (largest |t| 1.5, thresholds about 4.9), and at the
+top of the stack on all twelve Monte Carlo cases.
+
+| PR | defect | where | fix | effect on the Monte Carlo dose |
+|---|---|---|---|---|
+| #44 | Escape distances were measured to the nearest face *plane* of the crystal as it stood at 0°, crossed within the face or not; an electron coming back from a surrounding was placed on the nearest plane ahead | MC:4131 | the first face of the crystal as it stands that the ray crosses (Möller–Trumbore) | 145, a 4 x 6 x 8 um crystal rotated 90°: −12.7% ± 0.2%, paired. 148, a cube in a surrounding: +0.1% ± 1.2% |
+| #44 | A point's voxel was found by translating back before rotating back, so with an offset and a rotation a point near a face fell off the grid: `ArrayIndexOutOfBoundsException` | MC:3914 | rotate back, then translate back | 150 runs |
+| #45 | A circular aperture's exposed area was π times its full widths, four times too large | MC:2671 | π times the half-widths | 144, a 5 um circular top-hat: exposed-region doses +29% (the exposed volume had been capped at the whole crystal) |
+| #45 | A circular top-hat filled a bow tie, \|y\| ≤ \|x\|; a circular Gaussian drew its radius from a one-dimensional normal | MC:2771, 2853 | drawn within the rectangle until inside the ellipse; Gaussians as two truncated normals | 144: whole-crystal −2.7% ± 0.7%. Rectangular beams draw the same numbers as before |
+| #46 | Elastic deflections took ELSEPA's per-solid-angle values as each column's chance: no sin θ, and above 20 keV no column widths, from 2.5e-5° to 0.5° apart; and above 20 keV each column's angle was a column behind from 1° | `returnDeflectionAngle`, MC:3336 | weights value × sin θ × span; angles from the header | 141: +3.3% ± 1.0%. 142, 25 keV: +2.3% ± 1.0%. 149, 3 um thin: +11.2% ± 1.0% |
+| #47 | `getNewDirectionVector` was not a rotation through the deflection (`AN = -(x/y)`, `V1 = AN sin θ`); near x a 20° deflection averaged 60°, near y 5° | MC:2550 | the standard rotation | 149: −8.9% ± 0.8%, all of it this (in the port, the other four parts move it under 1%) |
+| #47 | "Isotropic" directions had a uniform polar angle; polarised K-shell directions were not uniform around the axis and turned with the crystal; the dipole distribution lacked sin θ (its table, normalised on other bins, would have ended at 0.9993); Compton angles were uniform | MC:1242, 1306, 1209, 3131, 1445 | uniform over the sphere; uniform around the axis, in the lab; sin θ; Klein–Nishina | within noise on 141, 142 and 149 |
+| #48 | MC drew a fluorescence transition from the *Auger* table and read its energy from the fluorescence table at that index, mostly past its end, where it is 0: the photon took away about a third of its energy. In GOS mode the same index sent the hole back to the K shell, with an infinite lifetime | MC:1395 | the table the flag names, as XFEL does | 142, 10 Se per monomer at 25 keV: −21.7% ± 0.8%. 141: −2.5% ± 0.8%. 149: −2.6% ± 0.8% (in the port, paired: −21.9%, −2.9%, −3.0%, all from this) |
+| #48 | The elastic photon chance was over photoelectric and Compton alone | MC:411 | over all three | the elastic count −4% to −6%; absorption +0.2% to +0.4% |
+| #48 | Phosphorus never relaxed: Z = 15 was missing from the list | MC:1275 | every element with tables | within noise |
+| #48 | A wedge ending at 0° was a still, a still stood at 0° whatever its start, and end < start turned away from the end | MC:382 | as MX's wedges | 150 (90° to 0°, offset) now matches 145 (0° to 90°): −0.4% ± 1.0%; 151, still at 60° in a 2 um beam, stood at 0°: now its RADDOSE-3D-style dose is 42.5% ± 0.4% lower, as its path through the crystal, 4.6 um rather than 8 |
+| #48 | `getStartingZ` returned 0 for a miss, which a face at z = 0 also gives | MC:530, 4529 | NaN | a crystal whose front face is at z = 0 is hit |
+
+### Still to fix
+
+From porting the simple Monte Carlo, reproduced by the port:
 
 - **Photons crossing a surrounding are measured from its front face** with the crystal's
   coefficients once past the surrounding's own, and one that lands in the surrounding is taken
   to have crossed the crystal and is drawn again from the crystal's back face (MC:569–575,
   631–657).
-- **An electron coming back into the crystal is moved to the nearest face plane ahead**, not the
-  face it crosses, and loses its energy entirely if it falls below 0.05 keV on the way
-  (MC:1665–1679). One leaving into the surrounding with under 0.05 keV loses it too
-  (MC:2258–2263).
+- **An electron coming back into the crystal with under 0.05 keV loses it entirely**
+  (MC:1665–1679), and so does one leaving into the surrounding (MC:2258–2263).
 - **The surrounding is the crystal's mesh with every vertex pushed out along each axis**, so a
   cylinder's or sphere's is not a uniform shell (MC:257–271). Its thickness is capped photon by
   photon, as a running minimum, so under a pink beam it depends on the order photons come in
@@ -724,64 +752,17 @@ Reproduced by the port, to fix with the rest of the physics below:
   relax** and the energy of electrons freed with under 0.05 keV (MC:1359–1394, 1631–1640), so
   its diffraction efficiency is the elastic count over that.
 
-### Physics: to fix in both, with the group's sign-off
-
-What some of these do to the simple Monte Carlo's dose, measured by correcting
-each in the port alone (2.4 million photons, 10 runs a side), on crystals of a
-few um that electrons escape from; in a 20 um crystal every effect is smaller:
-
-| quirk | case | dose with it corrected |
-|---|---|---|
-| escape distances through the unrotated planes | 145, a 4 x 6 x 8 um crystal rotated 90 degrees | -11.4% +- 0.8% |
-| elastic angles without their sin theta weight | 141, a 5 um cube | +3.4% +- 0.8% |
-| "isotropic" photoelectron directions | 141 | -0.9% +- 0.8% |
-| `getNewDirectionVector` | 141 | -0.4% +- 1.0% |
-| the elastic photon chance | 141 | +0.4%, from the coefficients |
-| circular exposed areas 4x too large | 144, a 5 um circular top-hat | exposed-region doses +27% (21% low as they are) |
-
-Angles:
-- **"Isotropic" directions are not**: the polar angle is uniform on [0, 2π) (MC:1242, 1306).
-- **Compton scattering angles are uniform** (MC:1445), not Klein–Nishina.
-- **The elastic angle is sampled without its sin θ weight**; above 20 keV the CDF ignores the
-  table's uneven bins and maps index 146 onwards one bin low (`returnDeflectionAngle`, MC:3336).
-- **`getNewDirectionVector` deflects by the wrong angle**: `AN = -(x/y)` and `V1 = AN·sin`,
-  where Joy's formula has `-(cx/cz)` and `AM·sin`. Renormalising hides it: a requested 30°
-  comes out between 6° and 35° (MC:2550).
-- **The polarised emission direction is rotated by 2π − angle** though tracking is in the lab
-  frame (MC:1209).
-
-Energy accounting:
+For GOS, with its port:
 - **Auger and fluorescence cascades double-count hole energy**: the Auger branch deposits
   Eb − E_A and then recurses on both holes, which deposit their own binding energies (MC:1292,
-  1323; XFEL:1370).
-- **Phosphorus never relaxes**: Z = 15 is missing from the eligibility list (MC:1275).
-- **MC looks fluorescence up in the Auger table**: `getTransitionIndex` ignores its flag
-  (MC:1395). XFEL does not.
-- **The elastic photon probability divides by photoelectric plus Compton**, not the total
-  (MC:411).
+  1323; XFEL:1370); a fluorescing hole deposits its whole binding energy.
 - **Auger electrons below 50 eV deposit nothing** (MC:1629).
 - **GOS mean free paths are inconsistent**: `1/gosOuterLambda` against `gosOuterLambda`, and an
   inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
 
-Geometry and beams:
-- **Escape distances use unrotated face normals** (MC:4131), and XFEL's occupancy test does too.
-- **A circular top-hat bounds y by |x|** (MC:2771); a circular Gaussian draws its radius from a
-  one-dimensional normal, truncated at the x aperture alone, so an ellipse narrower in y is
-  overrun (MC:2853).
-- **A wedge ending at 0° is a still**, whatever its start (MC:382).
-- **A crystal face at exactly z = 0 is taken for a miss**: 0.0 is `getStartingZ`'s sentinel
-  (MC:530, 4529).
-- **Circular exposed areas are 4× too large**: π·x·y for diameters x and y (MC:2671).
-- **Rotation runs the wrong way when end < start**, and XFEL truncates the angle to whole
-  radians (XFEL:368).
-- **The inverse transform is applied in the wrong order** when there are both offsets and
-  rotation (MC:3914): a point is tested against the crystal translated then rotated, but its
-  voxel is found by translating back before rotating back. The two differ by R(-a)o - o, so a
-  point near a face lands outside the voxel grid, and the run fails with an
-  `ArrayIndexOutOfBoundsException` (run: a 4 x 6 x 8 um crystal offset 0.5 um and rotated
-  through 90 degrees). The port refuses the combination.
-
-XFEL:
+For XFEL, with its port:
+- Its rotation truncates the angle to whole radians and ignores the start (XFEL:368), and its
+  occupancy test uses unrotated normals.
 - The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs divides by zero.
 - Coefficients are left at the last photon's energy for the diffraction efficiency, which matters
   for a pink beam.

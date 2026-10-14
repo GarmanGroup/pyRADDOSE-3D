@@ -1294,9 +1294,10 @@ _CASES: list[Case] = [
         ),
     ),
     Case(
-        "151-montecarlo-still-at-30",
+        "151-montecarlo-still-at-60",
         "B",
-        "Monte Carlo: case 145's crystal held still at 30 degrees",
+        "Monte Carlo: case 145's crystal held still at 60 degrees in a beam 2 um "
+        "wide, which crosses 4.6 um of it rather than 8",
         _escaping(
             1_200_000,
             dimensions=[4.0, 6.0, 8.0],
@@ -1304,10 +1305,10 @@ _CASES: list[Case] = [
                 "type": "tophat",
                 "flux": 2.0e12,
                 "energy": 12.1,
-                "collimation": {"shape": "rectangular", "x": 10.0, "y": 6.0},
+                "collimation": {"shape": "rectangular", "x": 2.0, "y": 6.0},
             },
             # Before #48 a still stood at 0, whatever its start.
-            wedge={"start": 30.0, "end": 30.0, "exposure_time": 10.0},
+            wedge={"start": 60.0, "end": 60.0, "exposure_time": 10.0},
         ),
     ),
     Case(

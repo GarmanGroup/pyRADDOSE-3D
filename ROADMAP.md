@@ -232,7 +232,7 @@ first:
      itself must pass, and mutations of the claimed detectable size must fail. (Done for the
      Java: a baseline case per subprogram, 20 runs each, five quantities each compared by
      Welch's t; RADDOSE-3D's first ten runs agree with its last ten. The doses' detectable
-     bias is 4.5% for MONTECARLO, 15% for GOS and 20% for XFEL, which spend about a second
+     bias is about 6% for MONTECARLO, 16% for GOS and 17% for XFEL, which spend about a second
      of the Java's time per absorbed photon; the timing gate decides whether to buy more.
      The port's side waits for the port.)
 3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within
@@ -246,16 +246,21 @@ first:
    at once, with a surrounding, a pink beam, and RADDOSE-3D's three files and printout, which
    `programs/dose/run_dose.py` writes. Case 140, a 20 um crystal, is weakly sensitive to how
    electrons are followed -- 12 keV photoelectrons stop well inside it, so a stopping power 20%
-   low moves its dose by 3% -- so nine more cases are crystals of 3 to 8 um, which electrons
+   low moves its dose by 3% -- so eleven more cases are crystals of 3 to 8 um, which electrons
    escape from: there it moves the dose by 7 to 15%. They vary the beam's shape and energy, the
    crystal's shape and rotation, the polarisation, a surrounding and a pink beam, and include
    iodine and sodium for [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)'s fix. The
-   comparisons with the port take a quarter of an hour, and are `slow`; every case also runs
+   comparisons with the port take twenty minutes, and are `slow`; every case also runs
    briefly in the default suite. Next: GOS.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
-   MicroED. The defects -- "isotropic" directions with a uniform polar angle, uniform Compton
-   angles, elastic angles without their sin θ weight, a wrong direction-vector formula, cascades
-   that double-count hole energy, and more -- are listed in `UPSTREAM_FIXES.md`.
+   MicroED. (Under way: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to
+   [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48), stacked, fix a rotated crystal's
+   escape distances, circular beams, elastic deflections' sin θ, the directions electrons and
+   photons take, and MC's fluorescence energies with four smaller slips. The port follows each in
+   its own commit and agreed with RADDOSE-3D at each. The largest effect is #48's: at 25 keV a
+   crystal with selenium loses 22% of its Monte Carlo dose. Cases 150 and 151 test the wedges.
+   What is left -- the surrounding's quirks, and GOS's and XFEL's, which wait for their ports --
+   is in `UPSTREAM_FIXES.md`, *Still to fix*.)
 
 No gradients: a randomly drawn track has none, as with escape.
 

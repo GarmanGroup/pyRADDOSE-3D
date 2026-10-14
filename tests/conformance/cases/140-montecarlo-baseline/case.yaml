@@ -2,21 +2,21 @@ case_id: 140-montecarlo-baseline
 tier: B
 exercises: 'Monte Carlo: electrons by elastic scattering and stopping power'
 seed: 20260917
-reference_version: 5.0.1089
-reference_commit: 82ac582
+reference_version: 5.0.1094
+reference_commit: 398b800
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 15.2607
-    cv: 0.0268
+    mean: 15.29
+    cv: 0.0331
   outputMC.CSV/MC-ADER:
-    mean: 15.2607
-    cv: 0.0268
+    mean: 15.29
+    cv: 0.0331
   outputMC.CSV/RD3D-ADWC:
-    mean: 17.636
-    cv: 0.0242
+    mean: 17.7468
+    cv: 0.029
   outputMC.CSV/numEl:
-    mean: 2605710000.0
-    cv: 0.129
+    mean: 2420000000.0
+    cv: 0.126
   outputXFEL.CSV/ions per atom:
-    mean: 0.00010465
-    cv: 0.0241
+    mean: 0.00010525
+    cv: 0.0289

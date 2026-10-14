@@ -2,21 +2,21 @@ case_id: 148-montecarlo-surrounding
 tier: B
 exercises: 'Monte Carlo: a salt surrounding 2 um deep, which the beam lights too'
 seed: 20260917
-reference_version: 5.0.1089
-reference_commit: cc2afb6
+reference_version: 5.0.1094
+reference_commit: 398b800
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 131.231
-    cv: 0.0365
+    mean: 133.933
+    cv: 0.0289
   outputMC.CSV/MC-ADER:
-    mean: 131.231
-    cv: 0.0365
+    mean: 133.933
+    cv: 0.0289
   outputMC.CSV/RD3D-ADWC:
-    mean: 135.953
-    cv: 0.0319
+    mean: 136.96
+    cv: 0.0282
   outputMC.CSV/numEl:
-    mean: 665000000.0
-    cv: 0.117
+    mean: 624167000.0
+    cv: 0.138
   outputXFEL.CSV/ions per atom:
-    mean: 0.00080565
-    cv: 0.033
+    mean: 0.0008113
+    cv: 0.0281
