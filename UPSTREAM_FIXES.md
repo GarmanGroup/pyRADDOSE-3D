@@ -35,6 +35,7 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#46](https://github.com/GarmanGroup/RADDOSE-3D/pull/46) | `jd_mc_angles`, onto #45 | *Monte Carlo and XFEL*: elastic deflections | open |
 | [#47](https://github.com/GarmanGroup/RADDOSE-3D/pull/47) | `jd_mc_directions`, onto #46 | *Monte Carlo and XFEL*: directions | open |
 | [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48) | `jd_mc_bookkeeping`, onto #47 | *Monte Carlo and XFEL*: fluorescence energies, phosphorus, the elastic chance, wedges, a face at z = 0 | open |
+| [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49) | `jd_mc_surrounding`, onto #48 | *Monte Carlo*: the surrounding | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -708,14 +709,14 @@ Found porting the simple Monte Carlo. Branch `jd_mc_outer_shell` at `cc2afb6`; s
 |---|---|---|
 | A photoelectric draw past every shell's running chance took the K shell, even below the K edge, where it freed a photoelectron of negative energy. The running chances fall short of 1 only where the model leaves shells out: sodium's L shells (8.4% of its absorption), and below their K edges iodine, xenon, samarium, gadolinium, and tantalum to uranium where the tables give M shells. Iodine at 12.1 keV gave 22% of its photoelectrons -21 keV; platinum's would be -66 keV. The K binding energy was then deposited where the atom relaxed, so energy balanced, but none of it travelled | MC:1156, XFEL:1190 | an outer shell: no binding energy, a photoelectron with the photon's whole energy, no relaxation. A 5 um crystal soaked in 1 M iodide loses 9% of its Monte Carlo dose (run); every element of the corpus's cases has shells for every draw, and their runs are unchanged to the last digit |
 
-### Physics, fixed in both: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48)
+### Physics, fixed in both: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49)
 
 Opened on 14 October 2026 as a stack, each on the last, for the group's sign-off; the port follows
 each in its own commit. Each effect is RADDOSE-3D's, 20 runs on either side of the PR from the
 same seed, on the conformance case named; "paired" means both sides drew the same random
 numbers, so each run is compared with its counterpart. At every stage the port, changed the same
 way, agreed with RADDOSE-3D on those cases (largest |t| 1.5, thresholds about 4.9), and at the
-top of the stack on all twelve Monte Carlo cases.
+top of the stack on all fourteen Monte Carlo cases.
 
 | PR | defect | where | fix | effect on the Monte Carlo dose |
 |---|---|---|---|---|
@@ -731,21 +732,15 @@ top of the stack on all twelve Monte Carlo cases.
 | #48 | Phosphorus never relaxed: Z = 15 was missing from the list | MC:1275 | every element with tables | within noise |
 | #48 | A wedge ending at 0° was a still, a still stood at 0° whatever its start, and end < start turned away from the end | MC:382 | as MX's wedges | 150 (90° to 0°, offset) now matches 145 (0° to 90°): −0.4% ± 1.0%; 151, still at 60° in a 2 um beam, stood at 0°: now its RADDOSE-3D-style dose is 42.5% ± 0.4% lower, as its path through the crystal, 4.6 um rather than 8 |
 | #48 | `getStartingZ` returned 0 for a miss, which a face at z = 0 also gives | MC:530, 4529 | NaN | a crystal whose front face is at z = 0 is hit |
+| #49 | With a surrounding, a photon's distance in the crystal was measured from the surrounding's front face, and one that crossed the crystal had its chance in the surrounding behind only if that distance ended there: for case 148's 2 um, 1 in 1,400 | MC:569–575, 631–657 | from the crystal's front face; every photon that crosses gets its chance behind | 148, a 5 um cube in 2 um of salt: +3.9% ± 1.0% |
+| #49 | The surrounding was the crystal's mesh with each vertex pushed away from the origin along each axis: a 5 um cylinder's side 1.14 to 1.41 times as thick as asked, and a crystal off the origin moved, not enclosed | MC:257–271 | the crystal scaled about its bounding box's centre | 152, a cylinder in 1 um of salt: +4.4% ± 1.0%, the thinner shell taking 1.5% off the surrounding behind's rise (port) |
+| #49 | The thickness was capped photon by photon by overwriting it, a running minimum: under a pink beam, the first, least energetic photon's reach | MC:443–447 | capped once, at the most energetic photon's | 153, a pink beam in salt of no given thickness: +5.1% ± 1.2%, with the surrounding behind |
+| #49 | An electron coming back with under 0.05 keV lost it; one leaving with under 0.05 keV had it added to the dose but to no voxel | MC:1665–1679, 2258–2263 | left where it crossed | within noise |
 
 ### Still to fix
 
 From porting the simple Monte Carlo, reproduced by the port:
 
-- **Photons crossing a surrounding are measured from its front face** with the crystal's
-  coefficients once past the surrounding's own, and one that lands in the surrounding is taken
-  to have crossed the crystal and is drawn again from the crystal's back face (MC:569–575,
-  631–657).
-- **An electron coming back into the crystal with under 0.05 keV loses it entirely**
-  (MC:1665–1679), and so does one leaving into the surrounding (MC:2258–2263).
-- **The surrounding is the crystal's mesh with every vertex pushed out along each axis**, so a
-  cylinder's or sphere's is not a uniform shell (MC:257–271). Its thickness is capped photon by
-  photon, as a running minimum, so under a pink beam it depends on the order photons come in
-  (MC:443–447).
 - **`outputIonsPerAtom.CSV` lists elements in hash-bucket order** (sulfur first), and elements
   sharing a bucket in the order they were first ionised.
 - **In simple mode, `outputXFEL.CSV`'s doses hold only the binding energies of atoms that do not
@@ -753,6 +748,10 @@ From porting the simple Monte Carlo, reproduced by the port:
   its diffraction efficiency is the elastic count over that.
 
 For GOS, with its port:
+- **In the surrounding, GOS mode uses the crystal's numbers**: an electron that leaves the crystal
+  takes the crystal's shell probabilities (`getAllShellProbs(false)`, MC:2297) and keeps its
+  inner-shell λ, and `getZlnI`, behind the Sternheimer correction, weights the surrounding's
+  elements by the crystal's molecular weight (CoefCalcCompute:3959).
 - **Auger and fluorescence cascades double-count hole energy**: the Auger branch deposits
   Eb − E_A and then recurses on both holes, which deposit their own binding energies (MC:1292,
   1323; XFEL:1370); a fluorescing hole deposits its whole binding energy.
@@ -761,6 +760,8 @@ For GOS, with its port:
   inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
 
 For XFEL, with its port:
+- Its surrounding is a different, older model: a box the size of a photoelectron's reach around
+  the crystal's bounding dimensions, which ignores `SurroundingThickness`.
 - Its rotation truncates the angle to whole radians and ignores the start (XFEL:368), and its
   occupancy test uses unrotated normals.
 - The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs divides by zero.

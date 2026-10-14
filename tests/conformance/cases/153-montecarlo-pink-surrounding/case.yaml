@@ -1,0 +1,23 @@
+case_id: 153-montecarlo-pink-surrounding
+tier: B
+exercises: 'Monte Carlo: a pink beam in a salt surrounding of no given thickness,
+  which the most energetic photon''s photoelectron caps'
+seed: 20260917
+reference_version: 5.0.1095
+reference_commit: b257980
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 139.786
+    cv: 0.0365
+  outputMC.CSV/MC-ADER:
+    mean: 139.786
+    cv: 0.0365
+  outputMC.CSV/RD3D-ADWC:
+    mean: 137.522
+    cv: 0.0355
+  outputMC.CSV/numEl:
+    mean: 634167000.0
+    cv: 0.168
+  outputXFEL.CSV/ions per atom:
+    mean: 0.0008176
+    cv: 0.0358

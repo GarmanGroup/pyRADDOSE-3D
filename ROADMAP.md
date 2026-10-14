@@ -246,7 +246,7 @@ first:
    at once, with a surrounding, a pink beam, and RADDOSE-3D's three files and printout, which
    `programs/dose/run_dose.py` writes. Case 140, a 20 um crystal, is weakly sensitive to how
    electrons are followed -- 12 keV photoelectrons stop well inside it, so a stopping power 20%
-   low moves its dose by 3% -- so eleven more cases are crystals of 3 to 8 um, which electrons
+   low moves its dose by 3% -- so thirteen more cases are crystals of 3 to 8 um, which electrons
    escape from: there it moves the dose by 7 to 15%. They vary the beam's shape and energy, the
    crystal's shape and rotation, the polarisation, a surrounding and a pink beam, and include
    iodine and sodium for [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)'s fix. The
@@ -254,12 +254,12 @@ first:
    briefly in the default suite. Next: GOS.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
    MicroED. (Under way: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to
-   [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48), stacked, fix a rotated crystal's
+   [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49), stacked, fix a rotated crystal's
    escape distances, circular beams, elastic deflections' sin θ, the directions electrons and
-   photons take, and MC's fluorescence energies with four smaller slips. The port follows each in
+   photons take, MC's fluorescence energies with four smaller slips, and the surrounding. The port follows each in
    its own commit and agreed with RADDOSE-3D at each. The largest effect is #48's: at 25 keV a
-   crystal with selenium loses 22% of its Monte Carlo dose. Cases 150 and 151 test the wedges.
-   What is left -- the surrounding's quirks, and GOS's and XFEL's, which wait for their ports --
+   crystal with selenium loses 22% of its Monte Carlo dose. Cases 150 and 151 test the wedges,
+   152 and 153 the surrounding. What is left -- GOS's and XFEL's, which wait for their ports --
    is in `UPSTREAM_FIXES.md`, *Still to fix*.)
 
 No gradients: a randomly drawn track has none, as with escape.

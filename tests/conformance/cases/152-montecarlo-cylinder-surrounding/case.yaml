@@ -1,0 +1,23 @@
+case_id: 152-montecarlo-cylinder-surrounding
+tier: B
+exercises: 'Monte Carlo: case 146''s cylinder in a salt surrounding 1 um thick, whose
+  shell must be as thick all round'
+seed: 20260917
+reference_version: 5.0.1095
+reference_commit: b257980
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 156.372
+    cv: 0.0218
+  outputMC.CSV/MC-ADER:
+    mean: 156.372
+    cv: 0.0218
+  outputMC.CSV/RD3D-ADWC:
+    mean: 174.507
+    cv: 0.0408
+  outputMC.CSV/numEl:
+    mean: 592500000.0
+    cv: 0.162
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00103005
+    cv: 0.041

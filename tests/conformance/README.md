@@ -83,8 +83,8 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   mostly fail once one half is shifted by the claimed detectable bias.
   `test_tier_b_statistics.py` checks the false-alarm rate and the power by
   simulation.
-- **Cost.** The port takes about 20 minutes over the twelve Monte Carlo
-  cases, so those comparisons are marked `slow`, and run with
+- **Cost.** The port takes about 25 minutes over the fourteen Monte
+  Carlo cases, so those comparisons are marked `slow`, and run with
   `uv run pytest -m slow tests/conformance/test_montecarlo_files.py`. Every
   case also runs briefly in the default suite, which checks that the port
   writes the files and printout RADDOSE-3D does. Regenerating the references
@@ -92,14 +92,16 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   an hour each for GOS and XFEL, and for the cylinder, whose 124 triangles it
   tests one by one, an hour at RADDOSE-3D #48 and ten before it.
 
-The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 151, of 3 to
+The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows
 in the dose. Each varies one thing from 141: the beam above 20 keV, iodine
 and sodium, a circular top-hat, a rotation, a cylinder, a pink beam, a
 surrounding, and the polarisation. 150 and 151 test the wedge, on 145's
 crystal: turned back from 90 degrees to 0, offset, which must match 145, and
 held still at 60 degrees in a beam narrower than the crystal, where it
-absorbs 42% less than at 0.
+absorbs 42% less than at 0. 152 and 153 test the surrounding: a cylinder in a
+thin one, whose shell must be as thick all round, and a pink beam in one of
+no given thickness, which the most energetic photon caps.
 
 ## Regenerating
 
