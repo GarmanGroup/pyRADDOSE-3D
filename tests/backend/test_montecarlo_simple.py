@@ -16,6 +16,7 @@ import pytest
 
 from pyraddose_3d.backend import microed
 from pyraddose_3d.backend.montecarlo import angles, geometry, material, photons
+from pyraddose_3d.backend.montecarlo.angles import column_weights
 from pyraddose_3d.backend.montecarlo.simple import simulate_simple
 from pyraddose_3d.backend.montecarlo.transport import Media, new_directions, track
 from pyraddose_3d.models.experiment import Experiment
@@ -56,36 +57,27 @@ def test_the_elastic_element_shares_run_to_one(setup) -> None:  # type: ignore[n
     np.testing.assert_allclose(cdf[-1], 1.0, rtol=1e-14)
 
 
-def test_angles_by_column_as_the_java_counts_them() -> None:
-    """Up to 20 keV the column is the angle; above, returnDeflectionAngle's ranges."""
-    low = np.degrees(angles.index_angles(False, 181))
-    np.testing.assert_allclose(low, np.arange(181.0), atol=1e-12)
-    high = np.degrees(angles.index_angles(True, 606))
-    assert high[0] == 0.0
-    assert high[1] == pytest.approx(1e-4)
-    assert high[2] == pytest.approx(1.25e-4)
-    assert high[37] == pytest.approx(1e-3)
-    assert high[146] == pytest.approx(1.0)
-    assert high[236] == pytest.approx(10.0)
-    assert high[297] == pytest.approx(25.5)
-    assert high[605] == pytest.approx(179.5)
+def test_elastic_angles_are_weighted_by_sin_theta() -> None:
+    """RADDOSE-3D #46: a flat cross-section per solid angle puts a quarter
+    of deflections under 60 degrees, not 45."""
+    degrees = np.arange(181.0)
+    running = np.cumsum(column_weights(degrees))
+    quarter = degrees[np.searchsorted(running / running[-1], 0.25)]
+    assert quarter == pytest.approx(60, abs=1)
 
 
-def test_the_header_and_the_formula_part_above_one_degree() -> None:
-    """The Java's angle lags the file's by a column from 1 degree on."""
-    table = angles.angular_table(6, high_energy=True)
-    formula = np.degrees(angles.index_angles(True, 606))
-    np.testing.assert_allclose(formula[:146], table.angles_deg[:146], rtol=1e-9)
-    assert formula[146] == 1.0
-    assert table.angles_deg[146] == pytest.approx(1.1)
+def test_elastic_angles_are_the_tables_own() -> None:
+    """RADDOSE-3D #46: above 20 keV, column 146 is the header's 1.1 degrees."""
+    sampler = angles._sampler(6, True)
+    assert math.degrees(sampler.angles[146]) == pytest.approx(1.1)
 
 
 def test_a_draw_takes_the_first_angle_reaching_it() -> None:
     """At the nearest tabulated energy: 0.075 keV is a tie, and takes 0.05."""
     table = angles.angular_table(6, high_energy=False)
-    row = table.probabilities[0]
-    cumulative = np.cumsum(row) / row.sum()
-    for column in (0, 1, 30, 179):
+    weighted = table.probabilities[0] * column_weights(table.angles_deg)
+    cumulative = np.cumsum(weighted) / weighted.sum()
+    for column in (1, 30, 179):
         draw = np.array([cumulative[column] - 1e-12])
         got = angles.deflection_angles(np.array([6]), np.array([0.075]), draw)
         assert math.degrees(got[0]) == pytest.approx(column)

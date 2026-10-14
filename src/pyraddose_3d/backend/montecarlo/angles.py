@@ -16,7 +16,6 @@ Each table is read when first asked for, as the Java reads it, and kept.
 from __future__ import annotations
 
 import lzma
-import math
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
@@ -134,33 +133,19 @@ def angular_table(z: int, high_energy: bool) -> AngularTable:
     )
 
 
-def index_angles(high_energy: bool, columns: int) -> np.ndarray:
-    """``returnDeflectionAngle``'s angle for each column, in radians.
+def column_weights(degrees: np.ndarray) -> np.ndarray:
+    """Each column's share of the solid angle, up to a constant.
 
-    Up to 20 keV the column index is the angle in degrees. Above, the Java
-    works it out from the index in four ranges -- 1e-4 degrees upward in
-    decades of 36 columns, then 1 to 10 by 0.1, 10 to 25 by 0.25, and 25 to
-    180 by 0.5 -- which the file's header need not agree with. Column 0 is
-    0: its ``0 % 0`` is NaN, which the Java replaces with 0.
+    The tables give the differential cross-section per unit solid angle at
+    each column's angle, so the chance of a deflection near theta is that
+    value times sin theta times the column's span of angles: half the span
+    to its neighbours. RADDOSE-3D took the values themselves as the chances
+    until #46, which made small deflections far too likely.
     """
-    index = np.arange(columns, dtype=float)
-    if not high_energy:
-        return index * math.pi / 180
-    degrees = np.zeros(columns)
-    for i in range(1, columns):
-        if i < 146:
-            minus, modulus = 1.0, 36.0
-            factor = int(int(i - minus) / modulus)
-            start = math.pow(10, factor) * 0.0001
-            divide = 4.0
-        elif i < 236:
-            start, divide, minus, modulus = 1.0, 10.0, 146.0, 90.0
-        elif i <= 296:
-            start, divide, minus, modulus = 10.0, 40.0, 236.0, 60.0
-        else:
-            start, divide, minus, modulus = 25.0, 50.0, 296.0, 1000000.0
-        degrees[i] = start + (((i - minus) % modulus) * (start / divide))
-    return degrees * math.pi / 180
+    radians = np.radians(degrees)
+    before = np.concatenate([radians[:1], radians[:-1]])
+    after = np.concatenate([radians[1:], radians[-1:]])
+    return np.asarray(np.sin(radians) * (after - before) / 2)
 
 
 @dataclass(frozen=True)
@@ -175,17 +160,12 @@ class _Sampler:
 @cache
 def _sampler(z: int, high_energy: bool) -> _Sampler:
     table = angular_table(z, high_energy)
-    probabilities = table.probabilities
-    # As returnDeflectionAngle: the running sum over the row's total, both
-    # summed left to right, so the last is exactly 1.
-    totals = np.zeros(len(probabilities))
-    for column in probabilities.T:
-        totals += column
-    cumulative = np.cumsum(probabilities, axis=1) / totals[:, None]
+    weighted = table.probabilities * column_weights(table.angles_deg)[None, :]
+    running = np.cumsum(weighted, axis=1)
     return _Sampler(
         energies_kev=table.energies_kev,
-        cumulative=cumulative,
-        angles=index_angles(high_energy, probabilities.shape[1]),
+        cumulative=running / running[:, -1:],
+        angles=np.radians(table.angles_deg),
     )
 
 
@@ -216,9 +196,9 @@ def deflection_angles(
     Returns
     -------
     numpy.ndarray
-        The polar deflection: the first angle whose running probability, at
-        the tabulated energy nearest the electron's, reaches the random
-        number.
+        The polar deflection: the first of the table's angles whose running
+        chance, at the tabulated energy nearest the electron's, reaches the
+        random number.
     """
     angles = np.empty_like(energy)
     high = energy > HIGH_ENERGY_KEV
