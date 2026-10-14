@@ -18,8 +18,9 @@ Cases are split into two tiers:
     result rather than only its statistics.
 ``B``
     Random in a way the port cannot reproduce draw for draw, and so
-    compared statistically. No case needs it at present; the Monte Carlo,
-    XFEL and MicroED subprograms, if ported, would.
+    compared statistically: the Monte Carlo and XFEL subprograms, whose
+    random numbers follow each electron's history. Each is run ``RUNS``
+    times on each side (``_tier_b.py``).
 """
 
 from __future__ import annotations
@@ -44,6 +45,9 @@ REMOVE = _Remove()
 
 #: Seed for every case. Escape modelling draws from it; pinned everywhere.
 SEED = 20260917
+
+#: Runs of each tier-B case, on each side: ``Runs`` in the input.
+RUNS = 20
 
 
 @dataclass(frozen=True)
@@ -115,6 +119,32 @@ MICROED: dict[str, Any] = {
     "beam": _electron_beam(),
     "wedges": [{"start": 0.0, "end": 0.0, "exposure_time": 1.0}],
 }
+
+
+def _simulated(
+    subprogram: str, photons: int, energy: float, **beam: Any
+) -> dict[str, Any]:
+    """Overrides for a Monte Carlo or XFEL case: the baseline crystal, still.
+
+    The photons and the energy are chosen per case for power: the doses'
+    run-to-run spread comes from how many photons are absorbed, and a
+    softer beam absorbs more of them for the same cost. XFEL takes a pulse
+    energy, in mJ, rather than a flux, and the exposure is the pulse's
+    length in fs.
+    """
+    xfel = subprogram == "xfel"
+    return {
+        "crystal": {
+            "subprogram": subprogram,
+            "simulation": {"photons": photons, "runs": RUNS},
+        },
+        "beam": {
+            "energy": energy,
+            **({"flux": REMOVE, "pulse_energy": 1.4} if xfel else {}),
+            **beam,
+        },
+        "wedges": [{"start": 0.0, "end": 0.0, "exposure_time": 30.0 if xfel else 10.0}],
+    }
 
 
 def baseline() -> dict[str, Any]:
@@ -1038,6 +1068,35 @@ _CASES: list[Case] = [
         "A",
         "MicroED: 4 nm thick, less than one 5 nm slice",
         {**MICROED, "crystal": _microed_crystal(dimensions=[2.0, 2.0, 0.004])},
+    ),
+    # --- Monte Carlo and XFEL (Subprogram MONTECARLO, GOS, XFEL): tier B -------
+    # 12.1 keV, above zinc's K edge, so its Auger cascade is exercised.
+    # The doses' run-to-run spread comes from how many photons are absorbed:
+    # about 0.4% of them in this crystal. MONTECARLO follows each
+    # photoelectron cheaply; 700,000 photons spread its doses by 2.7%, and
+    # 20 runs take the Java 15 minutes. GOS and XFEL follow every inelastic
+    # collision and secondary, so 20 runs of 60,000 and 100,000 photons take
+    # it an hour each, and spread their doses by 9% and 12%: XFEL counts
+    # only what happens within the pulse. How much each test can detect is
+    # in MANIFEST.yaml; more photons can buy more once the port's speed is
+    # known.
+    Case(
+        "140-montecarlo-baseline",
+        "B",
+        "Monte Carlo: electrons by elastic scattering and stopping power",
+        _simulated("montecarlo", 700_000, 12.1),
+    ),
+    Case(
+        "160-gos-baseline",
+        "B",
+        "Monte Carlo GOS: inelastic collisions, secondaries, Auger cascades",
+        _simulated("gos", 60_000, 12.1),
+    ),
+    Case(
+        "180-xfel-baseline",
+        "B",
+        "XFEL: the GOS simulation timed within a 30 fs pulse",
+        _simulated("xfel", 100_000, 12.1),
     ),
 ]
 

@@ -14,10 +14,13 @@ the distributed jar, so the corpus tracks the source tree being ported.
 
 from __future__ import annotations
 
+import csv
 import json
+import math
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -28,7 +31,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import yaml
 from _cases import SEED, Case, all_cases, config_for
 from _java_files import R_TIMESTAMP, parse_summary, reduce_java_outputs
+from _tier_b import FAMILY_ALPHA, GATED, POWER, detectable_bias
 
+from pyraddose_3d.models.crystal import SIMULATED
 from pyraddose_3d.models.experiment import Experiment
 
 HERE = Path(__file__).parent
@@ -180,6 +185,106 @@ def microed_report(stdout: str) -> str:
     return "\n".join(lines[start : end + 1]) + "\n"
 
 
+#: The files the Monte Carlo and XFEL subprograms write to the working
+#: directory, a row per run. MONTECARLO writes both, GOS and XFEL the second.
+SIMULATED_FILES = ("outputMC.CSV", "outputXFEL.CSV")
+
+#: Overwritten by each run, so only the last run's survives: kept whole, as
+#: a diagnostic.
+IONS_PER_ATOM = "outputIonsPerAtom.CSV"
+
+#: What each run prints: "label: value", a %.3f number.
+PRINTED = re.compile(r"^(?P<label>[A-Z][^:]*): (?P<value>-?\d+\.\d+|NaN|-?Infinity)$")
+
+
+def run_simulated_reference(root: Path, input_text: str, out_dir: Path) -> str:
+    """Run the reference on a Monte Carlo or XFEL input, returning its stdout.
+
+    Like MicroED, the subprograms write to the working directory.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    input_path = out_dir / "input.txt"
+    input_path.write_text(input_text, encoding="utf-8")
+    result = subprocess.run(
+        [
+            "java",
+            "-cp",
+            java_classpath(root),
+            "se.raddo.raddose3D.RD3D",
+            "--seed",
+            str(SEED),
+            "-i",
+            str(input_path),
+            "-p",
+            str(out_dir / "out-"),
+        ],
+        cwd=out_dir,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    if result.returncode != 0 or not (out_dir / "outputXFEL.CSV").is_file():
+        raise RuntimeError(
+            f"reference run failed:\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}"
+        )
+    return result.stdout
+
+
+def simulated_runs(out_dir: Path, stdout: str, runs: int) -> dict[str, list[float]]:
+    """Every value each run wrote or printed, keyed ``file/column`` or
+    ``stdout/label``, a list of one value per run."""
+    quantities: dict[str, list[float]] = {}
+    for name in SIMULATED_FILES:
+        path = out_dir / name
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as handle:
+            header, *rows = [r for r in csv.reader(handle) if r]
+        if [int(r[0]) for r in rows] != list(range(1, runs + 1)):
+            raise RuntimeError(f"{name} does not have runs 1 to {runs}")
+        for j, column in enumerate(header[1:], start=1):
+            quantities[f"{name}/{column.strip()}"] = [float(r[j]) for r in rows]
+    printed: dict[str, list[float]] = {}
+    for line in stdout.splitlines():
+        match = PRINTED.match(line.strip())
+        if match:
+            printed.setdefault(match["label"], []).append(float(match["value"]))
+    for label, values in printed.items():
+        if len(values) == runs:
+            quantities[f"stdout/{label}"] = values
+    return quantities
+
+
+def tier_b_power() -> tuple[int, dict[str, dict[str, float]]]:
+    """How many comparisons tier B makes, and the bias each catches.
+
+    From every case on disk: the bias a comparison catches with probability
+    ``POWER`` depends on how many share the family-wise rate, so it is
+    recomputed whenever the manifest is written.
+    """
+    spreads = {}
+    for case_dir in sorted(CASES_DIR.iterdir()):
+        meta_path = case_dir / "case.yaml"
+        if meta_path.is_file():
+            meta = yaml.safe_load(meta_path.read_text("utf-8"))
+            if meta["tier"] == "B":
+                spreads[meta["case_id"]] = meta["gated"]
+    tests = sum(len(gated) for gated in spreads.values())
+    runs = {
+        case_id: json.loads(
+            (CASES_DIR / case_id / "expected" / "runs.json").read_text("utf-8")
+        )["runs"]
+        for case_id in spreads
+    }
+    return tests, {
+        case_id: {
+            quantity: float(f"{detectable_bias(s['cv'], runs[case_id], tests):.3g}")
+            for quantity, s in gated.items()
+        }
+        for case_id, gated in spreads.items()
+    }
+
+
 #: Directives whose argument is a path relative to this repository.
 PATH_DIRECTIVES = ("PDB ", "CIF ", "SeqFile ", "ModelFile ", "File ")
 
@@ -230,6 +335,32 @@ def generate_case(case: Case, root: Path, version: str, commit: str) -> None:
         print(f"  {case.case_id:38s} tier {case.tier}  MicroED")
         return
 
+    if experiment.crystal.subprogram in SIMULATED:
+        runs = experiment.crystal.simulation.runs
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "out"
+            stdout = run_simulated_reference(root, input_text, out_dir)
+            quantities = simulated_runs(out_dir, stdout, runs)
+            shutil.copyfile(out_dir / IONS_PER_ATOM, expected / IONS_PER_ATOM)
+        (expected / "runs.json").write_text(
+            json.dumps({"runs": runs, "quantities": quantities}, indent=1) + "\n",
+            encoding="utf-8",
+        )
+        spread = {}
+        for quantity in GATED[experiment.crystal.subprogram]:
+            values = quantities[quantity]
+            mean = statistics.fmean(values)
+            if not mean or not math.isfinite(statistics.stdev(values)):
+                raise RuntimeError(f"{case.case_id}: {quantity} is {values}")
+            spread[quantity] = {
+                "mean": float(f"{mean:.6g}"),
+                "cv": float(f"{statistics.stdev(values) / abs(mean):.3g}"),
+            }
+        write_case_metadata(case, case_dir, version, commit, spread)
+        worst = max(s["cv"] for s in spread.values())
+        print(f"  {case.case_id:38s} tier B  {runs} runs, spread up to {worst:.1%}")
+        return
+
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp) / "out"
         run_reference(root, input_text, out_dir)
@@ -274,21 +405,30 @@ def generate_case(case: Case, root: Path, version: str, commit: str) -> None:
     print(f"  {case.case_id:38s} tier {case.tier}  {len(summary)} wedge(s)")
 
 
-def write_case_metadata(case: Case, case_dir: Path, version: str, commit: str) -> None:
-    """``case.yaml``: what the case exercises, and the reference it came from."""
+def write_case_metadata(
+    case: Case,
+    case_dir: Path,
+    version: str,
+    commit: str,
+    spread: dict[str, dict[str, float]] | None = None,
+) -> None:
+    """``case.yaml``: what the case exercises, and the reference it came from.
+
+    A tier-B case also records, for each quantity its test compares, the
+    reference's mean and its run-to-run spread over the mean.
+    """
+    meta: dict[str, object] = {
+        "case_id": case.case_id,
+        "tier": case.tier,
+        "exercises": case.exercises,
+        "seed": SEED,
+        "reference_version": version,
+        "reference_commit": commit,
+    }
+    if spread is not None:
+        meta["gated"] = spread
     (case_dir / "case.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "case_id": case.case_id,
-                "tier": case.tier,
-                "exercises": case.exercises,
-                "seed": SEED,
-                "reference_version": version,
-                "reference_commit": commit,
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+        yaml.safe_dump(meta, sort_keys=False), encoding="utf-8"
     )
 
 
@@ -339,6 +479,7 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(f"  {case.case_id:38s} skipped")
 
+    tests, detectable = tier_b_power()
     MANIFEST.write_text(
         yaml.safe_dump(
             {
@@ -350,7 +491,6 @@ def main(argv: list[str] | None = None) -> None:
                 "tolerances": {
                     "tier_A_relative": 1.0e-4,
                     "tier_A_quantised_quantities_relative": 5.0e-3,
-                    "tier_B_relative": 5.0e-2,
                     "histogram_percentage_points": 1.0,
                 },
                 "array_tolerances": {
@@ -429,6 +569,36 @@ def main(argv: list[str] | None = None) -> None:
                     "next. Worst 3.1e-4 against the reference and 6.7e-4 "
                     "against itself, so VoxelDose/max goes from 1e-4 to 5e-4."
                 ),
+                "tier_b": {
+                    "family_alpha": FAMILY_ALPHA,
+                    "power": POWER,
+                    "comparisons": tests,
+                    "gated": {mode: list(names) for mode, names in GATED.items()},
+                    "detectable_bias": detectable,
+                },
+                "tier_b_rationale": (
+                    "The Monte Carlo and XFEL subprograms follow each electron "
+                    "with random numbers whose order depends on its history, "
+                    "so the port is compared with them statistically. Each "
+                    "case is run with Runs K on each side, and the means of "
+                    "five headline quantities per subprogram are compared by "
+                    "Welch's t-test. Across the corpus the chance of any "
+                    "false alarm is family_alpha, by Bonferroni's correction "
+                    "over every comparison. The seeds are fixed, so a false "
+                    "alarm is not a flaky test: it can only appear when a "
+                    "change alters how random numbers are used. "
+                    "detectable_bias gives, per case and quantity, the bias "
+                    "relative to the mean that its test catches with the "
+                    "stated power: about 1.9 times the run-to-run spread "
+                    "each case.yaml records, with 20 runs a side. The other "
+                    "quantities, and the variance ratio, are reported but "
+                    "not tested. The reference's values are as RADDOSE-3D "
+                    "writes them, %f in its files and %.3f on stdout. "
+                    "Rounding adds nothing to a mean, and to a variance "
+                    "(step^2 / 12) / spread^2: under 2% for every tested "
+                    "quantity, the most for ions per atom, which %f leaves "
+                    "three significant figures."
+                ),
                 "quantised_quantities": [
                     "dose_threshold",
                     "tad",
@@ -462,13 +632,6 @@ def main(argv: list[str] | None = None) -> None:
                         "Every disagreement measured is exactly one step: the "
                         "adjacent histogram bin, or one voxel. 5e-3 is a "
                         "couple of steps."
-                    ),
-                    "tier_B_relative": (
-                        "For a calculation the port cannot reproduce draw for "
-                        "draw, where only gross agreement is meaningful. No "
-                        "case uses it: escape modelling draws from "
-                        "java.util.Random in the Java's order, so its cases "
-                        "are tier A."
                     ),
                     "histogram_percentage_points": (
                         "Summary.txt's dose histogram counts voxels, so a bin "

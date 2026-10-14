@@ -35,6 +35,7 @@ import yaml
 from _agreement import record_agreement, record_array_agreement
 from _array_stats import compare as compare_arrays
 from _array_stats import from_simulation
+from _tier_b import GATED
 
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.solve import Simulation, simulate, solve
@@ -76,6 +77,11 @@ def is_microed(case_dir: Path) -> bool:
     return (case_dir / "expected" / "outputMicroED.CSV").is_file()
 
 
+def is_simulated(case_dir: Path) -> bool:
+    """Whether a case runs the Monte Carlo or XFEL subprogram: tier B."""
+    return (case_dir / "expected" / "runs.json").is_file()
+
+
 CASE_DIRS = case_dirs()
 CASE_IDS = [p.name for p in CASE_DIRS]
 
@@ -103,6 +109,10 @@ def test_case_config_is_valid_and_complete(case_dir: Path) -> None:
     assert meta["exercises"], "every case must say what it is for"
     if is_microed(case_dir):
         assert experiment.crystal.subprogram == "microed"
+        return
+    if is_simulated(case_dir):
+        assert meta["tier"] == "B"
+        assert set(meta["gated"]) == set(GATED[experiment.crystal.subprogram])
         return
     assert summary, "reference summary is empty"
     assert len(summary) == len(experiment.wedges), (
@@ -159,7 +169,7 @@ def tolerance_for(tier: str, field: str, manifest_data: dict[str, Any]) -> float
     Parameters
     ----------
     tier : str
-        ``"A"`` or ``"B"``.
+        ``"A"``: tier B is compared statistically, by ``test_montecarlo_files``.
     field : str
         Summary field name.
     manifest_data : dict[str, Any]
@@ -171,19 +181,20 @@ def tolerance_for(tier: str, field: str, manifest_data: dict[str, Any]) -> float
         Relative tolerance.
     """
     tolerances = manifest_data["tolerances"]
-    if tier == "B":
-        return float(tolerances["tier_B_relative"])
+    if tier != "A":
+        raise ValueError(f"tier {tier} cases are not compared field by field")
     if field in set(manifest_data["quantised_quantities"]):
         return float(tolerances["tier_A_quantised_quantities_relative"])
     return float(tolerances["tier_A_relative"])
 
 
 #: The MX cases, which the comparisons below run. MicroED's are in
-#: ``test_microed_files.py``.
+#: ``test_microed_files.py``, and the Monte Carlo and XFEL subprograms' in
+#: ``test_montecarlo_files.py``.
 CASE_PARAMS = [
     pytest.param(case_dir, id=case_dir.name)
     for case_dir in CASE_DIRS
-    if not is_microed(case_dir)
+    if not is_microed(case_dir) and not is_simulated(case_dir)
 ]
 
 
@@ -278,7 +289,7 @@ def test_every_array_statistic_has_a_tolerance() -> None:
     tolerances = manifest()["array_tolerances"]
     seen = set()
     for case_dir in CASE_DIRS:
-        if is_microed(case_dir):
+        if is_microed(case_dir) or is_simulated(case_dir):
             continue
         stats = json.loads(
             (case_dir / "expected" / "array_stats.json").read_text("utf-8")

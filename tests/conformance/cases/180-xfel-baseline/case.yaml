@@ -1,0 +1,22 @@
+case_id: 180-xfel-baseline
+tier: B
+exercises: 'XFEL: the GOS simulation timed within a 30 fs pulse'
+seed: 20260917
+reference_version: 5.0.1089
+reference_commit: 82ac582
+gated:
+  outputXFEL.CSV/XFEL-ADWC:
+    mean: 0.164955
+    cv: 0.12
+  outputXFEL.CSV/XFEL-ADER:
+    mean: 0.164955
+    cv: 0.12
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 0.628436
+    cv: 0.087
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 1070690000.0
+    cv: 0.119
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00035765
+    cv: 0.12

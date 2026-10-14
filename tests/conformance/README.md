@@ -12,8 +12,12 @@ same" is a testable claim rather than an aspiration.
     generate.py           regenerates cases/ from the Java implementation
     _array_stats.py       reduces voxel-level outputs to statistics
     _java_files.py        reads RADDOSE-3D's output files
+    _tier_b.py            tier B's statistics, and what it compares
     test_conformance.py   the numbers: summaries and array statistics
     test_output_files.py  the files: the port's output files against the Java's
+    test_microed_files.py MicroED's files and report
+    test_montecarlo_files.py  tier B: the Monte Carlo and XFEL subprograms
+    test_tier_b_statistics.py the statistics, checked by simulation
     cases/<id>/
       config.yaml         canonical input (generated, committed, reviewable)
       case.yaml           tier, what it exercises, seed, reference version
@@ -24,6 +28,7 @@ same" is a testable claim rather than an aspiration.
         Summary.csv         line by line with the port's
         DoseState.R         (its timestamp blanked)
         first_lines.json  the opening line of each per-voxel file
+        runs.json         tier B: each run's every written and printed value
 
 Both sides of every comparison go through the same reduction and the same
 parser: `generate.py` applies them to the Java's files, the tests to the
@@ -40,7 +45,7 @@ behaviour rather than a difference in input.
 The port also reads `.txt` files (`Experiment.from_raddose_txt`), so existing
 inputs keep working. Every case survives the round trip YAML to `.txt` and
 back -- all but the seed, which RADDOSE-3D takes from its command line --
-which tests the reader against the emitter on 73 configurations.
+which tests the reader against the emitter on 76 configurations.
 
 ## The two tiers
 
@@ -56,9 +61,28 @@ draws no random numbers. They compare RADDOSE-3D's two MicroED files and what
 it prints, which gives the mean free paths to full precision
 (`test_microed_files.py`, tolerances in `MANIFEST.yaml`).
 
-**Tier B — statistical.** For a calculation the port cannot reproduce draw for
-draw, compared loosely. No case uses it at present; the Monte Carlo and XFEL
-subprograms might, whose draws depend on each electron's history.
+**Tier B — statistical.** The Monte Carlo and XFEL subprograms follow each
+electron with random numbers whose order depends on its history, so the port
+cannot reproduce them draw for draw, and is not written to: it follows many
+electrons at once. Each case runs 20 times on each side (`Runs 20`), and the
+means of five quantities per subprogram -- the dose to the whole crystal and
+to its exposed region, RADDOSE-3D's own dose estimate, the elastic
+scattering and the ionisations per atom -- are compared with Welch's t-test
+(`_tier_b.py`, `test_montecarlo_files.py`).
+
+- **False alarms.** Across the corpus the chance of any is 1e-3, by
+  Bonferroni's correction. The seeds are fixed, so a false alarm is not a
+  flaky test: it can only appear when a change alters how random numbers are
+  used.
+- **Power.** `MANIFEST.yaml` gives, per case and quantity, the bias its test
+  catches four times in five: about 1.9 times the run-to-run spread recorded
+  in `case.yaml`. Each case's photons and energy are chosen for that spread,
+  which comes from how many photons are absorbed.
+- **Calibration.** Before the port is compared, the reference is compared
+  with itself: its first ten runs against its last ten must pass, and must
+  mostly fail once one half is shifted by the claimed detectable bias.
+  `test_tier_b_statistics.py` checks the false-alarm rate and the power by
+  simulation.
 
 ## Regenerating
 

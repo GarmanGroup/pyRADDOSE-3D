@@ -17,6 +17,8 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
 - 73 conformance cases, generated from RADDOSE-3D, match it within measured tolerances. They
   cover the sixteen summary numbers, the dose field and per-image series behind them, and the
   output files themselves. Photoelectron and fluorescence escape are included, value by value.
+  Three more, one per Monte Carlo and XFEL subprogram, await the port, to be compared
+  statistically.
 - **MicroED** (`Subprogram EMED`) is ported: the dose to a thin crystal in an electron beam,
   slice by slice, the scattering counts, and the grid search for the best voltage and
   thickness. Its fourteen cases agree with RADDOSE-3D to the last printed digit or two, now that
@@ -227,7 +229,12 @@ first:
    - ELSEPA's angular tables as optional data packages (done: `packages/elsepa-low`, 2.3 MB,
      committed; `packages/elsepa-high`, 23 MB, built locally from a RADDOSE-3D checkout);
    - tier-B (statistical) conformance, calibrated: Java against Java and the port against
-     itself must pass, and mutations of the claimed detectable size must fail.
+     itself must pass, and mutations of the claimed detectable size must fail. (Done for the
+     Java: a baseline case per subprogram, 20 runs each, five quantities each compared by
+     Welch's t; RADDOSE-3D's first ten runs agree with its last ten. The doses' detectable
+     bias is 4.5% for MONTECARLO, 15% for GOS and 20% for XFEL, which spend about a second
+     of the Java's time per absorbed photon; the timing gate decides whether to buy more.
+     The port's side waits for the port.)
 3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within
    about 3× of it, continue; otherwise reconsider.
 4. **Port the current physics**, defects and all: the simple Monte Carlo, then GOS, then XFEL.

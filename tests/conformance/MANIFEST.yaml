@@ -2,11 +2,10 @@ reference_version: 5.0.1089
 reference_commit: 82ac582
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 73
+case_count: 76
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
-  tier_B_relative: 0.05
   histogram_percentage_points: 1.0
 array_tolerances:
   DoseState/totals: 0.0001
@@ -62,6 +61,62 @@ array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the 
   deposit lands in the voxel its track position rounds to, and a last-bit difference
   in a cosine moves it to the next. Worst 3.1e-4 against the reference and 6.7e-4
   against itself, so VoxelDose/max goes from 1e-4 to 5e-4.'
+tier_b:
+  family_alpha: 0.001
+  power: 0.8
+  comparisons: 15
+  gated:
+    montecarlo:
+    - outputMC.CSV/MC-ADWC
+    - outputMC.CSV/MC-ADER
+    - outputMC.CSV/RD3D-ADWC
+    - outputMC.CSV/numEl
+    - outputXFEL.CSV/ions per atom
+    gos:
+    - outputXFEL.CSV/vResolvedNoCut
+    - stdout/RADDOSE-GOS average dose exposed region (ADER)
+    - outputXFEL.CSV/RD3D-ADWC
+    - outputXFEL.CSV/Diffraction efficiency
+    - outputXFEL.CSV/ions per atom
+    xfel:
+    - outputXFEL.CSV/XFEL-ADWC
+    - outputXFEL.CSV/XFEL-ADER
+    - outputXFEL.CSV/RD3D-ADWC
+    - outputXFEL.CSV/Diffraction efficiency
+    - outputXFEL.CSV/ions per atom
+  detectable_bias:
+    140-montecarlo-baseline:
+      outputMC.CSV/MC-ADWC: 0.0452
+      outputMC.CSV/MC-ADER: 0.0452
+      outputMC.CSV/RD3D-ADWC: 0.0408
+      outputMC.CSV/numEl: 0.217
+      outputXFEL.CSV/ions per atom: 0.0406
+    160-gos-baseline:
+      outputXFEL.CSV/vResolvedNoCut: 0.154
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.154
+      outputXFEL.CSV/RD3D-ADWC: 0.106
+      outputXFEL.CSV/Diffraction efficiency: 0.608
+      outputXFEL.CSV/ions per atom: 0.145
+    180-xfel-baseline:
+      outputXFEL.CSV/XFEL-ADWC: 0.202
+      outputXFEL.CSV/XFEL-ADER: 0.202
+      outputXFEL.CSV/RD3D-ADWC: 0.147
+      outputXFEL.CSV/Diffraction efficiency: 0.201
+      outputXFEL.CSV/ions per atom: 0.202
+tier_b_rationale: 'The Monte Carlo and XFEL subprograms follow each electron with
+  random numbers whose order depends on its history, so the port is compared with
+  them statistically. Each case is run with Runs K on each side, and the means of
+  five headline quantities per subprogram are compared by Welch''s t-test. Across
+  the corpus the chance of any false alarm is family_alpha, by Bonferroni''s correction
+  over every comparison. The seeds are fixed, so a false alarm is not a flaky test:
+  it can only appear when a change alters how random numbers are used. detectable_bias
+  gives, per case and quantity, the bias relative to the mean that its test catches
+  with the stated power: about 1.9 times the run-to-run spread each case.yaml records,
+  with 20 runs a side. The other quantities, and the variance ratio, are reported
+  but not tested. The reference''s values are as RADDOSE-3D writes them, %f in its
+  files and %.3f on stdout. Rounding adds nothing to a mean, and to a variance (step^2
+  / 12) / spread^2: under 2% for every tested quantity, the most for ions per atom,
+  which %f leaves three significant figures.'
 quantised_quantities:
 - dose_threshold
 - tad
@@ -83,9 +138,6 @@ tolerance_rationale:
     threshold, so they move in steps of one voxel in about five hundred, 2e-3. Every
     disagreement measured is exactly one step: the adjacent histogram bin, or one
     voxel. 5e-3 is a couple of steps.'
-  tier_B_relative: 'For a calculation the port cannot reproduce draw for draw, where
-    only gross agreement is meaningful. No case uses it: escape modelling draws from
-    java.util.Random in the Java''s order, so its cases are tier A.'
   histogram_percentage_points: Summary.txt's dose histogram counts voxels, so a bin
     moves in steps of one voxel -- about 0.2 percentage points in these crystals --
     whenever a voxel's dose sits close to a bin edge. Worst 0.40 against the reference
