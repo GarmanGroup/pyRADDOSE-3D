@@ -236,8 +236,18 @@ first:
      of the Java's time per absorbed photon; the timing gate decides whether to buy more.
      The port's side waits for the port.)
 3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within
-   about 3× of it, continue; otherwise reconsider.
+   about 3× of it, continue; otherwise reconsider. (Passed: on case 140, the port takes 0.4–0.5 s
+   a run of 100,000 photons and 3.4–4.5 s of 1,000,000, against RADDOSE-3D's 4.3–4.9 s and
+   41–48 s, JVM start-up excluded: ten times faster. GOS's inelastic mean free path, which the
+   Java recomputes every step, costs 0.66 ms per energy in the port's scalar MicroED code, so it
+   can be tabulated once per run.)
 4. **Port the current physics**, defects and all: the simple Monte Carlo, then GOS, then XFEL.
+   (Started: `backend/montecarlo/` follows every electron of every run at once, and case 140
+   agrees with RADDOSE-3D on all five quantities, |t| at most 1.3. Not yet: a surrounding, a
+   pink beam, the output files. Case 140 is insensitive to electron transport -- 12 keV
+   photoelectrons stop well inside a 20 um crystal, so a stopping power 20% low moves its dose
+   by only 3% -- so the next cases must be ones electrons escape from: a crystal of a few um, a
+   beam above 20 keV.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
    MicroED. The defects -- "isotropic" directions with a uniform polar angle, uniform Compton
    angles, elastic angles without their sin θ weight, a wrong direction-vector formula, cascades

@@ -72,6 +72,7 @@ from pyraddose_3d.models.crystal import SIMULATED
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from pyraddose_3d.backend.montecarlo.simple import SimpleRun, SimpleSetup
     from pyraddose_3d.models.experiment import Experiment
 
 __all__ = [
@@ -81,6 +82,8 @@ __all__ = [
     "apply_overrides",
     "crystal_mesh",
     "microed",
+    "monte_carlo",
+    "monte_carlo_setup",
     "pixels_per_micron",
     "simulate",
     "solve",
@@ -1020,6 +1023,91 @@ def _escape(
         surrounding,
         surrounding_absorption,
     )
+
+
+def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
+    """What RADDOSE-3D's simple Monte Carlo reads of an experiment.
+
+    Being ported (``ROADMAP.md``, Milestone 7): no surrounding, one energy,
+    and the last wedge, the one whose run RADDOSE-3D's files keep.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        A crystal with ``subprogram: montecarlo``.
+
+    Returns
+    -------
+    SimpleSetup
+        For :func:`pyraddose_3d.backend.montecarlo.simple.simulate_simple`.
+    """
+    from pyraddose_3d.backend.montecarlo.photons import BeamShape
+    from pyraddose_3d.backend.montecarlo.simple import SimpleSetup
+    from pyraddose_3d.models.beam import GaussianBeam as GaussianBeamModel
+    from pyraddose_3d.models.beam import TophatBeam as TophatBeamModel
+
+    crystal, beam = experiment.crystal, experiment.beam
+    if crystal.subprogram != "montecarlo":
+        raise ValueError("the simple Monte Carlo is Subprogram MONTECARLO")
+    # The model allows only these, with a flux, for the Monte Carlo.
+    assert isinstance(beam, (GaussianBeamModel, TophatBeamModel))
+    assert beam.flux is not None
+    if crystal.escape.surrounding:
+        raise NotImplementedError("the Monte Carlo's surrounding is not ported yet")
+    if beam.energy_fwhm is not None:
+        raise NotImplementedError("the Monte Carlo's pink beam is not ported yet")
+    mesh = crystal_mesh(crystal)
+    built, density_ = crystal_material(crystal.composition)
+    assert built is not None
+    wedge = experiment.wedges[-1]
+    resolution = wedge_resolution(wedge.start, wedge.end, wedge.angular_resolution)
+    ox, oy, oz = wedge.start_offset or (0.0, 0.0, 0.0)
+    tx, ty, tz = wedge.translate_per_degree or (0.0, 0.0, 0.0)
+    return SimpleSetup(
+        mesh=Mesh(np.asarray(mesh.vertices), np.asarray(mesh.triangles)),
+        pixels_per_micron=pixels_per_micron(crystal, mesh),
+        composition=built,
+        density=float(density_),
+        material=electron_material(built, density_),
+        beam=BeamShape.from_model(beam),
+        photon_energy=float(beam.energy),
+        flux=float(beam.flux),
+        exposure=float(wedge.exposure_time),
+        start_angle=math.radians(wedge.start),
+        end_angle=math.radians(wedge.end),
+        angular_resolution=math.radians(resolution),
+        start_offset=(ox, oy, oz),
+        translation_per_radian=(math.degrees(tx), math.degrees(ty), math.degrees(tz)),
+        photons=crystal.simulation.photons,
+        runs=crystal.simulation.runs,
+        rotated_polarisation=(crystal.escape.goniometer_axis == 90.0)
+        != (crystal.simulation.polarisation_direction == 90.0),
+    )
+
+
+def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
+    """Run RADDOSE-3D's simple Monte Carlo, ``Subprogram MONTECARLO``.
+
+    Being ported (``ROADMAP.md``, Milestone 7): its five headline quantities
+    per run, not yet its files. Compared with RADDOSE-3D statistically, by
+    ``tests/conformance/test_montecarlo_files.py``.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        A crystal with ``subprogram: montecarlo``. Its ``seed`` seeds NumPy's
+        generator; the port does not reproduce RADDOSE-3D's draws, only
+        their distribution.
+
+    Returns
+    -------
+    list[SimpleRun]
+        One per run.
+    """
+    from pyraddose_3d.backend.montecarlo.simple import simulate_simple
+
+    setup = monte_carlo_setup(experiment)
+    return simulate_simple(setup, np.random.default_rng(experiment.seed))
 
 
 #: How messages name RADDOSE-3D's engines.

@@ -715,6 +715,9 @@ Energy accounting:
   (MC:1395). XFEL does not.
 - **The elastic photon probability divides by photoelectric plus Compton**, not the total
   (MC:411).
+- **A photoelectric draw past every shell's running chance takes the K shell**, even below the
+  K edge, where it frees a photoelectron of negative energy; the energy balances only because
+  the K binding energy is then deposited locally (MC:1156, 2888).
 - **Auger electrons below 50 eV deposit nothing** (MC:1629).
 - **GOS mean free paths are inconsistent**: `1/gosOuterLambda` against `gosOuterLambda`, and an
   inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
@@ -722,7 +725,11 @@ Energy accounting:
 Geometry and beams:
 - **Escape distances use unrotated face normals** (MC:4131), and XFEL's occupancy test does too.
 - **A circular top-hat bounds y by |x|** (MC:2771); a circular Gaussian draws its radius from a
-  one-dimensional normal.
+  one-dimensional normal, truncated at the x aperture alone, so an ellipse narrower in y is
+  overrun (MC:2853).
+- **A wedge ending at 0° is a still**, whatever its start (MC:382).
+- **A crystal face at exactly z = 0 is taken for a miss**: 0.0 is `getStartingZ`'s sentinel
+  (MC:530, 4529).
 - **Circular exposed areas are 4× too large**: π·x·y for diameters x and y (MC:2671).
 - **Rotation runs the wrong way when end < start**, and XFEL truncates the angle to whole
   radians (XFEL:368).

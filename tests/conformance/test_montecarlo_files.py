@@ -12,6 +12,7 @@ once one half is shifted by the bias the test claims to see.
 
 from __future__ import annotations
 
+import functools
 import json
 import statistics
 from typing import TYPE_CHECKING
@@ -22,7 +23,7 @@ from _tier_b import compare, detectable_bias
 from test_conformance import CASE_DIRS, is_simulated, manifest
 
 from pyraddose_3d.models.experiment import Experiment
-from pyraddose_3d.solve import simulate
+from pyraddose_3d.solve import monte_carlo
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,6 +32,27 @@ pytestmark = pytest.mark.conformance
 
 TIER_B = [case_dir for case_dir in CASE_DIRS if is_simulated(case_dir)]
 TIER_B_PARAMS = [pytest.param(case_dir, id=case_dir.name) for case_dir in TIER_B]
+
+
+def _subprogram(case_dir: Path) -> str:
+    return Experiment.from_yaml(case_dir / "config.yaml").crystal.subprogram
+
+
+#: Being ported: the comparison is expected to fail, and must start passing
+#: when the subprogram is.
+_UNPORTED = pytest.mark.xfail(
+    raises=NotImplementedError,
+    strict=True,
+    reason="being ported: ROADMAP.md, Milestone 7",
+)
+PORT_PARAMS = [
+    pytest.param(
+        case_dir,
+        id=case_dir.name,
+        marks=() if _subprogram(case_dir) == "montecarlo" else _UNPORTED,
+    )
+    for case_dir in TIER_B
+]
 
 #: How many comparisons share the family-wise false-alarm rate.
 TESTS = manifest()["tier_b"]["comparisons"] if TIER_B else 0
@@ -117,13 +139,41 @@ def test_a_bias_of_the_claimed_size_is_caught() -> None:
     assert sum(caught) >= 0.6 * len(caught), f"caught {sum(caught)} of {len(caught)}"
 
 
-@pytest.mark.parametrize("case_dir", TIER_B_PARAMS)
-@pytest.mark.xfail(
-    raises=NotImplementedError,
-    strict=True,
-    reason="being ported: ROADMAP.md, Milestone 7",
-)
+@functools.cache
+def port(case_dir: Path) -> dict[str, list[float]]:
+    """The port's runs of a case, keyed as the reference's quantities."""
+    experiment = Experiment.from_yaml(case_dir / "config.yaml")
+    if experiment.crystal.subprogram != "montecarlo":
+        raise NotImplementedError(f"Subprogram {experiment.crystal.subprogram}")
+    runs = monte_carlo(experiment)
+    return {
+        "outputMC.CSV/MC-ADWC": [r.mc_adwc for r in runs],
+        "outputMC.CSV/MC-ADER": [r.mc_ader for r in runs],
+        "outputMC.CSV/RD3D-ADWC": [r.rd3d_adwc for r in runs],
+        "outputMC.CSV/numEl": [r.elastic for r in runs],
+        "outputXFEL.CSV/ions per atom": [r.ions_per_atom for r in runs],
+    }
+
+
+@pytest.mark.parametrize("case_dir", PORT_PARAMS)
 def test_the_port_agrees_with_the_reference(case_dir: Path) -> None:
     """Each tested quantity's mean, the port's runs against RADDOSE-3D's."""
-    experiment = Experiment.from_yaml(case_dir / "config.yaml")
-    simulate(experiment)
+    ours, theirs = port(case_dir), reference(case_dir)
+    comparisons = [compare(q, theirs[q], ours[q], TESTS) for q in gated(case_dir)]
+    for comparison in comparisons:
+        print(comparison)
+    failures = [str(c) for c in comparisons if not c.passed]
+    assert not failures, "\n".join(failures)
+
+
+@pytest.mark.parametrize("case_dir", PORT_PARAMS)
+def test_the_port_agrees_with_itself(case_dir: Path) -> None:
+    """Its first runs against its last, as the reference's are compared."""
+    ours = port(case_dir)
+    failures = []
+    for quantity in gated(case_dir):
+        first, last = halves(ours[quantity])
+        comparison = compare(quantity, first, last, TESTS)
+        if not comparison.passed:
+            failures.append(str(comparison))
+    assert not failures, "\n".join(failures)

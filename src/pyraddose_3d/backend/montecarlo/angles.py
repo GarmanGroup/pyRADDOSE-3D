@@ -16,13 +16,24 @@ Each table is read when first asked for, as the Java reads it, and kept.
 from __future__ import annotations
 
 import lzma
+import math
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
 
 import numpy as np
 
-__all__ = ["MAX_Z", "AngularTable", "MissingTablesError", "angular_table"]
+__all__ = [
+    "HIGH_ENERGY_KEV",
+    "MAX_Z",
+    "AngularTable",
+    "MissingTablesError",
+    "angular_table",
+    "deflection_angles",
+]
+
+#: Above this electron energy, in keV, the high-energy tables are used.
+HIGH_ENERGY_KEV = 20.0
 
 #: high_energy -> the last element with a table: up to 20 keV plutonium,
 #: above it tellurium.
@@ -121,3 +132,120 @@ def angular_table(z: int, high_energy: bool) -> AngularTable:
         probabilities=np.array([rows[e] for e in energies]),
         angles_deg=np.array([float(v) for v in header.split(",")[1:]]),
     )
+
+
+def index_angles(high_energy: bool, columns: int) -> np.ndarray:
+    """``returnDeflectionAngle``'s angle for each column, in radians.
+
+    Up to 20 keV the column index is the angle in degrees. Above, the Java
+    works it out from the index in four ranges -- 1e-4 degrees upward in
+    decades of 36 columns, then 1 to 10 by 0.1, 10 to 25 by 0.25, and 25 to
+    180 by 0.5 -- which the file's header need not agree with. Column 0 is
+    0: its ``0 % 0`` is NaN, which the Java replaces with 0.
+    """
+    index = np.arange(columns, dtype=float)
+    if not high_energy:
+        return index * math.pi / 180
+    degrees = np.zeros(columns)
+    for i in range(1, columns):
+        if i < 146:
+            minus, modulus = 1.0, 36.0
+            factor = int(int(i - minus) / modulus)
+            start = math.pow(10, factor) * 0.0001
+            divide = 4.0
+        elif i < 236:
+            start, divide, minus, modulus = 1.0, 10.0, 146.0, 90.0
+        elif i <= 296:
+            start, divide, minus, modulus = 10.0, 40.0, 236.0, 60.0
+        else:
+            start, divide, minus, modulus = 25.0, 50.0, 296.0, 1000000.0
+        degrees[i] = start + (((i - minus) % modulus) * (start / divide))
+    return degrees * math.pi / 180
+
+
+@dataclass(frozen=True)
+class _Sampler:
+    """One table, ready to sample: each row's running probabilities."""
+
+    energies_kev: np.ndarray
+    cumulative: np.ndarray
+    angles: np.ndarray
+
+
+@cache
+def _sampler(z: int, high_energy: bool) -> _Sampler:
+    table = angular_table(z, high_energy)
+    probabilities = table.probabilities
+    # As returnDeflectionAngle: the running sum over the row's total, both
+    # summed left to right, so the last is exactly 1.
+    totals = np.zeros(len(probabilities))
+    for column in probabilities.T:
+        totals += column
+    cumulative = np.cumsum(probabilities, axis=1) / totals[:, None]
+    return _Sampler(
+        energies_kev=table.energies_kev,
+        cumulative=cumulative,
+        angles=index_angles(high_energy, probabilities.shape[1]),
+    )
+
+
+def _nearest_rows(energies: np.ndarray, energy: np.ndarray) -> np.ndarray:
+    """``returnNearestEnergy``: TreeMap floor or ceiling, the floor on a tie."""
+    below = np.searchsorted(energies, energy, side="right") - 1
+    above = np.searchsorted(energies, energy, side="left")
+    below = np.where(below < 0, above, below)
+    above = np.where(above >= len(energies), below, above)
+    nearer_below = np.abs(energy - energies[below]) <= np.abs(energy - energies[above])
+    return np.where(nearer_below, below, above)
+
+
+def deflection_angles(
+    z: np.ndarray, energy: np.ndarray, uniform: np.ndarray
+) -> np.ndarray:
+    """``getPrimaryElasticScatteringAngle`` for many electrons, in radians.
+
+    Parameters
+    ----------
+    z : numpy.ndarray
+        The atomic number of the element each electron scattered from.
+    energy : numpy.ndarray
+        Each electron's energy, keV, from 0.05 to 300.
+    uniform : numpy.ndarray
+        A uniform random number in [0, 1) for each.
+
+    Returns
+    -------
+    numpy.ndarray
+        The polar deflection: the first angle whose running probability, at
+        the tabulated energy nearest the electron's, reaches the random
+        number.
+    """
+    angles = np.empty_like(energy)
+    high = energy > HIGH_ENERGY_KEV
+    for key in np.unique(np.stack([z, high.astype(np.int64)]), axis=1).T:
+        element, high_energy = int(key[0]), bool(key[1])
+        chosen = np.flatnonzero((z == element) & (high == high_energy))
+        sampler = _sampler(element, high_energy)
+        rows = _nearest_rows(sampler.energies_kev, energy[chosen])
+        column = _first_reaching(sampler.cumulative, rows, uniform[chosen])
+        angles[chosen] = sampler.angles[column]
+    return angles
+
+
+def _first_reaching(
+    cumulative: np.ndarray, rows: np.ndarray, uniform: np.ndarray
+) -> np.ndarray:
+    """In each chosen row, the first column whose value is at least ``uniform``.
+
+    A binary search in every row at once: about ten passes for 606 columns.
+    """
+    low = np.zeros(len(rows), dtype=np.int64)
+    high = np.full(len(rows), cumulative.shape[1] - 1, dtype=np.int64)
+    while True:
+        open_ = low < high
+        if not open_.any():
+            return low
+        middle = (low + high) // 2
+        reaches = cumulative[rows, middle] >= uniform
+        high = np.where(open_ & reaches, middle, high)
+        low = np.where(open_ & ~reaches, middle + 1, low)
