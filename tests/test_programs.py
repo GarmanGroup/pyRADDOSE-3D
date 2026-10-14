@@ -96,7 +96,33 @@ def test_run_optimise_energy_writes_a_runnable_strategy(
     assert "Best energy" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("subprogram", ["MonteCarlo", "GOS", "XFEL"])
+def test_run_dose_runs_the_monte_carlo(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Subprogram MONTECARLO: what RADDOSE-3D prints, and its three files."""
+    text = (DOSE / "dose_example_input.txt").read_text()
+    text = text.replace(
+        "Crystal\n", "Crystal\nSubprogram MonteCarlo\nSimPhotons 2000\nRuns 2\n", 1
+    )
+    config = tmp_path / "input.txt"
+    config.write_text(text)
+    script = runpy.run_path(str(DOSE / "run_dose.py"))
+    script["main"].__globals__.update(
+        CONFIG_PATH=str(config), OUTPUT_PREFIX=str(tmp_path / "output-")
+    )
+    script["main"]()
+
+    printed = capsys.readouterr().out
+    assert printed.count("Monte Carlo average dose whole crystal (ADWC): ") == 2
+    files = {p.name: p.read_text() for p in tmp_path.glob("output*.CSV")}
+    assert sorted(files) == ["outputIonsPerAtom.CSV", "outputMC.CSV", "outputXFEL.CSV"]
+    rows = files["outputMC.CSV"].splitlines()
+    assert rows[0] == "Run Number, RD3D-ADWC,RD3D-ADER,MC-ADWC,MC-ADER,numEl"
+    assert [r.split(",")[0] for r in rows[1:]] == [" 1", " 2"]
+    assert len(files["outputXFEL.CSV"].splitlines()[1].split(",")) == 11
+
+
+@pytest.mark.parametrize("subprogram", ["GOS", "XFEL"])
 def test_run_dose_refuses_the_subprograms_not_yet_ported(
     subprogram: str, tmp_path: Path
 ) -> None:

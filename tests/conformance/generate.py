@@ -14,7 +14,6 @@ the distributed jar, so the corpus tracks the source tree being ported.
 
 from __future__ import annotations
 
-import csv
 import json
 import math
 import os
@@ -30,7 +29,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
 from _cases import SEED, Case, all_cases, config_for
-from _java_files import R_TIMESTAMP, parse_summary, reduce_java_outputs
+from _java_files import (
+    R_TIMESTAMP,
+    parse_summary,
+    reduce_java_outputs,
+    simulated_runs,
+)
 from _tier_b import FAMILY_ALPHA, GATED, POWER, detectable_bias
 
 from pyraddose_3d.models.crystal import SIMULATED
@@ -185,16 +189,9 @@ def microed_report(stdout: str) -> str:
     return "\n".join(lines[start : end + 1]) + "\n"
 
 
-#: The files the Monte Carlo and XFEL subprograms write to the working
-#: directory, a row per run. MONTECARLO writes both, GOS and XFEL the second.
-SIMULATED_FILES = ("outputMC.CSV", "outputXFEL.CSV")
-
 #: Overwritten by each run, so only the last run's survives: kept whole, as
 #: a diagnostic.
 IONS_PER_ATOM = "outputIonsPerAtom.CSV"
-
-#: What each run prints: "label: value", a %.3f number.
-PRINTED = re.compile(r"^(?P<label>[A-Z][^:]*): (?P<value>-?\d+\.\d+|NaN|-?Infinity)$")
 
 
 def run_simulated_reference(root: Path, input_text: str, out_dir: Path) -> str:
@@ -228,31 +225,6 @@ def run_simulated_reference(root: Path, input_text: str, out_dir: Path) -> str:
             f"reference run failed:\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}"
         )
     return result.stdout
-
-
-def simulated_runs(out_dir: Path, stdout: str, runs: int) -> dict[str, list[float]]:
-    """Every value each run wrote or printed, keyed ``file/column`` or
-    ``stdout/label``, a list of one value per run."""
-    quantities: dict[str, list[float]] = {}
-    for name in SIMULATED_FILES:
-        path = out_dir / name
-        if not path.is_file():
-            continue
-        with path.open(encoding="utf-8") as handle:
-            header, *rows = [r for r in csv.reader(handle) if r]
-        if [int(r[0]) for r in rows] != list(range(1, runs + 1)):
-            raise RuntimeError(f"{name} does not have runs 1 to {runs}")
-        for j, column in enumerate(header[1:], start=1):
-            quantities[f"{name}/{column.strip()}"] = [float(r[j]) for r in rows]
-    printed: dict[str, list[float]] = {}
-    for line in stdout.splitlines():
-        match = PRINTED.match(line.strip())
-        if match:
-            printed.setdefault(match["label"], []).append(float(match["value"]))
-    for label, values in printed.items():
-        if len(values) == runs:
-            quantities[f"stdout/{label}"] = values
-    return quantities
 
 
 def tier_b_power() -> tuple[int, dict[str, dict[str, float]]]:

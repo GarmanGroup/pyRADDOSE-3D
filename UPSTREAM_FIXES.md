@@ -29,6 +29,7 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 |---|---|---|---|
 | [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | merged as `e2df6e4` |
 | [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42) | `jd_mc_xfel_reproducible`, onto `master` | *Monte Carlo and XFEL*: reproducibility and running | merged as `82ac582` |
+| [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43) | `jd_mc_outer_shell`, onto `master` | *Monte Carlo and XFEL*: a photoelectron of negative energy | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -693,7 +694,50 @@ mode.
 | The stopping power sums each element's charge into a `long`, truncating as it goes, so a count one ulp below a whole number loses an electron or not depending on element order. Making the order fixed moved MicroED case 129 by 6e-7, against the port (run) | `calcStoppingPower` | a `double`. MicroED's doses move by up to 8e-5 (case 123, where electrons stop) |
 | XFEL keeps the inside/outside answer for the first point tested in each voxel. Electrons start inside, so voxels the surface cuts through lean inside: on a 5 um cylinder the dose came out about 6% high, t = 1.9 over 20 runs each; no effect on a cuboid (run) | XFEL:3828–3875 | tested at each point, as MC does, at no measurable cost |
 
+### A photoelectron of negative energy: fixed in [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)
+
+Found porting the simple Monte Carlo. Branch `jd_mc_outer_shell` at `cc2afb6`.
+
+| defect | where | fix |
+|---|---|---|
+| A photoelectric draw past every shell's running chance took the K shell, even below the K edge, where it freed a photoelectron of negative energy. The running chances fall short of 1 only where the model leaves shells out: sodium's L shells (8.4% of its absorption), and below their K edges iodine, xenon, samarium, gadolinium, and tantalum to uranium where the tables give M shells. Iodine at 12.1 keV gave 22% of its photoelectrons -21 keV; platinum's would be -66 keV. The K binding energy was then deposited where the atom relaxed, so energy balanced, but none of it travelled | MC:1156, XFEL:1190 | an outer shell: no binding energy, a photoelectron with the photon's whole energy, no relaxation. A 5 um crystal soaked in 1 M iodide loses 9% of its Monte Carlo dose (run); every element of the corpus's cases has shells for every draw, and their runs are unchanged to the last digit |
+
+### Found porting the simple Monte Carlo
+
+Reproduced by the port, to fix with the rest of the physics below:
+
+- **Photons crossing a surrounding are measured from its front face** with the crystal's
+  coefficients once past the surrounding's own, and one that lands in the surrounding is taken
+  to have crossed the crystal and is drawn again from the crystal's back face (MC:569–575,
+  631–657).
+- **An electron coming back into the crystal is moved to the nearest face plane ahead**, not the
+  face it crosses, and loses its energy entirely if it falls below 0.05 keV on the way
+  (MC:1665–1679). One leaving into the surrounding with under 0.05 keV loses it too
+  (MC:2258–2263).
+- **The surrounding is the crystal's mesh with every vertex pushed out along each axis**, so a
+  cylinder's or sphere's is not a uniform shell (MC:257–271). Its thickness is capped photon by
+  photon, as a running minimum, so under a pink beam it depends on the order photons come in
+  (MC:443–447).
+- **`outputIonsPerAtom.CSV` lists elements in hash-bucket order** (sulfur first), and elements
+  sharing a bucket in the order they were first ionised.
+- **In simple mode, `outputXFEL.CSV`'s doses hold only the binding energies of atoms that do not
+  relax** and the energy of electrons freed with under 0.05 keV (MC:1359–1394, 1631–1640), so
+  its diffraction efficiency is the elastic count over that.
+
 ### Physics: to fix in both, with the group's sign-off
+
+What some of these do to the simple Monte Carlo's dose, measured by correcting
+each in the port alone (2.4 million photons, 10 runs a side), on crystals of a
+few um that electrons escape from; in a 20 um crystal every effect is smaller:
+
+| quirk | case | dose with it corrected |
+|---|---|---|
+| escape distances through the unrotated planes | 145, a 4 x 6 x 8 um crystal rotated 90 degrees | -11.4% +- 0.8% |
+| elastic angles without their sin theta weight | 141, a 5 um cube | +3.4% +- 0.8% |
+| "isotropic" photoelectron directions | 141 | -0.9% +- 0.8% |
+| `getNewDirectionVector` | 141 | -0.4% +- 1.0% |
+| the elastic photon chance | 141 | +0.4%, from the coefficients |
+| circular exposed areas 4x too large | 144, a 5 um circular top-hat | exposed-region doses +27% (21% low as they are) |
 
 Angles:
 - **"Isotropic" directions are not**: the polar angle is uniform on [0, 2π) (MC:1242, 1306).
@@ -715,9 +759,6 @@ Energy accounting:
   (MC:1395). XFEL does not.
 - **The elastic photon probability divides by photoelectric plus Compton**, not the total
   (MC:411).
-- **A photoelectric draw past every shell's running chance takes the K shell**, even below the
-  K edge, where it frees a photoelectron of negative energy; the energy balances only because
-  the K binding energy is then deposited locally (MC:1156, 2888).
 - **Auger electrons below 50 eV deposit nothing** (MC:1629).
 - **GOS mean free paths are inconsistent**: `1/gosOuterLambda` against `gosOuterLambda`, and an
   inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
@@ -734,7 +775,11 @@ Geometry and beams:
 - **Rotation runs the wrong way when end < start**, and XFEL truncates the angle to whole
   radians (XFEL:368).
 - **The inverse transform is applied in the wrong order** when there are both offsets and
-  rotation (MC:3914).
+  rotation (MC:3914): a point is tested against the crystal translated then rotated, but its
+  voxel is found by translating back before rotating back. The two differ by R(-a)o - o, so a
+  point near a face lands outside the voxel grid, and the run fails with an
+  `ArrayIndexOutOfBoundsException` (run: a 4 x 6 x 8 um crystal offset 0.5 um and rotated
+  through 90 degrees). The port refuses the combination.
 
 XFEL:
 - The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs divides by zero.

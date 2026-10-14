@@ -242,12 +242,16 @@ first:
    Java recomputes every step, costs 0.66 ms per energy in the port's scalar MicroED code, so it
    can be tabulated once per run.)
 4. **Port the current physics**, defects and all: the simple Monte Carlo, then GOS, then XFEL.
-   (Started: `backend/montecarlo/` follows every electron of every run at once, and case 140
-   agrees with RADDOSE-3D on all five quantities, |t| at most 1.3. Not yet: a surrounding, a
-   pink beam, the output files. Case 140 is insensitive to electron transport -- 12 keV
-   photoelectrons stop well inside a 20 um crystal, so a stopping power 20% low moves its dose
-   by only 3% -- so the next cases must be ones electrons escape from: a crystal of a few um, a
-   beam above 20 keV.)
+   (The simple Monte Carlo is ported: `backend/montecarlo/` follows every electron of every run
+   at once, with a surrounding, a pink beam, and RADDOSE-3D's three files and printout, which
+   `programs/dose/run_dose.py` writes. Case 140, a 20 um crystal, is weakly sensitive to how
+   electrons are followed -- 12 keV photoelectrons stop well inside it, so a stopping power 20%
+   low moves its dose by 3% -- so nine more cases are crystals of 3 to 8 um, which electrons
+   escape from: there it moves the dose by 7 to 15%. They vary the beam's shape and energy, the
+   crystal's shape and rotation, the polarisation, a surrounding and a pink beam, and include
+   iodine and sodium for [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)'s fix. The
+   comparisons with the port take a quarter of an hour, and are `slow`; every case also runs
+   briefly in the default suite. Next: GOS.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
    MicroED. The defects -- "isotropic" directions with a uniform polar angle, uniform Compton
    angles, elastic angles without their sin θ weight, a wrong direction-vector formula, cascades

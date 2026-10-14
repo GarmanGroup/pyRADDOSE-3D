@@ -88,13 +88,18 @@ def inside(mesh: Mesh, points_nm: np.ndarray, placement: Placement) -> np.ndarra
 
 
 def entry_depth(
-    mesh: Mesh, x_nm: np.ndarray, y_nm: np.ndarray, placement: Placement
+    mesh: Mesh,
+    x_nm: np.ndarray,
+    y_nm: np.ndarray,
+    placement: Placement,
+    crossing: int = 0,
 ) -> np.ndarray:
-    """``getStartingZ``: where each photon's line along +z first meets it, nm.
+    """``getStartingZ``: where each photon's line along +z meets it, nm.
 
-    The line through ``(x, y, 0)``, in both directions: the most negative
-    crossing. 0.0 where the line misses, as in the Java, which takes 0.0 to
-    mean a miss.
+    The line through ``(x, y, 0)``, in both directions, and its crossings in
+    order: the first, the front, by default, or ``crossing=1``, the back.
+    0.0 where the line misses, as in the Java, which takes 0.0 to mean a
+    miss.
     """
     origin = _to_crystal(np.stack([x_nm, y_nm, np.zeros_like(x_nm)], axis=1), placement)
     direction = np.stack(
@@ -107,9 +112,8 @@ def entry_depth(
         o = origin[start : start + _BATCH]
         d = direction[start : start + _BATCH]
         t, hit = _line_triangle(corners, o, d)
-        t = np.where(hit, t, np.inf)
-        first = t.min(axis=1)
-        depth[start : start + _BATCH] = np.where(np.isfinite(first), first * 1000, 0.0)
+        t = np.sort(np.where(hit, t, np.inf), axis=1)[:, crossing]
+        depth[start : start + _BATCH] = np.where(np.isfinite(t), t * 1000, 0.0)
     return depth
 
 

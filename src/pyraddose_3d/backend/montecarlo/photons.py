@@ -24,13 +24,17 @@ if TYPE_CHECKING:
     from pyraddose_3d.backend.composition import Composition
 
 __all__ = [
+    "OUTER_SHELL",
     "BeamShape",
     "PhotonCoefficients",
     "Shells",
     "beam_positions",
+    "choose",
     "compton_electrons",
     "cos_angle_to_x",
+    "ionised_shells",
     "photon_coefficients",
+    "shell_cdf",
     "shells",
 ]
 
@@ -217,102 +221,139 @@ def shells(z: int) -> Shells:
     return Shells(edges, binding, ionisation, fluorescence)
 
 
-def _shell_cdf(z: int, energy: float) -> np.ndarray:
-    """``getRelativeShellProbs``: running chances of each shell, K first.
+#: ``MC.OUTER_SHELL``: a photoelectric absorption by a shell the model leaves
+#: out, an outer one. It has no binding energy and does not relax.
+OUTER_SHELL = -1
 
-    A shell beyond the photon's energy, or an L shell of an element lighter
-    than magnesium, or an M shell of one lighter than tantalum, keeps 0: the
-    draw that falls past every running chance takes the K shell.
+
+def shell_cdf(z: int, energy: np.ndarray) -> np.ndarray:
+    """``getRelativeShellProbs``: each shell's running chance, K first.
+
+    ``(energies, 9)``. A shell beyond the photon's energy, an L shell of an
+    element lighter than magnesium, or an M shell of one lighter than
+    tantalum keeps 0. A draw past every running chance ionises an outer
+    shell (:data:`OUTER_SHELL`).
     """
     s = shells(z)
-    cdf = np.zeros(_SHELLS)
-    running = 0.0
-    taken = 0.0
+    energy = np.atleast_1d(np.asarray(energy, dtype=float))
+    cdf = np.zeros((len(energy), _SHELLS))
+    running = np.zeros(len(energy))
+    taken = np.zeros(len(energy))
     for shell in range(_SHELLS):
         allowed = energy > s.edges[shell]
         if shell in (1, 2, 3):
-            allowed = allowed and z >= 12
+            allowed &= z >= 12
         elif shell >= 4:
-            allowed = allowed and z >= 73
-        if not allowed:
-            continue
+            allowed &= z >= 73
         p = s.ionisation[shell] if shell == 0 else s.ionisation[shell] * (1 - taken)
+        p = np.where(allowed, p, 0.0)
         taken += p
         running += p
-        cdf[shell] = running
+        cdf[:, shell] = np.where(allowed, running, 0.0)
     return cdf
+
+
+def ionised_shells(cdf: np.ndarray, uniform: np.ndarray) -> np.ndarray:
+    """``MC.ionisedShell``: the first shell whose running chance passes.
+
+    :data:`OUTER_SHELL` for a draw past them all.
+    """
+    above = cdf > uniform[:, None]
+    return np.where(above.any(axis=1), above.argmax(axis=1), OUTER_SHELL)
 
 
 @dataclass(frozen=True)
 class PhotonCoefficients:
-    """What ``updateCoefficients`` and its neighbours give at one energy.
+    """What ``updateCoefficients`` and its neighbours give, photon by photon.
 
     Attributes
     ----------
-    absorption, compton, elastic : float
-        The crystal's photoelectric, Compton and coherent coefficients, /um.
+    absorption, compton, elastic : numpy.ndarray
+        The material's photoelectric, Compton and coherent coefficients at
+        each photon's energy, /um.
     photoelectric_cdf, compton_cdf : numpy.ndarray
-        Each element's running share of the photoelectric and Compton
-        coefficients, in atomic-number order.
-    shell_cdf : numpy.ndarray
-        ``(elements, 9)``: :func:`_shell_cdf` for each element.
+        ``(photons, elements)``: each element's running share of the
+        photoelectric and Compton coefficients, in atomic-number order.
     """
 
-    absorption: float
-    compton: float
-    elastic: float
+    absorption: np.ndarray
+    compton: np.ndarray
+    elastic: np.ndarray
     photoelectric_cdf: np.ndarray
     compton_cdf: np.ndarray
-    shell_cdf: np.ndarray
 
     @property
-    def total_mean_free_path_nm(self) -> float:
+    def total_mean_free_path_nm(self) -> np.ndarray:
         """``totalMFPL``: one over every coefficient, nm."""
         return (1 / (self.absorption + self.compton + self.elastic)) * 1000
 
     @property
-    def elastic_chance(self) -> float:
+    def photon_mean_free_path_nm(self) -> np.ndarray:
+        """``photonMFPL``: photoelectric and Compton alone, nm.
+
+        The surrounding's is taken this way.
+        """
+        return (1 / (self.absorption + self.compton)) * 1000
+
+    @property
+    def elastic_chance(self) -> np.ndarray:
         """``elasticProb``: coherent over photoelectric and Compton alone."""
         return self.elastic / (self.absorption + self.compton)
 
     @property
-    def compton_chance(self) -> float:
+    def compton_chance(self) -> np.ndarray:
         """``probCompton``."""
-        photon = (1 / (self.absorption + self.compton)) * 1000
-        return 1 - (photon / ((1 / self.absorption) * 1000))
+        return 1 - (self.photon_mean_free_path_nm / ((1 / self.absorption) * 1000))
+
+    def take(self, index: np.ndarray) -> PhotonCoefficients:
+        """The coefficients of the chosen photons."""
+        return PhotonCoefficients(
+            self.absorption[index],
+            self.compton[index],
+            self.elastic[index],
+            self.photoelectric_cdf[index],
+            self.compton_cdf[index],
+        )
 
 
-def photon_coefficients(composition: Composition, energy: float) -> PhotonCoefficients:
-    """The crystal's photon coefficients and element shares at ``energy`` keV."""
-    totals = material_coefficients(composition, energy)
+def photon_coefficients(
+    composition: Composition, energy: np.ndarray
+) -> PhotonCoefficients:
+    """A material's photon coefficients and element shares at each energy, keV.
+
+    Computed once for each distinct energy: a monochromatic beam's photons
+    share one.
+    """
+    distinct, inverse = np.unique(np.asarray(energy, dtype=float), return_inverse=True)
+    totals = material_coefficients(composition, distinct)
     counts = np.asarray(composition.counts, dtype=float)
     photo, compton = [], []
     for element, count in zip(composition.elements, counts, strict=True):
-        cs = element.absorption_coefficients(energy)
-        photo.append(count * float(cs.photoelectric))
-        compton.append(count * float(cs.compton))
-    photo_share = np.array(photo) / sum(photo)
-    compton_share = np.array(compton) / sum(compton)
+        cs = element.absorption_coefficients(distinct)
+        photo.append(count * np.asarray(cs.photoelectric, dtype=float))
+        compton.append(count * np.asarray(cs.compton, dtype=float))
+    photo_terms = np.stack(photo, axis=1)
+    compton_terms = np.stack(compton, axis=1)
+    photo_cdf = np.cumsum(photo_terms / photo_terms.sum(axis=1, keepdims=True), axis=1)
+    compton_cdf = np.cumsum(
+        compton_terms / compton_terms.sum(axis=1, keepdims=True), axis=1
+    )
     return PhotonCoefficients(
-        absorption=float(totals.absorption),
-        compton=float(totals.inelastic),
-        elastic=float(totals.elastic),
-        photoelectric_cdf=np.cumsum(photo_share),
-        compton_cdf=np.cumsum(compton_share),
-        shell_cdf=np.stack(
-            [_shell_cdf(e.atomic_number, energy) for e in composition.elements]
-        ),
+        absorption=np.asarray(totals.absorption, dtype=float)[inverse],
+        compton=np.asarray(totals.inelastic, dtype=float)[inverse],
+        elastic=np.asarray(totals.elastic, dtype=float)[inverse],
+        photoelectric_cdf=photo_cdf[inverse],
+        compton_cdf=compton_cdf[inverse],
     )
 
 
-def first_above(cdf: np.ndarray, uniform: np.ndarray, default: int = 0) -> np.ndarray:
-    """The first index whose running chance exceeds each draw, as the Java walks.
+def choose(cdf: np.ndarray, uniform: np.ndarray) -> np.ndarray:
+    """``getIonisedElement``: per row, the first element whose share passes.
 
-    ``default`` where none does.
+    The last, should rounding leave none.
     """
-    above = cdf[None, :] > uniform[:, None]
-    found = above.any(axis=1)
-    return np.where(found, above.argmax(axis=1), default)
+    above = cdf > uniform[:, None]
+    return np.where(above.any(axis=1), above.argmax(axis=1), cdf.shape[1] - 1)
 
 
 def _emission_cdf() -> np.ndarray:
@@ -402,18 +443,20 @@ def photoelectron_directions(
 
 
 def compton_electrons(
-    rng: np.random.Generator, photon_energy: float, n: int
+    rng: np.random.Generator, photon_energy: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """``produceCompton``: each recoil electron's energy (keV) and direction.
 
     The photon's angle is drawn uniformly from 0 to pi, not by Klein and
     Nishina; reproduced.
     """
+    photon_energy = np.asarray(photon_energy, dtype=float)
+    n = len(photon_energy)
     photon_theta = math.pi * rng.random(n)
     mc_squared = _ELECTRON_MASS * math.pow(_SPEED_OF_LIGHT, 2)
     incident = photon_energy * KEV_TO_JOULES
     energy = (
-        (math.pow(incident, 2) * (1 - np.cos(photon_theta)))
+        (np.power(incident, 2) * (1 - np.cos(photon_theta)))
         / (mc_squared * (1 + ((incident / mc_squared) * (1 - np.cos(photon_theta)))))
     ) / KEV_TO_JOULES
     electron_phi = np.arctan(

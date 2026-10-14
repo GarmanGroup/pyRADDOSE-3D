@@ -1028,8 +1028,8 @@ def _escape(
 def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     """What RADDOSE-3D's simple Monte Carlo reads of an experiment.
 
-    Being ported (``ROADMAP.md``, Milestone 7): no surrounding, one energy,
-    and the last wedge, the one whose run RADDOSE-3D's files keep.
+    The last wedge: each wedge reruns the simulation, and RADDOSE-3D's files
+    keep the last's.
 
     Parameters
     ----------
@@ -1042,7 +1042,7 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         For :func:`pyraddose_3d.backend.montecarlo.simple.simulate_simple`.
     """
     from pyraddose_3d.backend.montecarlo.photons import BeamShape
-    from pyraddose_3d.backend.montecarlo.simple import SimpleSetup
+    from pyraddose_3d.backend.montecarlo.simple import SimpleSetup, Surrounding
     from pyraddose_3d.models.beam import GaussianBeam as GaussianBeamModel
     from pyraddose_3d.models.beam import TophatBeam as TophatBeamModel
 
@@ -1052,17 +1052,50 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     # The model allows only these, with a flux, for the Monte Carlo.
     assert isinstance(beam, (GaussianBeamModel, TophatBeamModel))
     assert beam.flux is not None
-    if crystal.escape.surrounding:
-        raise NotImplementedError("the Monte Carlo's surrounding is not ported yet")
-    if beam.energy_fwhm is not None:
-        raise NotImplementedError("the Monte Carlo's pink beam is not ported yet")
     mesh = crystal_mesh(crystal)
     built, density_ = crystal_material(crystal.composition)
     assert built is not None
+    photons = crystal.simulation.photons
+    energies = None
+    if beam.energy_fwhm is not None:
+        # One energy per photon, ascending: the first photons of a run, and
+        # so of a rotation, are the softest.
+        energies = np.asarray(
+            pink_beam_energies(float(beam.energy), beam.energy_fwhm, photons)
+        )
+    surrounding = None
+    options = crystal.escape
+    if options.surrounding:
+        cell, cell_density = surrounding_composition(
+            float(to_namespace(np, built.cell_volume)),
+            options.surrounding_heavy_conc,
+            options.density_based,
+            options.surrounding_elements,
+            options.surrounding_density or 0.0,
+        )
+        surrounding = Surrounding(
+            composition=cell,
+            density=float(cell_density),
+            material=electron_material(cell, cell_density),
+            thickness_um=crystal.simulation.surrounding_thickness or (0.0, 0.0, 0.0),
+        )
+    _refuse_untabulated(built, surrounding, beam.energy, energies)
     wedge = experiment.wedges[-1]
     resolution = wedge_resolution(wedge.start, wedge.end, wedge.angular_resolution)
     ox, oy, oz = wedge.start_offset or (0.0, 0.0, 0.0)
     tx, ty, tz = wedge.translate_per_degree or (0.0, 0.0, 0.0)
+    rotates = not (
+        abs(math.radians(wedge.start) - math.radians(wedge.end))
+        < math.radians(resolution)
+        or wedge.end == 0
+    )
+    if rotates and any((ox, oy, oz, tx, ty, tz)):
+        raise ValueError(
+            "RADDOSE-3D's Monte Carlo cannot rotate an offset or translated "
+            "crystal: it places points by the crystal's offset after rotating "
+            "and voxels by it before, and a point near a face falls outside the "
+            "voxel grid, an ArrayIndexOutOfBoundsException (UPSTREAM_FIXES.md)"
+        )
     return SimpleSetup(
         mesh=Mesh(np.asarray(mesh.vertices), np.asarray(mesh.triangles)),
         pixels_per_micron=pixels_per_micron(crystal, mesh),
@@ -1078,11 +1111,36 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         angular_resolution=math.radians(resolution),
         start_offset=(ox, oy, oz),
         translation_per_radian=(math.degrees(tx), math.degrees(ty), math.degrees(tz)),
-        photons=crystal.simulation.photons,
+        photons=photons,
         runs=crystal.simulation.runs,
         rotated_polarisation=(crystal.escape.goniometer_axis == 90.0)
         != (crystal.simulation.polarisation_direction == 90.0),
+        energies=energies,
+        surrounding=surrounding,
     )
+
+
+def _refuse_untabulated(
+    built: Any, surrounding: Any, energy: float, energies: Any
+) -> None:
+    """``SubprogramInputs.check``: ELSEPA's tables stop at Z = 52 above 20 keV."""
+    from pyraddose_3d.backend.montecarlo.angles import HIGH_ENERGY_KEV, MAX_Z
+
+    highest = float(np.max(energies)) if energies is not None else float(energy)
+    if highest <= HIGH_ENERGY_KEV:
+        return
+    for where, composition in (("crystal", built), ("surrounding", surrounding)):
+        if composition is None:
+            continue
+        cell = getattr(composition, "composition", composition)
+        for element in cell.elements:
+            if element.atomic_number > MAX_Z[True]:
+                raise ValueError(
+                    f"The Monte Carlo subprogram has electron scattering tables "
+                    f"above 20 keV only up to Z = {MAX_Z[True]}, and the {where} "
+                    f"contains {element.name} (Z = {element.atomic_number}) in a "
+                    f"beam reaching {highest:.3f} keV."
+                )
 
 
 def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
@@ -1161,6 +1219,11 @@ def simulate(
         raise ValueError(
             "this experiment runs RADDOSE-3D's MicroED engine; call "
             "pyraddose_3d.solve.microed"
+        )
+    if experiment.crystal.subprogram == "montecarlo":
+        raise ValueError(
+            "this experiment runs RADDOSE-3D's Monte Carlo subprogram; call "
+            "pyraddose_3d.solve.monte_carlo"
         )
     if experiment.crystal.subprogram in SIMULATED:
         raise NotImplementedError(

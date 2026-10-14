@@ -147,6 +147,47 @@ def _simulated(
     }
 
 
+def _escaping(
+    photons: int,
+    dimensions: list[float] | None = None,
+    energy: float = 12.1,
+    beam: dict[str, Any] | None = None,
+    crystal: dict[str, Any] | None = None,
+    wedge: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A Monte Carlo case electrons escape from: a crystal of a few um.
+
+    A 12.1 keV photoelectron travels about 2.5 um. In case 140's 20 um crystal
+    nearly every one stops inside, so its dose barely depends on how the
+    electrons are followed: a stopping power 20% low moves it by 3%. In a
+    5 um cube it moves it by 15%. A top-hat beam the size of the crystal's
+    face sends every photon through it.
+    """
+    dimensions = dimensions or [5.0, 5.0, 5.0]
+    overrides = _simulated("montecarlo", photons, energy)
+    # Whole, so that a change of shape, which replaces the baseline's crystal
+    # rather than merging into it, still has a composition.
+    merged = {
+        **overrides["crystal"],
+        "dimensions": dimensions,
+        "pixels_per_micron": 2.0,
+        "composition": copy.deepcopy(BASELINE_COMPOSITION),
+        **(crystal or {}),
+    }
+    overrides["crystal"] = {
+        k: v for k, v in merged.items() if not isinstance(v, _Remove)
+    }
+    overrides["beam"] = beam or {
+        "type": "tophat",
+        "flux": 2.0e12,
+        "energy": energy,
+        "collimation": {"shape": "rectangular", "x": dimensions[0], "y": dimensions[1]},
+    }
+    if wedge is not None:
+        overrides["wedges"] = [wedge]
+    return overrides
+
+
 def baseline() -> dict[str, Any]:
     """The experiment every case is a variation of.
 
@@ -1085,6 +1126,148 @@ _CASES: list[Case] = [
         "B",
         "Monte Carlo: electrons by elastic scattering and stopping power",
         _simulated("montecarlo", 700_000, 12.1),
+    ),
+    # Crystals of a few um, which electrons escape from, so that how they are
+    # followed shows in the dose: a stopping power 20% low moves these by 7
+    # to 15%. Each varies one thing from 141, chosen with the port to detect
+    # about 5% (MANIFEST.yaml), at 15-20 minutes of the Java's time.
+    Case(
+        "141-montecarlo-escape",
+        "B",
+        "Monte Carlo: a 5 um cube, which photoelectrons escape from",
+        _escaping(1_200_000),
+    ),
+    Case(
+        "142-montecarlo-selenium-25-kev",
+        "B",
+        "Monte Carlo: 25 keV, so ELSEPA's tables above 20 keV, and selenium's "
+        "relaxation",
+        _escaping(
+            1_200_000,
+            dimensions=[6.0, 6.0, 6.0],
+            energy=25.0,
+            crystal={
+                "pixels_per_micron": 1.0,
+                "composition": {
+                    **BASELINE_COMPOSITION,
+                    "protein_heavy_atoms": {"Zn": 0.333, "S": 6.0, "Se": 10.0},
+                },
+            },
+        ),
+    ),
+    Case(
+        "143-montecarlo-iodine-sodium",
+        "B",
+        "Monte Carlo: iodine, below its K edge, and sodium, whose outer shells "
+        "the model leaves out",
+        _escaping(
+            600_000,
+            crystal={
+                "composition": {
+                    **BASELINE_COMPOSITION,
+                    "solvent_heavy_conc": {"P": 425.0, "I": 1000.0, "Na": 500.0},
+                }
+            },
+        ),
+    ),
+    Case(
+        "144-montecarlo-circular-tophat",
+        "B",
+        "Monte Carlo: a circular top-hat, which fills a bow tie",
+        _escaping(
+            1_200_000,
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "circular", "x": 5.0, "y": 5.0},
+            },
+        ),
+    ),
+    Case(
+        "145-montecarlo-rotation",
+        "B",
+        "Monte Carlo: a 4 x 6 x 8 um crystal rotated through 90 degrees",
+        _escaping(
+            1_200_000,
+            dimensions=[4.0, 6.0, 8.0],
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "rectangular", "x": 10.0, "y": 6.0},
+            },
+            # Not offset: RADDOSE-3D's Monte Carlo fails on a rotated crystal
+            # that is (UPSTREAM_FIXES.md).
+            wedge={"start": 0.0, "end": 90.0, "exposure_time": 10.0},
+        ),
+    ),
+    Case(
+        "146-montecarlo-cylinder",
+        "B",
+        # Ten hours of the Java's time: it tests each point against the
+        # cylinder's 124 triangles one by one.
+        "Monte Carlo: a cylinder 5 um across and high",
+        _escaping(
+            1_200_000,
+            crystal={
+                "type": "cylinder",
+                "diameter": 5.0,
+                "height": 5.0,
+                "dimensions": REMOVE,
+            },
+        ),
+    ),
+    Case(
+        "147-montecarlo-pink",
+        "B",
+        "Monte Carlo: a pink beam, 1 keV wide",
+        _escaping(
+            1_200_000,
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "energy_fwhm": 1.0,
+                "collimation": {"shape": "rectangular", "x": 5.0, "y": 5.0},
+            },
+        ),
+    ),
+    Case(
+        "148-montecarlo-surrounding",
+        "B",
+        "Monte Carlo: a salt surrounding 2 um deep, which the beam lights too",
+        _escaping(
+            1_200_000,
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "rectangular", "x": 9.0, "y": 9.0},
+            },
+            crystal={
+                "escape": {
+                    "surrounding": True,
+                    "surrounding_heavy_conc": {"Na": 500.0, "Cl": 500.0},
+                },
+                "simulation": {
+                    "photons": 1_200_000,
+                    "runs": RUNS,
+                    "surrounding_thickness": [2.0, 2.0, 2.0],
+                },
+            },
+        ),
+    ),
+    Case(
+        "149-montecarlo-polarisation",
+        "B",
+        "Monte Carlo: a vertical goniometer, sending K-shell photoelectrons "
+        "along the crystal's thin x",
+        _escaping(
+            600_000,
+            dimensions=[3.0, 8.0, 8.0],
+            crystal={"escape": {"goniometer_axis": 90.0}},
+        ),
     ),
     Case(
         "160-gos-baseline",

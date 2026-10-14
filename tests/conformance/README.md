@@ -83,6 +83,19 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   mostly fail once one half is shifted by the claimed detectable bias.
   `test_tier_b_statistics.py` checks the false-alarm rate and the power by
   simulation.
+- **Cost.** The port takes about 25 minutes over the Monte Carlo cases, so
+  those comparisons are marked `slow`, and run with
+  `uv run pytest -m slow tests/conformance/test_montecarlo_files.py`. Every
+  case also runs briefly in the default suite, which checks that the port
+  writes the files and printout RADDOSE-3D does. Regenerating the references
+  takes the Java longer: an hour for GOS and XFEL each, and ten for the
+  cylinder, whose 124 triangles it tests one by one.
+
+The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 149, of 3 to
+8 um, which photoelectrons escape from, so that how they are followed shows
+in the dose. Each varies one thing from 141: the beam above 20 keV, iodine
+and sodium, a circular top-hat, a rotation, a cylinder, a pink beam, a
+surrounding, and the polarisation.
 
 ## Regenerating
 

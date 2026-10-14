@@ -10,6 +10,8 @@ wins.
 
 from __future__ import annotations
 
+import csv
+import re
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -20,9 +22,11 @@ if TYPE_CHECKING:
 
 __all__ = [
     "R_TIMESTAMP",
+    "SIMULATED_FILES",
     "SUMMARY_COLUMNS",
     "parse_summary",
     "reduce_java_outputs",
+    "simulated_runs",
 ]
 
 #: What the timestamp line of a kept DoseState.R is replaced with.
@@ -110,3 +114,36 @@ def reduce_java_outputs(out_dir: Path) -> dict[str, Any]:
         wedge=rde[:, 0], angle=rde[:, 2], weighted=rde[:, 3], minimum=rde[:, 4]
     )
     return stats
+
+
+#: The files the Monte Carlo and XFEL subprograms write to the working
+#: directory, a row per run. MONTECARLO writes both, GOS and XFEL the second.
+SIMULATED_FILES = ("outputMC.CSV", "outputXFEL.CSV")
+
+#: What each run prints: "label: value", a %.3f number.
+PRINTED = re.compile(r"^(?P<label>[A-Z][^:]*): (?P<value>-?\d+\.\d+|NaN|-?Infinity)$")
+
+
+def simulated_runs(out_dir: Path, stdout: str, runs: int) -> dict[str, list[float]]:
+    """Every value each run wrote or printed, keyed ``file/column`` or
+    ``stdout/label``, a list of one value per run."""
+    quantities: dict[str, list[float]] = {}
+    for name in SIMULATED_FILES:
+        path = out_dir / name
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as handle:
+            header, *rows = [r for r in csv.reader(handle) if r]
+        if [int(r[0]) for r in rows] != list(range(1, runs + 1)):
+            raise RuntimeError(f"{name} does not have runs 1 to {runs}")
+        for j, column in enumerate(header[1:], start=1):
+            quantities[f"{name}/{column.strip()}"] = [float(r[j]) for r in rows]
+    printed: dict[str, list[float]] = {}
+    for line in stdout.splitlines():
+        match = PRINTED.match(line.strip())
+        if match:
+            printed.setdefault(match["label"], []).append(float(match["value"]))
+    for label, values in printed.items():
+        if len(values) == runs:
+            quantities[f"stdout/{label}"] = values
+    return quantities

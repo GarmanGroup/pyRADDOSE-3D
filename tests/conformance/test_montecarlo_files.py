@@ -14,19 +14,20 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import statistics
-from typing import TYPE_CHECKING
+import tempfile
+from pathlib import Path
 
 import pytest
 import yaml
+from _java_files import simulated_runs
 from _tier_b import compare, detectable_bias
 from test_conformance import CASE_DIRS, is_simulated, manifest
 
 from pyraddose_3d.models.experiment import Experiment
+from pyraddose_3d.outputs import monte_carlo_report, write_monte_carlo_outputs
 from pyraddose_3d.solve import monte_carlo
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 pytestmark = pytest.mark.conformance
 
@@ -139,33 +140,52 @@ def test_a_bias_of_the_claimed_size_is_caught() -> None:
     assert sum(caught) >= 0.6 * len(caught), f"caught {sum(caught)} of {len(caught)}"
 
 
+def _runs_of(experiment: Experiment, directory: Path) -> dict[str, list[float]]:
+    """The port's runs, through its own files and printout and the parser
+    ``generate.py`` reads the Java's with."""
+    runs = monte_carlo(experiment)
+    write_monte_carlo_outputs(runs, directory)
+    printed = "".join(monte_carlo_report(run) for run in runs)
+    return simulated_runs(directory, printed, len(runs))
+
+
 @functools.cache
 def port(case_dir: Path) -> dict[str, list[float]]:
     """The port's runs of a case, keyed as the reference's quantities."""
     experiment = Experiment.from_yaml(case_dir / "config.yaml")
     if experiment.crystal.subprogram != "montecarlo":
         raise NotImplementedError(f"Subprogram {experiment.crystal.subprogram}")
-    runs = monte_carlo(experiment)
-    return {
-        "outputMC.CSV/MC-ADWC": [r.mc_adwc for r in runs],
-        "outputMC.CSV/MC-ADER": [r.mc_ader for r in runs],
-        "outputMC.CSV/RD3D-ADWC": [r.rd3d_adwc for r in runs],
-        "outputMC.CSV/numEl": [r.elastic for r in runs],
-        "outputXFEL.CSV/ions per atom": [r.ions_per_atom for r in runs],
-    }
+    with tempfile.TemporaryDirectory() as directory:
+        return _runs_of(experiment, Path(directory))
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case_dir", PORT_PARAMS)
 def test_the_port_agrees_with_the_reference(case_dir: Path) -> None:
-    """Each tested quantity's mean, the port's runs against RADDOSE-3D's."""
+    """Each tested quantity's mean, the port's runs against RADDOSE-3D's.
+
+    Every other value either side writes or prints is compared too, and
+    printed, but not tested.
+    """
     ours, theirs = port(case_dir), reference(case_dir)
-    comparisons = [compare(q, theirs[q], ours[q], TESTS) for q in gated(case_dir)]
-    for comparison in comparisons:
-        print(comparison)
-    failures = [str(c) for c in comparisons if not c.passed]
+    assert set(ours) == set(theirs), "the files' columns or printout differ"
+    tested = gated(case_dir)
+    failures = []
+    for quantity in sorted(ours):
+        values = theirs[quantity], ours[quantity]
+        if not all(math.isfinite(v) for side in values for v in side):
+            print(f"  {quantity}: not finite in every run")
+            if quantity in tested:
+                failures.append(f"{quantity} is not finite in every run")
+            continue
+        comparison = compare(quantity, *values, TESTS)
+        print(("tested " if quantity in tested else "  ") + str(comparison))
+        if quantity in tested and not comparison.passed:
+            failures.append(str(comparison))
     assert not failures, "\n".join(failures)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case_dir", PORT_PARAMS)
 def test_the_port_agrees_with_itself(case_dir: Path) -> None:
     """Its first runs against its last, as the reference's are compared."""
@@ -177,3 +197,24 @@ def test_the_port_agrees_with_itself(case_dir: Path) -> None:
         if not comparison.passed:
             failures.append(str(comparison))
     assert not failures, "\n".join(failures)
+
+
+@pytest.mark.parametrize("case_dir", PORT_PARAMS)
+def test_the_port_writes_what_raddose_3d_writes(case_dir: Path, tmp_path: Path) -> None:
+    """A short run of each case: the same files, columns and printout.
+
+    The comparisons above take a quarter of an hour, and are ``slow``; this
+    runs every case in seconds, so a case that crashes, or a file that loses
+    a column, shows in every run of the suite.
+    """
+    experiment = Experiment.from_yaml(case_dir / "config.yaml")
+    if experiment.crystal.subprogram != "montecarlo":
+        raise NotImplementedError(f"Subprogram {experiment.crystal.subprogram}")
+    short = experiment.crystal.simulation.model_copy(
+        update={"photons": 20_000, "runs": 2}
+    )
+    crystal = experiment.crystal.model_copy(update={"simulation": short})
+    ours = _runs_of(experiment.model_copy(update={"crystal": crystal}), tmp_path)
+    assert set(ours) == set(reference(case_dir))
+    for quantity in gated(case_dir):
+        assert all(math.isfinite(v) for v in ours[quantity]), quantity

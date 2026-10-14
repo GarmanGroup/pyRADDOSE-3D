@@ -48,9 +48,10 @@ from pyraddose_3d.backend.microed import lacking_bindings_warning
 from pyraddose_3d.backend.summary import resolution_rde
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Sequence
 
     from pyraddose_3d.backend.microed import MicroEDResult
+    from pyraddose_3d.backend.montecarlo.simple import SimpleRun
     from pyraddose_3d.models.beam import XrayBeam
     from pyraddose_3d.models.crystal import Crystal
     from pyraddose_3d.models.wedge import Wedge
@@ -65,6 +66,10 @@ __all__ = [
     "microed_csv",
     "microed_report",
     "microed_slices_csv",
+    "monte_carlo_csv",
+    "monte_carlo_ions_csv",
+    "monte_carlo_report",
+    "monte_carlo_xfel_csv",
     "rde_csv",
     "summary_csv",
     "summary_text",
@@ -72,6 +77,7 @@ __all__ = [
     "voxel_fluences_csv",
     "voxel_images",
     "write_microed_outputs",
+    "write_monte_carlo_outputs",
     "write_outputs",
 ]
 
@@ -892,6 +898,102 @@ def write_microed_outputs(
     for name, text in (
         ("outputMicroED.CSV", microed_csv(result)),
         ("outputMicroED_slices.csv", microed_slices_csv(result)),
+    ):
+        path = Path(directory) / name
+        with path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        written.append(path)
+    return written
+
+
+# --- The Monte Carlo subprogram: Subprogram MONTECARLO ----------------------
+
+
+def monte_carlo_csv(runs: Sequence[SimpleRun]) -> str:
+    """``WriterFileMCsimple``: ``outputMC.CSV``, a row per run."""
+    lines = ["Run Number, RD3D-ADWC,RD3D-ADER,MC-ADWC,MC-ADER,numEl\n"]
+    for number, run in enumerate(runs, start=1):
+        values = (run.rd3d_adwc, run.rd3d_ader, run.mc_adwc, run.mc_ader, run.elastic)
+        lines.append(f" {number}, " + ", ".join(java_f(v) for v in values) + "\n")
+    return "".join(lines)
+
+
+def monte_carlo_xfel_csv(runs: Sequence[SimpleRun]) -> str:
+    """``WriterFile``: ``outputXFEL.CSV``, which the Monte Carlo writes too."""
+    lines = [
+        "Run Number, RD3D-ADWC,RD3D-ADER,XFEL-ADWC,XFEL-ADER,Diffraction "
+        "efficiency,ions per atom, ions per non-H atom, vResolvedNoCut, "
+        "DWDcoarse, DWD\n"
+    ]
+    for number, run in enumerate(runs, start=1):
+        values = (
+            run.rd3d_adwc, run.rd3d_ader, run.xfel_adwc, run.xfel_ader,
+            run.diffraction_efficiency, run.ions_per_atom, run.ions_per_non_h_atom,
+            run.resolved_no_cut, run.dwd_coarse, run.dwd,
+        )  # fmt: skip
+        lines.append(f" {number}, " + ", ".join(java_f(v) for v in values) + "\n")
+    return "".join(lines)
+
+
+def _hash_map_order(numbers: Sequence[int]) -> list[int]:
+    """The order a ``HashMap`` keyed by element iterates: by bucket.
+
+    ``Element.hashCode`` is the atomic number, so the bucket is the atomic
+    number modulo the table's size: 16, doubled whenever it is more than
+    three-quarters full. Elements sharing a bucket iterate in the order they
+    were first ionised, which here is taken as atomic-number order.
+    """
+    capacity = 16
+    while len(numbers) > capacity * 3 // 4:
+        capacity *= 2
+    return sorted(numbers, key=lambda z: (z & (capacity - 1), z))
+
+
+def monte_carlo_ions_csv(run: SimpleRun) -> str:
+    """``WriteElements``: ``outputIonsPerAtom.CSV``, for one run.
+
+    RADDOSE-3D rewrites it every run, so its file holds the last run's.
+    """
+    lines = ["Atomic number,ionisationsPerAtom\n"]
+    for z in _hash_map_order(list(run.ions_per_element)):
+        lines.append(f" {z}, {java_f(run.ions_per_element[z])}\n")
+    return "".join(lines)
+
+
+def monte_carlo_report(run: SimpleRun) -> str:
+    """What ``processDose`` prints for one run of the simple Monte Carlo."""
+    return (
+        " \n"
+        f"RADDOSE-3D style average dose whole crystal: {java_f(run.rd3d_adwc, 3)}\n"
+        f"RADDOSE-3D style average dose exposed region: {java_f(run.rd3d_ader, 3)}\n"
+        f"Monte Carlo average dose whole crystal (ADWC): {java_f(run.mc_adwc, 3)}\n"
+        f"Monte Carlo average dose exposed region (ADER): {java_f(run.mc_ader, 3)}\n"
+    )
+
+
+def write_monte_carlo_outputs(
+    runs: Sequence[SimpleRun], directory: str | Path = "."
+) -> list[Path]:
+    """Write the three files a simple Monte Carlo run writes.
+
+    Parameters
+    ----------
+    runs : Sequence[SimpleRun]
+        From :func:`pyraddose_3d.solve.monte_carlo`.
+    directory : str | Path
+        Where to write them, under the fixed names RADDOSE-3D uses. It must
+        exist.
+
+    Returns
+    -------
+    list[Path]
+        The files written.
+    """
+    written = []
+    for name, text in (
+        ("outputMC.CSV", monte_carlo_csv(runs)),
+        ("outputXFEL.CSV", monte_carlo_xfel_csv(runs)),
+        ("outputIonsPerAtom.CSV", monte_carlo_ions_csv(runs[-1])),
     ):
         path = Path(directory) / name
         with path.open("w", encoding="utf-8", newline="\n") as handle:

@@ -1,0 +1,23 @@
+case_id: 142-montecarlo-selenium-25-kev
+tier: B
+exercises: 'Monte Carlo: 25 keV, so ELSEPA''s tables above 20 keV, and selenium''s
+  relaxation'
+seed: 20260917
+reference_version: 5.0.1089
+reference_commit: cc2afb6
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 228.953
+    cv: 0.0254
+  outputMC.CSV/MC-ADER:
+    mean: 228.953
+    cv: 0.0254
+  outputMC.CSV/RD3D-ADWC:
+    mean: 397.443
+    cv: 0.023
+  outputMC.CSV/numEl:
+    mean: 1302500000.0
+    cv: 0.113
+  outputXFEL.CSV/ions per atom:
+    mean: 0.0012491
+    cv: 0.0208

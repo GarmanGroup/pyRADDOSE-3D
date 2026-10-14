@@ -17,7 +17,7 @@ import pytest
 from pyraddose_3d.backend import microed
 from pyraddose_3d.backend.montecarlo import angles, geometry, material, photons
 from pyraddose_3d.backend.montecarlo.simple import simulate_simple
-from pyraddose_3d.backend.montecarlo.transport import new_directions, track
+from pyraddose_3d.backend.montecarlo.transport import Media, new_directions, track
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.solve import monte_carlo_setup
 
@@ -139,13 +139,23 @@ def test_an_electron_that_stops_inside_deposits_its_energy(setup) -> None:  # ty
     n = 200
     deposited = np.zeros(n)
 
-    def deposit(points, which, energy):  # type: ignore[no-untyped-def]
+    def deposit(points, which, energy, starting):  # type: ignore[no-untyped-def]
         np.add.at(deposited, which, energy)
 
     energy = rng.uniform(0.01, 12.0, n)
     direction = np.tile([0.0, 0.6, 0.8], (n, 1))
     still = geometry.Placement(np.zeros(n), np.zeros((n, 3)))
-    track(rng, setup.material, big, np.zeros((n, 3)), direction, energy, still, deposit)
+    track(
+        rng,
+        Media(setup.material, big),
+        np.zeros((n, 3)),
+        direction,
+        energy,
+        np.zeros(n, dtype=bool),
+        still,
+        np.zeros(n, dtype=int),
+        deposit,
+    )
     np.testing.assert_allclose(deposited, energy, rtol=1e-12, atol=1e-12)
 
 
@@ -180,7 +190,7 @@ def test_a_circular_tophat_fills_a_bow_tie() -> None:
 
 def test_compton_electrons_stay_within_the_compton_edge() -> None:
     rng = np.random.default_rng(5)
-    energy, direction = photons.compton_electrons(rng, 12.1, 10000)
+    energy, direction = photons.compton_electrons(rng, np.full(10000, 12.1))
     mc2 = 510.99895
     assert energy.max() <= 2 * 12.1**2 / (mc2 + 2 * 12.1) * (1 + 1e-9)
     assert energy.min() >= 0
@@ -193,3 +203,83 @@ def test_runs_repeat_from_a_seed(setup) -> None:  # type: ignore[no-untyped-def]
     second = simulate_simple(small, np.random.default_rng(11))
     assert [r.mc_adwc for r in first] == [r.mc_adwc for r in second]
     assert first[0].mc_adwc != first[1].mc_adwc
+
+
+def test_below_the_k_edge_iodine_never_takes_the_k_shell() -> None:
+    """RADDOSE-3D's fix: a draw past every shell ionises an outer one."""
+    cdf = photons.shell_cdf(53, np.full(5, 12.1))
+    assert np.all(cdf[:, 0] == 0)
+    modelled = cdf[0, 3]
+    assert modelled == pytest.approx(0.78, abs=0.01)
+    draws = np.array([0.0, modelled / 2, modelled, 0.9, 0.999999])
+    shells = photons.ionised_shells(cdf, draws)
+    assert (
+        shells.tolist()
+        == [1, shells[1], photons.OUTER_SHELL] + [photons.OUTER_SHELL] * 2
+    )
+    assert 0 not in shells.tolist()
+
+
+def test_most_elements_have_a_shell_for_every_draw() -> None:
+    """Where the last shell modelled has an edge ratio of 0, it takes the rest."""
+    for z in (1, 6, 7, 8, 15, 16, 30):
+        assert photons.shell_cdf(z, np.array([12.1])).max() == pytest.approx(1.0)
+
+
+def test_an_outer_shell_leaves_nothing_at_the_atom() -> None:
+    from pyraddose_3d.backend.montecarlo.simple import _relaxation
+
+    z = np.array([53, 53, 6])
+    shell = np.array([photons.OUTER_SHELL, 1, 0])
+    binding = np.array([0.0, 5.19, 0.28])
+    rng = np.random.default_rng(0)
+    left, resolved = _relaxation(z, shell, binding, np.zeros(3), rng)
+    # Iodine does not relax: its L1 binding energy goes to both tallies.
+    assert left.tolist() == [0.0, 5.19, 0.28]
+    assert resolved.tolist() == [0.0, 5.19, 0.0]
+
+
+def test_the_surrounding_pushes_each_vertex_out() -> None:
+    from pyraddose_3d.backend.geometry import Mesh
+    from pyraddose_3d.backend.montecarlo.simple import _box
+
+    mesh = Mesh(np.array([[-1.0, -2.0, 0.0], [1.0, 2.0, 3.0]]), np.zeros((0, 3), int))
+    box = _box(mesh, (500.0, 1000.0, 2000.0))
+    assert np.asarray(box.vertices).tolist() == [[-1.5, -3.0, 2.0], [1.5, 3.0, 5.0]]
+
+
+def test_the_surroundings_thickness_is_a_running_cap(setup) -> None:  # type: ignore[no-untyped-def]
+    """Capped photon by photon, in order, by a photoelectron's reach."""
+    from pyraddose_3d.backend.montecarlo.material import stopping_power
+    from pyraddose_3d.backend.montecarlo.simple import Surrounding, _boxes
+
+    surrounding = Surrounding(
+        setup.composition, setup.density, setup.material, (2.0, 0.0, 1e6)
+    )
+    energy = np.array([12.0, 10.0, 11.0])
+    carry = np.array([[2000.0, np.inf, 1e9]])
+    meshes: list = []
+    index = _boxes(setup, surrounding, energy, np.zeros(3, int), carry, {}, meshes)
+    reach = energy / stopping_power(setup.material, energy)
+    assert len(meshes) == 2 and index[1] == index[2] != index[0]
+    assert carry[0].tolist() == [2000.0, reach[1], reach[1]]
+
+
+def test_the_ions_file_iterates_as_a_hash_map_does() -> None:
+    """Element.hashCode is the atomic number; the table has 16 buckets."""
+    from pyraddose_3d.outputs import _hash_map_order
+
+    assert _hash_map_order([1, 6, 7, 8, 15, 16, 30]) == [16, 1, 6, 7, 8, 30, 15]
+
+
+def test_the_files_are_laid_out_as_raddose_3ds() -> None:
+    from pyraddose_3d.backend.montecarlo.simple import SimpleRun
+    from pyraddose_3d.outputs import monte_carlo_csv, monte_carlo_ions_csv
+
+    run = SimpleRun(rd3d_adwc=1.5, mc_adwc=float("nan"), ions_per_element={8: 0.25})
+    lines = monte_carlo_csv([run, run]).splitlines()
+    assert lines[1] == " 1, 1.500000, 0.000000, NaN, 0.000000, 0.000000"
+    assert lines[2].startswith(" 2, ")
+    assert monte_carlo_ions_csv(run) == (
+        "Atomic number,ionisationsPerAtom\n 8, 0.250000\n"
+    )

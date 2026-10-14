@@ -1,0 +1,23 @@
+case_id: 149-montecarlo-polarisation
+tier: B
+exercises: 'Monte Carlo: a vertical goniometer, sending K-shell photoelectrons along
+  the crystal''s thin x'
+seed: 20260917
+reference_version: 5.0.1089
+reference_commit: cc2afb6
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 276.631
+    cv: 0.0309
+  outputMC.CSV/MC-ADER:
+    mean: 276.631
+    cv: 0.0309
+  outputMC.CSV/RD3D-ADWC:
+    mean: 460.616
+    cv: 0.028
+  outputMC.CSV/numEl:
+    mean: 3520000000.0
+    cv: 0.0714
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00272125
+    cv: 0.0285
