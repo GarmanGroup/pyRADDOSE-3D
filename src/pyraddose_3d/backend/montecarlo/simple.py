@@ -371,7 +371,6 @@ def _photoabsorb(
     energy: np.ndarray,
     owner: np.ndarray,
     points: np.ndarray,
-    placement: Placement,
 ) -> _Absorbed:
     """``producePhotoElectron``: the element, the shell, the electron."""
     z_of = np.array([e.atomic_number for e in composition.elements])
@@ -385,9 +384,7 @@ def _photoabsorb(
         shell[chosen] = ionised_shells(shell_cdf(z, energy[chosen]), u[chosen])
         known = chosen[shell[chosen] != OUTER_SHELL]
         binding[known] = shells(z).binding[shell[known]]
-    direction = photoelectron_directions(
-        rng, shell == 0, placement.take(owner).angle, setup.rotated_polarisation
-    )
+    direction = photoelectron_directions(rng, shell == 0, setup.rotated_polarisation)
     return _Absorbed(
         owner, points, direction, energy - binding, element, shell, binding
     )
@@ -491,7 +488,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             pe = np.flatnonzero(~compton)
             absorbed = _photoabsorb(
                 rng, setup, composition, photo_cdf[pe], energy[owner[pe]],
-                owner[pe], points[pe], placement,
+                owner[pe], points[pe],
             )  # fmt: skip
             cs_owner, cs_points = owner[compton], points[compton]
             cs_energy, cs_direction = compton_electrons(rng, energy[cs_owner])

@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from functools import cache
+from itertools import pairwise
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -28,11 +29,15 @@ __all__ = [
     "BeamShape",
     "PhotonCoefficients",
     "Shells",
+    "about_axis",
     "beam_positions",
     "choose",
     "compton_electrons",
     "cos_angle_to_x",
     "ionised_shells",
+    "isotropic_directions",
+    "klein_nishina_cosines",
+    "photoelectron_directions",
     "photon_coefficients",
     "shell_cdf",
     "shells",
@@ -103,11 +108,6 @@ class BeamShape:
                 np.power(y_nm / 1000, 2) / math.pow(half_y, 2)
             ) <= 1
         return (np.abs(x_nm / 1000) <= half_x) & (np.abs(y_nm / 1000) <= half_y)
-
-
-def _plus_or_minus(rng: np.random.Generator, n: int) -> np.ndarray:
-    """``PosOrNeg``."""
-    return np.where(rng.random(n) < 0.5, 1.0, -1.0)
 
 
 def beam_positions(
@@ -338,29 +338,30 @@ def choose(cdf: np.ndarray, uniform: np.ndarray) -> np.ndarray:
 
 
 def _emission_cdf() -> np.ndarray:
-    """``populateAngularEmissionProbs``: the dipole distribution, beta = 2."""
+    """``populateAngularEmissionProbs``: the dipole distribution, beta = 2.
+
+    Per unit angle, so times the angle's sine, and normalised over the bins
+    it accumulates, as RADDOSE-3D has it since #47.
+    """
 
     def height(angle: float) -> float:
-        return (1 / (4 * math.pi)) * (
-            1 + (2 * 0.5 * (3 * math.pow(math.cos(angle), 2) - 1))
+        return (
+            (1 / (4 * math.pi))
+            * (1 + (2 * 0.5 * (3 * math.pow(math.cos(angle), 2) - 1)))
+            * math.sin(angle)
         )
 
+    step = math.pi / _EMISSION_BINS
+    heights = [height(step * i) for i in range(_EMISSION_BINS + 1)]
+    areas = [((a + b) / 2) * step for a, b in pairwise(heights)]
     total = 0.0
-    last = 0.0
-    for i in range(101):
-        h = height((math.pi / 100) * i)
-        if i > 0:
-            total += ((last + h) / 2) * (math.pi / 100)
-        last = h
+    for area in areas:
+        total += area
     cdf = np.zeros(_EMISSION_BINS)
     running = 0.0
-    last = 0.0
-    for i in range(_EMISSION_BINS + 1):
-        h = height((math.pi / _EMISSION_BINS) * i)
-        if i > 0:
-            running += (((last + h) / 2) * (math.pi / _EMISSION_BINS)) / total
-            cdf[i - 1] = running
-        last = h
+    for i, area in enumerate(areas):
+        running += area / total
+        cdf[i] = running
     return cdf
 
 
@@ -380,47 +381,75 @@ def cos_angle_to_x(rng: np.random.Generator, n: int) -> np.ndarray:
     return np.cos(angle)
 
 
+def isotropic_directions(rng: np.random.Generator, n: int) -> np.ndarray:
+    """``MC.isotropicDirection``: ``(n, 3)`` unit vectors uniform over the sphere.
+
+    The cosine of the polar angle is uniform on [-1, 1].
+    """
+    cos_theta = 1 - 2 * rng.random(n)
+    phi = 2 * math.pi * rng.random(n)
+    sin_theta = np.sqrt(1 - cos_theta * cos_theta)
+    return np.stack(
+        [sin_theta * np.cos(phi), sin_theta * np.sin(phi), cos_theta], axis=1
+    )
+
+
+def about_axis(
+    rng: np.random.Generator, cos_to_axis: np.ndarray, axis: int
+) -> np.ndarray:
+    """``MC.aboutAxis``: ``(N, 3)`` directions around the x (0) or y (1) axis.
+
+    Each at its angle to the axis, uniformly around it.
+    """
+    around = 2 * math.pi * rng.random(len(cos_to_axis))
+    sin = np.sqrt(1 - cos_to_axis * cos_to_axis)
+    a, b = sin * np.cos(around), sin * np.sin(around)
+    if axis == 0:
+        return np.stack([cos_to_axis, a, b], axis=1)
+    return np.stack([a, cos_to_axis, b], axis=1)
+
+
 def photoelectron_directions(
-    rng: np.random.Generator,
-    k_shell: np.ndarray,
-    angle: np.ndarray,
-    rotated_polarisation: bool,
+    rng: np.random.Generator, k_shell: np.ndarray, rotated_polarisation: bool
 ) -> np.ndarray:
     """``producePhotoElectron``'s direction for each photoelectron, ``(N, 3)``.
 
-    From the K shell, three times in four, along the polarisation's dipole
-    pattern, rotated with the crystal; otherwise "at random", with the polar
-    angle drawn uniformly from 0 to 2 pi. ``rotated_polarisation`` is whether
-    the goniometer and the polarisation are at right angles.
+    From the K shell, three times in four, at an angle to the polarisation
+    drawn from the dipole distribution, uniformly around it; otherwise
+    uniformly over the sphere. The polarisation is the beam's, and does not
+    turn with the crystal. ``rotated_polarisation`` is whether the goniometer
+    and the polarisation are at right angles: the polarisation is along x if
+    so, along y if not. As RADDOSE-3D has it since #47.
     """
     n = len(k_shell)
     polarised = (rng.random(n) > 0.25) & k_shell
     direction = np.empty((n, 3))
-
     m = int(polarised.sum())
     if m:
-        towards = cos_angle_to_x(rng, m)
-        across = (
-            _plus_or_minus(rng, m) * rng.random(m) * np.sqrt(1 - np.power(towards, 2))
+        direction[polarised] = about_axis(
+            rng, cos_angle_to_x(rng, m), 0 if rotated_polarisation else 1
         )
-        if rotated_polarisation:
-            x0, y = towards, across
-        else:
-            y, x0 = towards, across
-        z0 = _plus_or_minus(rng, m) * np.sqrt(1 - np.power(x0, 2) - np.power(y, 2))
-        this_angle = 2 * math.pi - angle[polarised]
-        direction[polarised, 0] = x0 * np.cos(this_angle) + z0 * np.sin(this_angle)
-        direction[polarised, 1] = y
-        direction[polarised, 2] = -1 * x0 * np.sin(this_angle) + z0 * np.cos(this_angle)
-
-    rest = ~polarised
-    r = int(rest.sum())
-    theta = rng.random(r) * 2 * math.pi
-    phi = rng.random(r) * 2 * math.pi
-    direction[rest, 0] = np.sin(theta) * np.cos(phi)
-    direction[rest, 1] = np.sin(theta) * np.sin(phi)
-    direction[rest, 2] = np.cos(theta)
+    direction[~polarised] = isotropic_directions(rng, n - m)
     return direction
+
+
+def klein_nishina_cosines(rng: np.random.Generator, k: np.ndarray) -> np.ndarray:
+    """``MC.kleinNishinaCosine``: each Compton-scattered photon's cosine.
+
+    Drawn from Klein and Nishina's cross-section by rejection.
+
+    ``k`` is each photon's energy over the electron's rest energy.
+    """
+    mu = np.empty(len(k))
+    pending = np.arange(len(k))
+    while len(pending):
+        trial = 1 - 2 * rng.random(len(pending))
+        p = 1 / (1 + k[pending] * (1 - trial))
+        f = p * p * (p + 1 / p - (1 - trial * trial)) / 2
+        accept = rng.random(len(pending)) <= f
+        mu[pending[accept]] = trial[accept]
+        pending = pending[~accept]
+    return mu
 
 
 def compton_electrons(
@@ -428,14 +457,15 @@ def compton_electrons(
 ) -> tuple[np.ndarray, np.ndarray]:
     """``produceCompton``: each recoil electron's energy (keV) and direction.
 
-    The photon's angle is drawn uniformly from 0 to pi, not by Klein and
-    Nishina; reproduced.
+    The photon's angle is drawn by Klein and Nishina, and the electron leaves
+    at its angle to the beam uniformly around it, as RADDOSE-3D has it since
+    #47.
     """
     photon_energy = np.asarray(photon_energy, dtype=float)
     n = len(photon_energy)
-    photon_theta = math.pi * rng.random(n)
     mc_squared = _ELECTRON_MASS * math.pow(_SPEED_OF_LIGHT, 2)
     incident = photon_energy * KEV_TO_JOULES
+    photon_theta = np.arccos(klein_nishina_cosines(rng, incident / mc_squared))
     energy = (
         (np.power(incident, 2) * (1 - np.cos(photon_theta)))
         / (mc_squared * (1 + ((incident / mc_squared) * (1 - np.cos(photon_theta)))))
@@ -443,7 +473,7 @@ def compton_electrons(
     electron_phi = np.arctan(
         (1 / np.tan(photon_theta / 2)) / (1 + (incident / mc_squared))
     )
-    z = np.cos(electron_phi)
-    x = _plus_or_minus(rng, n) * rng.random(n) * np.sqrt(1 - np.power(z, 2))
-    y = _plus_or_minus(rng, n) * np.sqrt(1 - np.power(x, 2) - np.power(z, 2))
-    return energy, np.stack([x, y, z], axis=1)
+    around = 2 * math.pi * rng.random(n)
+    x = np.sin(electron_phi) * np.cos(around)
+    y = np.sin(electron_phi) * np.sin(around)
+    return energy, np.stack([x, y, np.cos(electron_phi)], axis=1)

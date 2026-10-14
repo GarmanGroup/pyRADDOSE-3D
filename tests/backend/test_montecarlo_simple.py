@@ -124,6 +124,66 @@ def test_directions_stay_unit_vectors() -> None:
     np.testing.assert_allclose(np.linalg.norm(turned, axis=1), 1.0, rtol=1e-12)
 
 
+def test_deflections_turn_through_their_angle() -> None:
+    """Through theta, at phi around the old direction: opposite sides of the
+    cone sum along it. Directions along z, and in the xz plane, included."""
+    rng = np.random.default_rng(1)
+    d = rng.normal(size=(1000, 3))
+    d[:3] = [[0, 0, 1], [0, 0, -1], [0.6, 0, 0.8]]
+    d /= np.linalg.norm(d, axis=1, keepdims=True)
+    theta = rng.random(1000) * math.pi
+    phi = rng.random(1000) * 2 * math.pi
+    one = new_directions(d, theta, phi)
+    other = new_directions(d, theta, phi + math.pi)
+    np.testing.assert_allclose(np.sum(one * d, axis=1), np.cos(theta), atol=1e-9)
+    np.testing.assert_allclose(one + other, 2 * np.cos(theta)[:, None] * d, atol=1e-9)
+
+
+def test_isotropic_directions_are_uniform_over_the_sphere() -> None:
+    d = photons.isotropic_directions(np.random.default_rng(3), 200_000)
+    np.testing.assert_allclose(np.linalg.norm(d, axis=1), 1.0, rtol=1e-12)
+    np.testing.assert_allclose(d.mean(axis=0), 0, atol=0.005)
+    np.testing.assert_allclose((d * d).mean(axis=0), 1 / 3, atol=0.005)
+
+
+def test_polarised_directions_are_uniform_around_the_axis() -> None:
+    rng = np.random.default_rng(5)
+    for axis in (0, 1):
+        d = photons.about_axis(rng, np.full(200_000, 0.6), axis)
+        assert np.all(d[:, axis] == 0.6)
+        others = [k for k in range(3) if k != axis]
+        np.testing.assert_allclose((d[:, others] ** 2).mean(axis=0), 0.32, atol=0.003)
+
+
+def test_photoelectron_angles_follow_the_dipole_distribution() -> None:
+    """``cos^2`` per solid angle: the cosine's square averages 3/5.
+
+    Three in four K-shell photoelectrons follow it, the rest are isotropic:
+    along the polarisation, ``0.75 * 3/5 + 0.25 / 3``.
+    """
+    assert photons._EMISSION[-1] == pytest.approx(1.0, abs=1e-12)
+    rng = np.random.default_rng(7)
+    cos = photons.cos_angle_to_x(rng, 200_000)
+    assert np.mean(cos**2) == pytest.approx(0.6, abs=0.005)
+    k_shell = np.ones(200_000, dtype=bool)
+    for rotated, axis in ((True, 0), (False, 1)):
+        d = photons.photoelectron_directions(rng, k_shell, rotated)
+        assert np.mean(d[:, axis] ** 2) == pytest.approx(0.45 + 0.25 / 3, abs=0.005)
+
+
+def test_compton_angles_follow_klein_and_nishina() -> None:
+    """Thomson's ``1 + cos^2`` at low energy; forward at high."""
+    rng = np.random.default_rng(9)
+    mu = photons.klein_nishina_cosines(rng, np.full(200_000, 1e-9))
+    assert np.mean(mu**2) == pytest.approx(0.4, abs=0.004)
+    grid = np.linspace(-1, 1, 20001)
+    p = 1 / (1 + (1 - grid))
+    f = p * p * (p + 1 / p - (1 - grid * grid))
+    expected = np.trapezoid(grid * f, grid) / np.trapezoid(f, grid)
+    mu = photons.klein_nishina_cosines(rng, np.full(200_000, 1.0))
+    assert np.mean(mu) == pytest.approx(expected, abs=0.005)
+
+
 def test_an_electron_that_stops_inside_deposits_its_energy(setup) -> None:  # type: ignore[no-untyped-def]
     """Including the negative remainder of an overshooting last step."""
     from pyraddose_3d.backend.geometry import Mesh

@@ -83,24 +83,31 @@ class Media:
 def new_directions(
     direction: np.ndarray, theta: np.ndarray, phi: np.ndarray
 ) -> np.ndarray:
-    """``getNewDirectionVector``: each direction turned by theta, then phi.
+    """``getNewDirectionVector``: each direction turned through theta.
 
-    The Java's formula, which is not a rotation by theta about the old
-    direction (``UPSTREAM_FIXES.md``), normalised as it normalises it.
+    At phi around the old direction, as RADDOSE-3D has it since #47.
     """
     x, y, z = direction[:, 0], direction[:, 1], direction[:, 2]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        an = -(x / y)
-        am = 1 / np.power(1 + an * an, 0.5)
-    sin_theta, cos_theta = np.sin(theta), np.cos(theta)
-    v1 = an * sin_theta
-    v2 = an * am * sin_theta
-    v3 = np.cos(phi)
-    v4 = np.sin(phi)
-    ca = (x * cos_theta) + (v1 * v3) + (y * v2 * v4)
-    cb = (y * cos_theta) + (v4 * (z * v1 - x * v2))
-    cc = (z * cos_theta) + (v2 * v3) - (y * v1 * v4)
-    turned = np.stack([ca, cb, cc], axis=1)
+    sin_t, cos_t = np.sin(theta), np.cos(theta)
+    sin_p, cos_p = np.sin(phi), np.cos(phi)
+    polar = np.abs(z) > 0.99999
+    s = np.sqrt(np.where(polar, 1.0, 1 - z * z))
+    turned = np.stack(
+        [
+            np.where(
+                polar,
+                sin_t * cos_p,
+                sin_t * (x * z * cos_p - y * sin_p) / s + x * cos_t,
+            ),
+            np.where(
+                polar,
+                sin_t * sin_p,
+                sin_t * (y * z * cos_p + x * sin_p) / s + y * cos_t,
+            ),
+            np.where(polar, np.sign(z) * cos_t, -sin_t * cos_p * s + z * cos_t),
+        ],
+        axis=1,
+    )
     magnitude = np.sqrt(np.sum(np.power(turned, 2), axis=1, keepdims=True))
     return np.asarray(turned / magnitude)
 
