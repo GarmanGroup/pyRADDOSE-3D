@@ -77,8 +77,8 @@ class Surrounding:
         The same, for the electron physics.
     thickness_um : tuple[float, float, float]
         ``SurroundingThickness``: how far it extends in x, y and z. Each is
-        capped, photon by photon, at the photon's energy over the
-        surrounding's stopping power at it; 0 takes that cap.
+        capped at the most energetic photon's energy over the surrounding's
+        stopping power at it; 0 takes that cap.
     """
 
     composition: Composition
@@ -295,16 +295,37 @@ def _placements(setup: SimpleSetup, index: np.ndarray) -> Placement:
 
 
 def _box(mesh: Mesh, thickness_nm: tuple[float, float, float]) -> Mesh:
-    """``setupSurroundingVolume``: the crystal's mesh, pushed out.
+    """``setupSurroundingVolume``: the crystal's mesh, scaled about its centre.
 
-    Each vertex moves away from the origin along each axis by that axis's
-    thickness.
+    About the centre of its bounding box, so that it extends each axis's
+    thickness on either side: a cuboid's box, a cylinder's or sphere's
+    shell as thick all round, around the crystal wherever it is. As
+    RADDOSE-3D has it since #49.
     """
     vertices = np.asarray(mesh.vertices, dtype=float)
-    push = np.array(thickness_nm) / 1000
-    return Mesh(
-        np.where(vertices < 0, vertices - push, vertices + push), mesh.triangles
+    low, high = vertices.min(axis=0), vertices.max(axis=0)
+    centre, half = (low + high) / 2, (high - low) / 2
+    scale = (half + np.array(thickness_nm) / 1000) / half
+    return Mesh(centre + (vertices - centre) * scale, mesh.triangles)
+
+
+def _thickness(
+    setup: SimpleSetup, surrounding: Surrounding
+) -> tuple[float, float, float]:
+    """``capSurroundingThickness``: each axis's thickness, nm.
+
+    As asked, but no more than a photoelectron of the most energetic photon
+    could travel in the surrounding, E over its stopping power at E; that,
+    where none is asked. Once for the run, as RADDOSE-3D has it since #49.
+    """
+    energies = [setup.photon_energy] if setup.energies is None else setup.energies
+    highest = float(np.max(energies))
+    reach = highest / float(
+        stopping_power(surrounding.material, np.array([highest]))[0]
     )
+    asked = [t * 1000 for t in surrounding.thickness_um]
+    capped = [t if 0 < t <= reach else reach for t in asked]
+    return (capped[0], capped[1], capped[2])
 
 
 def _relaxation(
@@ -414,11 +435,9 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
     vertices = np.asarray(setup.mesh.vertices)
     reach = float(np.max(np.linalg.norm(vertices[:, None] - vertices[None], axis=-1)))
     surrounding = setup.surrounding
-    boxes: dict[tuple[float, float, float], int] = {}
     box_meshes: list[Mesh] = []
-    carry = np.full((runs, 3), np.inf)
     if surrounding is not None:
-        carry[:] = [t * 1000 if t > 0 else np.inf for t in surrounding.thickness_um]
+        box_meshes.append(_box(setup.mesh, _thickness(setup, surrounding)))
     media = Media(
         setup.material,
         setup.mesh,
@@ -455,10 +474,9 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             hit = inside(setup.mesh, points, placement.take(candidate))
             found.append((candidate[hit], points[hit], False))
         else:
-            box = _boxes(setup, surrounding, energy, run, carry, boxes, box_meshes)
             paths = _through_surrounding(
                 rng, setup, surrounding, crystal, energy, x, y, front, box,
-                box_meshes, placement,
+                box_meshes, placement, reach,
             )  # fmt: skip
             found.extend(paths)
 
@@ -580,42 +598,6 @@ def _ionise(
     np.add.at(tallies.element_ions_exposed, (run[exposed], element[exposed]), 1)
 
 
-def _boxes(
-    setup: SimpleSetup,
-    surrounding: Surrounding,
-    energy: np.ndarray,
-    run: np.ndarray,
-    carry: np.ndarray,
-    boxes: dict[tuple[float, float, float], int],
-    meshes: list[Mesh],
-) -> np.ndarray:
-    """Each photon's surrounding, as an index into ``meshes``.
-
-    Its thickness is capped, in order, by the distance a photoelectron of the
-    photon's energy could travel in it.
-
-    ``surroundingThickness`` is a field of the run, so each cap is a running
-    minimum over the run's photons so far.
-    """
-    reach = energy / stopping_power(surrounding.material, energy)
-    thickness = np.empty((len(energy), 3))
-    for r in np.unique(run):
-        chosen = np.flatnonzero(run == r)
-        running = np.minimum.accumulate(reach[chosen])
-        for axis in range(3):
-            thickness[chosen, axis] = np.minimum(carry[r, axis], running)
-        carry[r] = thickness[chosen[-1]]
-    index = np.empty(len(energy), dtype=np.int64)
-    distinct, inverse = np.unique(thickness, axis=0, return_inverse=True)
-    for k, row in enumerate(distinct):
-        key = (float(row[0]), float(row[1]), float(row[2]))
-        if key not in boxes:
-            boxes[key] = len(meshes)
-            meshes.append(_box(setup.mesh, key))
-        index[inverse.reshape(-1) == k] = boxes[key]
-    return index
-
-
 def _in_boxes(
     meshes: list[Mesh],
     box: np.ndarray,
@@ -645,15 +627,18 @@ def _through_surrounding(
     box: np.ndarray,
     meshes: list[Mesh],
     placement: Placement,
+    reach: float,
 ) -> list[tuple[np.ndarray, np.ndarray, bool]]:
     """The photons' paths with a surrounding: where each interacts, if it does.
 
-    From the surrounding's front face, with the surrounding's photoelectric
-    and Compton coefficients up to the crystal's front face. Past that, the
-    crystal's every coefficient, still measured from the surrounding's face;
-    a point that falls in the surrounding is taken to have crossed the
-    crystal, and a new distance is drawn from its back face. A photon beside
-    the crystal crosses the surrounding alone.
+    From the surrounding's front face, with its photoelectric and Compton
+    coefficients, up to the crystal's front face; from there, with all the
+    crystal's; and having crossed the crystal, from its back face, with the
+    surrounding's again. A photon beside the crystal crosses the surrounding
+    alone. As RADDOSE-3D has it since #49: the crystal's distance was
+    measured from the surrounding's face, and a photon that crossed the
+    crystal had its chance behind it only if that distance ended in the
+    surrounding.
     """
     n = len(energy)
     outer = np.zeros(n)
@@ -668,7 +653,7 @@ def _through_surrounding(
     hitting = ~np.isnan(front)
     found: list[tuple[np.ndarray, np.ndarray, bool]] = []
 
-    # In front of the crystal.
+    # In front of the crystal, or beside it.
     first = -medium.photon_mean_free_path_nm * np.log(rng.random(n))
     first = np.where(tracked & through_surrounding, first, 0.0)
     in_front = tracked & through_surrounding & hitting & (first < np.abs(front - outer))
@@ -680,23 +665,24 @@ def _through_surrounding(
             True,
         )
     )
+    beside = np.flatnonzero(tracked & ~hitting)
+    points = np.stack([x[beside], y[beside], outer[beside] + first[beside]], axis=1)
+    in_box = _in_boxes(meshes, box, points, beside, placement)
+    found.append((beside[in_box], points[in_box], True))
 
-    travel = np.where(
-        hitting, -crystal.total_mean_free_path_nm * np.log(rng.random(n)), first
+    # In the crystal, from its front face.
+    crossing = np.flatnonzero(hitting & ~in_front)
+    travel = -crystal.total_mean_free_path_nm[crossing] * np.log(
+        rng.random(len(crossing))
     )
-    rest = np.flatnonzero(tracked & ~in_front)
-    points = np.stack([x[rest], y[rest], outer[rest] + travel[rest]], axis=1)
-    in_crystal = inside(setup.mesh, points, placement.take(rest))
-    found.append((rest[in_crystal], points[in_crystal], False))
+    points = np.stack([x[crossing], y[crossing], front[crossing] + travel], axis=1)
+    in_crystal = np.zeros(len(crossing), dtype=bool)
+    near = np.flatnonzero(travel <= reach * 1000)
+    in_crystal[near] = inside(setup.mesh, points[near], placement.take(crossing[near]))
+    found.append((crossing[in_crystal], points[in_crystal], False))
 
-    rest, points = rest[~in_crystal], points[~in_crystal]
-    in_box = _in_boxes(meshes, box, points, rest, placement)
-    rest, points = rest[in_box], points[in_box]
-
-    beside = ~hitting[rest]
-    found.append((rest[beside], points[beside], True))
-
-    behind = rest[hitting[rest]]
+    # Behind it: every photon that crossed it.
+    behind = crossing[~in_crystal]
     if len(behind):
         back = entry_depth(
             setup.mesh, x[behind], y[behind], placement.take(behind), crossing=1

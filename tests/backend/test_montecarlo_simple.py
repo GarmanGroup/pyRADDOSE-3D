@@ -301,30 +301,87 @@ def test_an_outer_shell_leaves_nothing_at_the_atom() -> None:
     assert resolved.tolist() == [0.0, 5.19, 0.0]
 
 
-def test_the_surrounding_pushes_each_vertex_out() -> None:
+def test_the_surrounding_is_the_crystal_scaled_about_its_centre() -> None:
+    """RADDOSE-3D #49: about its bounding box's centre, so a crystal off the
+    origin is enclosed. Pushed away from the origin, this one's z ran from 2."""
     from pyraddose_3d.backend.geometry import Mesh
     from pyraddose_3d.backend.montecarlo.simple import _box
 
     mesh = Mesh(np.array([[-1.0, -2.0, 0.0], [1.0, 2.0, 3.0]]), np.zeros((0, 3), int))
     box = _box(mesh, (500.0, 1000.0, 2000.0))
-    assert np.asarray(box.vertices).tolist() == [[-1.5, -3.0, 2.0], [1.5, 3.0, 5.0]]
+    assert np.asarray(box.vertices).tolist() == [[-1.5, -3.0, -2.0], [1.5, 3.0, 5.0]]
 
 
-def test_the_surroundings_thickness_is_a_running_cap(setup) -> None:  # type: ignore[no-untyped-def]
-    """Capped photon by photon, in order, by a photoelectron's reach."""
+def test_a_cylinders_surrounding_is_as_thick_all_round() -> None:
+    from pyraddose_3d.backend.montecarlo.simple import _box
+
+    cylinder = monte_carlo_setup(
+        Experiment.from_yaml(
+            "tests/conformance/cases/146-montecarlo-cylinder/config.yaml"
+        )
+    ).mesh
+    v = np.asarray(cylinder.vertices)
+    w = np.asarray(_box(cylinder, (1000.0, 1000.0, 1000.0)).vertices)
+    np.testing.assert_allclose(
+        np.hypot(w[:, 0], w[:, 2]), np.hypot(v[:, 0], v[:, 2]) * 3.5 / 2.5
+    )
+
+
+def test_the_surrounding_is_capped_by_the_most_energetic_photon(setup) -> None:  # type: ignore[no-untyped-def]
+    """RADDOSE-3D #49: once, by the reach of the most energetic photon's
+    photoelectron; 0 takes the cap. It was a running cap, photon by photon."""
     from pyraddose_3d.backend.montecarlo.material import stopping_power
-    from pyraddose_3d.backend.montecarlo.simple import Surrounding, _boxes
+    from pyraddose_3d.backend.montecarlo.simple import Surrounding, _thickness
 
     surrounding = Surrounding(
         setup.composition, setup.density, setup.material, (2.0, 0.0, 1e6)
     )
-    energy = np.array([12.0, 10.0, 11.0])
-    carry = np.array([[2000.0, np.inf, 1e9]])
-    meshes: list = []
-    index = _boxes(setup, surrounding, energy, np.zeros(3, int), carry, {}, meshes)
-    reach = energy / stopping_power(setup.material, energy)
-    assert len(meshes) == 2 and index[1] == index[2] != index[0]
-    assert carry[0].tolist() == [2000.0, reach[1], reach[1]]
+    pink = dataclasses.replace(setup, energies=np.array([10.0, 11.0, 12.0]))
+    reach = 12.0 / stopping_power(setup.material, np.array([12.0]))[0]
+    assert 2000 < reach < 1e9
+    assert _thickness(pink, surrounding) == pytest.approx((2000.0, reach, reach))
+
+
+def _crossing(setup, start_z: float, direction_z: float, energy: float) -> float:  # type: ignore[no-untyped-def]
+    """What one electron at the crystal's +z face deposits, in a surrounding."""
+    from pyraddose_3d.backend.montecarlo.simple import _box
+
+    box = _box(setup.mesh, (1000.0, 1000.0, 1000.0))
+    deposited = []
+
+    def deposit(points, which, energy, starting):  # type: ignore[no-untyped-def]
+        deposited.extend(energy.tolist())
+
+    track(
+        np.random.default_rng(5),
+        Media(setup.material, setup.mesh, setup.material, [box]),
+        np.array([[0.0, 0.0, start_z]]),
+        np.array([[0.0, 0.0, direction_z]]),
+        np.array([energy]),
+        np.array([start_z > 6000.0]),
+        geometry.Placement(np.zeros(1), np.zeros((1, 3))),
+        np.zeros(1, dtype=int),
+        deposit,
+    )
+    return float(np.sum(deposited))
+
+
+def test_an_electron_coming_back_with_under_50_ev_leaves_it(setup) -> None:  # type: ignore[no-untyped-def]
+    """RADDOSE-3D #49: where it comes in. It was lost."""
+    assert np.asarray(setup.mesh.vertices)[:, 2].max() == 6.0
+    energy = 0.05 + 1e-9
+    assert _crossing(setup, 6000.0 + 1e-6, -1.0, energy) == pytest.approx(
+        0.05, abs=1e-7
+    )
+
+
+def test_an_electron_leaving_with_under_50_ev_leaves_it(setup) -> None:  # type: ignore[no-untyped-def]
+    """RADDOSE-3D #49: where it left from, as with no surrounding: all of it
+    is deposited. Only the way out was."""
+    energy = 0.05 + 1e-9
+    assert _crossing(setup, 6000.0 - 1e-6, 1.0, energy) == pytest.approx(
+        energy, abs=1e-12
+    )
 
 
 def test_the_ions_file_iterates_as_a_hash_map_does() -> None:

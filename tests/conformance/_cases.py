@@ -1312,6 +1312,58 @@ _CASES: list[Case] = [
         ),
     ),
     Case(
+        "152-montecarlo-cylinder-surrounding",
+        "B",
+        "Monte Carlo: case 146's cylinder in a salt surrounding 1 um thick, "
+        "whose shell must be as thick all round",
+        _escaping(
+            1_200_000,
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "rectangular", "x": 8.0, "y": 8.0},
+            },
+            crystal={
+                "type": "cylinder",
+                "diameter": 5.0,
+                "height": 5.0,
+                "dimensions": REMOVE,
+                "escape": {
+                    "surrounding": True,
+                    "surrounding_heavy_conc": {"Na": 500.0, "Cl": 500.0},
+                },
+                "simulation": {
+                    "photons": 1_200_000,
+                    "runs": RUNS,
+                    "surrounding_thickness": [1.0, 1.0, 1.0],
+                },
+            },
+        ),
+    ),
+    Case(
+        "153-montecarlo-pink-surrounding",
+        "B",
+        "Monte Carlo: a pink beam in a salt surrounding of no given thickness, "
+        "which the most energetic photon's photoelectron caps",
+        _escaping(
+            1_200_000,
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "energy_fwhm": 1.0,
+                "collimation": {"shape": "rectangular", "x": 9.0, "y": 9.0},
+            },
+            crystal={
+                "escape": {
+                    "surrounding": True,
+                    "surrounding_heavy_conc": {"Na": 500.0, "Cl": 500.0},
+                },
+            },
+        ),
+    ),
+    Case(
         "160-gos-baseline",
         "B",
         "Monte Carlo GOS: inelastic collisions, secondaries, Auger cascades",

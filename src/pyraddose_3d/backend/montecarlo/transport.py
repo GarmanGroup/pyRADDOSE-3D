@@ -20,9 +20,10 @@ last has stopped or left. Each step, as the Java takes it:
   negative, if the last step overshot, so that the energy deposited adds up
   to the energy it had.
 
-Two quirks are kept, and listed in ``UPSTREAM_FIXES.md``: an electron that
-leaves into the surrounding with under 0.05 keV loses it, and one that comes
-back into the crystal with under 0.05 keV loses it too. The random number
+An electron that comes back into the crystal with under 0.05 keV leaves it
+where it came in; one that leaves into the surrounding with under 0.05 keV
+leaves it where it left from, as with no surrounding. Both were lost, until
+RADDOSE-3D #49. The random number
 the Java draws each step to choose an inelastic event, which in simple mode
 never happens, is not drawn.
 """
@@ -70,8 +71,8 @@ class Media:
     surrounding : ElectronMaterial | None
         The medium around it, if any (``CalcSurrounding``).
     boxes : Sequence[Mesh]
-        The surrounding's extents: the crystal's mesh pushed out by its
-        thickness, one per thickness the run's photons gave it.
+        The surrounding's extent: the crystal's mesh scaled about its centre
+        by its thickness.
     """
 
     crystal: ElectronMaterial
@@ -269,7 +270,11 @@ def track(
             previous[entering] += to_face[:, None] * direction[entering]
             energy[entering] -= to_face * power[entering]
             died = energy[entering] < STOPPED_KEV
-            finished[entering[died]] = True  # and deposits nothing
+            finished[entering[died]] = True
+            # Under 0.05 keV, it leaves what it has where it came in, if it
+            # got there.
+            arrived = entering[died & (energy[entering] > 0)]
+            deposit(previous[arrived], which[arrived], energy[arrived], False)
             entering = entering[~died]
             outside[entering] = False
             power[entering] = physics.stopping_power(
@@ -308,9 +313,11 @@ def track(
             exits[b] = True
         else:
             # On into the surrounding, just past the face. With under 0.05 keV
-            # left, the rest is lost: it is zeroed, and the point it would be
-            # deposited at is outside the crystal.
+            # left, it leaves that where it left from, as with no surrounding
+            # -- negative, if the way out took more than it had.
             spent = energy[b] < STOPPED_KEV
+            kept = spent & there
+            deposit(previous[b[kept]], which[b[kept]], energy[b[kept]], False)
             energy[b[spent]] = 0.0
             exits[b[spent]] = True
             previous[b] += (to_edge + (to_edge / 1000))[:, None] * direction[b]
