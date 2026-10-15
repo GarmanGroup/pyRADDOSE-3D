@@ -2,8 +2,8 @@ case_id: 145-montecarlo-rotation
 tier: B
 exercises: 'Monte Carlo: a 4 x 6 x 8 um crystal rotated through 90 degrees'
 seed: 20260917
-reference_version: 5.0.1094
-reference_commit: 398b800
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 118.562

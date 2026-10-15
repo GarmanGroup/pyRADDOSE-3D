@@ -1,0 +1,23 @@
+case_id: 161-gos-escape
+tier: B
+exercises: 'Monte Carlo GOS: case 141''s 5 um cube, which photoelectrons and their
+  secondaries escape'
+seed: 20260917
+reference_version: 5.0.1097
+reference_commit: 334b819
+gated:
+  outputXFEL.CSV/vResolvedNoCut:
+    mean: 235.614
+    cv: 0.028
+  stdout/RADDOSE-GOS average dose exposed region (ADER):
+    mean: 235.614
+    cv: 0.028
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 439.947
+    cv: 0.0287
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 8684170.0
+    cv: 0.103
+  outputXFEL.CSV/ions per atom:
+    mean: 0.519745
+    cv: 0.0278

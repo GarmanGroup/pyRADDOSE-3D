@@ -2,8 +2,8 @@ case_id: 148-montecarlo-surrounding
 tier: B
 exercises: 'Monte Carlo: a salt surrounding 2 um deep, which the beam lights too'
 seed: 20260917
-reference_version: 5.0.1095
-reference_commit: b257980
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 139.112

@@ -2,8 +2,8 @@ case_id: 146-montecarlo-cylinder
 tier: B
 exercises: 'Monte Carlo: a cylinder 5 um across and high'
 seed: 20260917
-reference_version: 5.0.1094
-reference_commit: 398b800
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 268.542

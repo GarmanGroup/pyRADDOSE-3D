@@ -2,8 +2,8 @@ case_id: 144-montecarlo-circular-tophat
 tier: B
 exercises: 'Monte Carlo: a circular top-hat, which fills a bow tie'
 seed: 20260917
-reference_version: 5.0.1094
-reference_commit: 398b800
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 297.249

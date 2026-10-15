@@ -3,8 +3,8 @@ tier: B
 exercises: 'Monte Carlo: case 145''s crystal offset 0.5 um and turned back from 90
   degrees to 0'
 seed: 20260917
-reference_version: 5.0.1094
-reference_commit: 398b800
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 118.124

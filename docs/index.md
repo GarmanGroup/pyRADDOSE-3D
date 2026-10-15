@@ -50,9 +50,11 @@ Or edit and run [`programs/dose/run_dose.py`](programs/dose.md). The
 
 ## Agreement with RADDOSE-3D
 
-Every number is checked against RADDOSE-3D itself, on a corpus of 73
+Every number is checked against RADDOSE-3D itself, on a corpus of 95
 experiments, with each tolerance measured and justified rather than chosen;
-the output files are compared with the Java's line by line. See
+the output files are compared with the Java's line by line. The 22 Monte
+Carlo, GOS and XFEL experiments, which are random, are compared
+statistically, over 20 runs on each side. See
 [Agreement with RADDOSE-3D](conformance.md).
 
 The whole MX calculation is ported, photoelectron and fluorescence escape

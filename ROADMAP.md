@@ -1,6 +1,6 @@
 # pyRADDOSE-3D road-map
 
-Where the port is, what is left, and how it stays small. Stock taken on 2026-10-13. File and
+Where the port is, what is left, and how it stays small. Stock taken on 2026-10-15. File and
 line references are there so a reader can check a claim rather than take it on trust.
 
 What was done to get here, and why, is in `HISTORY.md`. The defects the port found in
@@ -8,22 +8,30 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
 
 ## Where the port stands
 
-**It does what RADDOSE-3D's MX calculation and its MicroED engine do, value for value.**
+**It does what RADDOSE-3D's MX calculation and its MicroED engine do, value for value, and what
+its Monte Carlo and XFEL subprograms do, statistically.**
 
-- 12,700 lines of Python in `src/` and 10,600 in `tests/`. 1,422 tests, none expected to fail.
+- 18,100 lines of Python in `src/` and 13,400 in `tests/`. 1,736 tests, 44 of them slow, none
+  expected to fail.
 - Every input RADDOSE-3D's MX calculation accepts is ported, except two that cannot be:
   `AbsCoefCalc RDV2`/`RDV3` run the original Fortran RADDOSE as an external program, and
   `Type Experimental` cannot be built from an input file by RADDOSE-3D either.
-- 73 conformance cases, generated from RADDOSE-3D, match it within measured tolerances. They
-  cover the sixteen summary numbers, the dose field and per-image series behind them, and the
-  output files themselves. Photoelectron and fluorescence escape are included, value by value.
-  Three more, one per Monte Carlo and XFEL subprogram, await the port, to be compared
-  statistically.
+- 95 conformance cases, generated from RADDOSE-3D. 73 match it value for value within measured
+  tolerances: the sixteen summary numbers, the dose field and per-image series behind them, and
+  the output files themselves, photoelectron and fluorescence escape included. The other 22 are
+  its Monte Carlo, GOS and XFEL subprograms, which are random, and are compared statistically:
+  20 runs on each side, five quantities a case.
 - **MicroED** (`Subprogram EMED`) is ported: the dose to a thin crystal in an electron beam,
   slice by slice, the scattering counts, and the grid search for the best voltage and
   thickness. Its fourteen cases agree with RADDOSE-3D to the last printed digit or two, now that
   RADDOSE-3D has its MicroED fixes (#40). It needs no new dependency and 0.37 MB of
   data.
+- **The Monte Carlo and XFEL subprograms** (`Subprogram MONTECARLO`, `GOS`, `XFEL`) are ported:
+  each photon and every electron it frees, by stopping power, through the GOS model's
+  collisions, or through those within one X-ray pulse. Their 22 cases agree with RADDOSE-3D's
+  runs: no quantity's mean differs by more than 2.9 standard errors, where the test allows about
+  five. Following every electron of every run at once, the port is about ten times as fast as
+  the Java on the simple Monte Carlo. ELSEPA's electron tables come as optional data packages.
 - It reads RADDOSE-3D's `.txt` input files as well as YAML, and writes the same eight output
   files RADDOSE-3D writes.
 - `solve()` is differentiable end to end, apart from escape, which is Monte Carlo. Ten tunable
@@ -36,9 +44,10 @@ RADDOSE-3D, and their fixes, are in `UPSTREAM_FIXES.md`.
 - **Light.** Two-thirds of the install is scipy, used for one function (Milestone 5).
 - **Tested beyond one Mac.** The repository has never been pushed, so its CI has never run
   (Milestone 5).
-- **Able to run every RADDOSE-3D input.** It cannot download a PDB entry by its code, still reads
-  three file formats by hand, and lacks RADDOSE-3D's Monte Carlo and XFEL subprograms
-  (Milestones 6 and 7).
+- **Able to run every RADDOSE-3D input.** It cannot download a PDB entry by its code, and still
+  reads three file formats by hand (Milestone 6). It refuses three XFEL inputs that RADDOSE-3D
+  runs inconsistently: a surrounding, and a rotation or offset, which move only the voxels the
+  dose is tallied in (Milestone 7).
 - **Optimising several settings at once**, which is the case that most needs gradients
   (Milestone 8).
 - **In CCP4.** That needs the relicensing, and answers from CCP4 (Milestone 9).
@@ -115,27 +124,24 @@ Every addition still to come has a cost in weight, so the rules are set before t
 | Downloading PDB entries by code, as the Java can | nothing | `gemmi.fetch` and the standard library. |
 | A command-line program, if CCP4 wants one | nothing | `argparse`. |
 | MicroED, done | 0.37 MB of data | `fullelsepa.csv`, 0.12 MB if gzipped. No dependency. |
-| Monte Carlo and XFEL | 7.5 MB of data, 3 MB compressed; 95 MB more for hard X-rays | See below. |
+| Monte Carlo and XFEL, done | 2.3 MB of data in an optional package; 23 MB more for hard X-rays | See below. |
 
-**Monte Carlo and XFEL are what is left, and what could make the port heavy**, in two ways:
+**Monte Carlo and XFEL were what could make the port heavy**, in two ways. Neither did:
 
 - **Data.** Both read ELSEPA's angular cross-sections, one table per element:
-  `constants/below_20000/` for electrons under 20 keV (7.3 MB, 2.9 MB gzipped) and
-  `constants/above_20000/` above it (95 MB, 23 MB with xz) -- plus small Auger and
-  fluorescence line tables. Photoelectrons from an X-ray beam under 20 keV never need the large
-  set. So the small set can go in an optional data package, and the large one in another, for
-  hard X-rays only. Kept as compressed text and read with the standard library, the whole lot
-  parses in 1.4 s, one element at a time as a run needs it. MicroED, which the analysis had
-  feared needed the large set, reads it only from code RADDOSE-3D has commented out.
-- **Speed.** RADDOSE-3D's Monte Carlo takes 19 s per 10^5 photons, XFEL 417 s and 1 GB, so
-  about 3 and 70 minutes at their default 10^6. Matching the Java draw for draw needs each
-  electron followed step by step, because its random draws depend on its history: secondaries
-  are tracked depth-first, and some samples retry until accepted. Per step the Java recomputes
-  a cross-section integral of about 10^5 operations, which NumPy does in one call, and much it
-  could cache. Whether a step-by-step Python port comes near the Java's speed is unmeasured; a
-  prototype of one transport step settles it. If it cannot, the choice is a vectorised port
-  compared statistically, or an optional compiled accelerator -- and numba alone is over
-  100 MB.
+  `constants/below_20000/` for electrons under 20 keV and `constants/above_20000/` above it
+  (95 MB), plus small Auger and fluorescence line tables, which are in the core. The two sets are
+  optional data packages: `packages/elsepa-low`, 2.3 MB, committed, and `packages/elsepa-high`,
+  23 MB with xz, built locally from a RADDOSE-3D checkout until publication settles how it ships.
+  Photoelectrons from an X-ray beam under 20 keV never need the large set.
+- **Speed.** The port follows every electron of every run at once, and is compared with the Java
+  statistically rather than draw for draw. On the simple Monte Carlo it is about ten times as
+  fast as the Java. In the GOS model the Java recomputed a cross-section integral at every step
+  of every electron, summing over the composition twice at each of its thousand points;
+  [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) sums once per integral, with
+  identical results, and makes a GOS run fourteen times faster: 18 s rather than 245 s for one
+  run of case 160. The port, which tabulates the integrals once per run, takes 32 s for all
+  twenty. An XFEL case takes the port about a minute for twenty runs of up to a million photons.
 
 ## Milestones ahead
 
@@ -229,12 +235,12 @@ first:
    - ELSEPA's angular tables as optional data packages (done: `packages/elsepa-low`, 2.3 MB,
      committed; `packages/elsepa-high`, 23 MB, built locally from a RADDOSE-3D checkout);
    - tier-B (statistical) conformance, calibrated: Java against Java and the port against
-     itself must pass, and mutations of the claimed detectable size must fail. (Done for the
-     Java: a baseline case per subprogram, 20 runs each, five quantities each compared by
-     Welch's t; RADDOSE-3D's first ten runs agree with its last ten. The doses' detectable
-     bias is about 6% for MONTECARLO, 16% for GOS and 17% for XFEL, which spend about a second
-     of the Java's time per absorbed photon; the timing gate decides whether to buy more.
-     The port's side waits for the port.)
+     itself must pass, and mutations of the claimed detectable size must fail. (Done: 22
+     cases, 20 runs each, five quantities each compared by Welch's t, 110 comparisons sharing a
+     false-alarm rate of 1e-3; RADDOSE-3D's first ten runs agree with its last ten, and so do
+     the port's. The doses' detectable bias is 4 to 7% for MONTECARLO, 4 to 8% for GOS and 6
+     to 8% for XFEL, but 17% for the first case of each of these two, made when the Java took
+     a second per absorbed photon.)
 3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within
    about 3× of it, continue; otherwise reconsider. (Passed: on case 140, the port takes 0.4–0.5 s
    a run of 100,000 photons and 3.4–4.5 s of 1,000,000, against RADDOSE-3D's 4.3–4.9 s and
@@ -262,14 +268,14 @@ first:
    way, and a rotation or offset, which move only the voxels the dose is tallied in, not the
    crystal.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
-   MicroED. (Under way: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to
-   [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49), stacked, fix a rotated crystal's
+   MicroED. (Begun: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to
+   [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49), merged, fix a rotated crystal's
    escape distances, circular beams, elastic deflections' sin θ, the directions electrons and
-   photons take, MC's fluorescence energies with four smaller slips, and the surrounding. The port follows each in
-   its own commit and agreed with RADDOSE-3D at each. The largest effect is #48's: at 25 keV a
-   crystal with selenium loses 22% of its Monte Carlo dose. Cases 150 and 151 test the wedges,
-   152 and 153 the surrounding. What is left -- GOS's and XFEL's, which wait for their ports --
-   is in `UPSTREAM_FIXES.md`, *Still to fix*.)
+   photons take, MC's fluorescence energies with four smaller slips, and the surrounding. The
+   port follows each in its own commit and agreed with RADDOSE-3D at each. The largest effect
+   is #48's: at 25 keV a crystal with selenium loses 22% of its Monte Carlo dose. Cases 150 and
+   151 test the wedges, 152 and 153 the surrounding. What is left, GOS's and XFEL's now that
+   they are ported, is in `UPSTREAM_FIXES.md`, *Still to fix*.)
 
 No gradients: a randomly drawn track has none, as with escape.
 
@@ -322,14 +328,16 @@ copyright holders, so relicensing is on the critical path for CCP4 alone.
 
 ## Upstream: RADDOSE-3D
 
-The port's fixes are merged into RADDOSE-3D as #36, #37, #38, #40 and #42, all on 2026-10-13
-(`UPSTREAM_FIXES.md` has each, with measurements). #41 adds MicroED's beam requirements and
-output files to the user guide. The corpus follows `master` at `82ac582`.
+The port's fixes are merged into RADDOSE-3D as #36, #37, #38, #40 and #42, all on 2026-10-13,
+and #43 to #49, the Monte Carlo and XFEL's, on 2026-10-14 (`UPSTREAM_FIXES.md` has each, with
+measurements). #41 adds MicroED's beam requirements and output files to the user guide. The
+corpus follows `master` at `85a6813`.
 
 **Still open in the Java**, each with the milestone that takes it up:
 
-- Monte Carlo and XFEL's physics defects, and the GOS model's missing inner subshells from
-  Z = 35 (Milestone 7).
+- GOS and XFEL's physics defects, among them cascades that count a vacancy's energy more than
+  once, and XFEL's surrounding, rotation and offset; and the GOS model's missing inner subshells
+  from Z = 35 (Milestone 7).
 - A third `Dimensions` value making a cylinder a cuboid, and lexer errors not being refused
   (Milestone 6).
 - Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's

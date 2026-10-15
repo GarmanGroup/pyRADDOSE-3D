@@ -3,8 +3,8 @@ tier: B
 exercises: 'Monte Carlo: a vertical goniometer, sending K-shell photoelectrons along
   the crystal''s thin x'
 seed: 20260917
-reference_version: 5.0.1094
-reference_commit: 398b800
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 273.224

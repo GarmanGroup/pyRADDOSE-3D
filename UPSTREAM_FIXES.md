@@ -30,16 +30,26 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#40](https://github.com/GarmanGroup/RADDOSE-3D/pull/40) | `jd_microed_fixes`, onto `master` | all of *MicroED* but its last two rows | merged as `e2df6e4` |
 | [#42](https://github.com/GarmanGroup/RADDOSE-3D/pull/42) | `jd_mc_xfel_reproducible`, onto `master` | *Monte Carlo and XFEL*: reproducibility and running | merged as `82ac582` |
 | [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43) | `jd_mc_outer_shell`, onto `master` | *Monte Carlo and XFEL*: a photoelectron of negative energy | merged as `2fc08a4` |
-| [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) | `jd_mc_geometry`, onto `master` | *Monte Carlo*: escape distances to the rotated crystal; offset and rotation | open |
-| [#45](https://github.com/GarmanGroup/RADDOSE-3D/pull/45) | `jd_mc_beams`, onto #44 | *Monte Carlo and XFEL*: circular beams and their area | open |
-| [#46](https://github.com/GarmanGroup/RADDOSE-3D/pull/46) | `jd_mc_angles`, onto #45 | *Monte Carlo and XFEL*: elastic deflections | open |
-| [#47](https://github.com/GarmanGroup/RADDOSE-3D/pull/47) | `jd_mc_directions`, onto #46 | *Monte Carlo and XFEL*: directions | open |
-| [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48) | `jd_mc_bookkeeping`, onto #47 | *Monte Carlo and XFEL*: fluorescence energies, phosphorus, the elastic chance, wedges, a face at z = 0 | open |
-| [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49) | `jd_mc_surrounding`, onto #48 | *Monte Carlo*: the surrounding | open |
+| [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) | `jd_mc_geometry`, onto `master` | *Monte Carlo*: escape distances to the rotated crystal; offset and rotation | merged as `bd1d3f0` |
+| [#45](https://github.com/GarmanGroup/RADDOSE-3D/pull/45) | `jd_mc_beams`, onto #44 | *Monte Carlo and XFEL*: circular beams and their area | merged as `7447b09` |
+| [#46](https://github.com/GarmanGroup/RADDOSE-3D/pull/46) | `jd_mc_angles`, onto #45 | *Monte Carlo and XFEL*: elastic deflections | merged as `711e62a` |
+| [#47](https://github.com/GarmanGroup/RADDOSE-3D/pull/47) | `jd_mc_directions`, onto #46 | *Monte Carlo and XFEL*: directions | merged as `396af5a` |
+| [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48) | `jd_mc_bookkeeping`, onto #47 | *Monte Carlo and XFEL*: fluorescence energies, phosphorus, the elastic chance, wedges, a face at z = 0 | merged as `d51e441` |
+| [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49) | `jd_mc_surrounding`, onto #48 | *Monte Carlo*: the surrounding | merged as `85a6813` |
+| [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) | `jd_gos_integral`, onto `master` | *GOS*: the distant collisions' integral finds its ends once; no result changes | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
 moved.
+
+#43 to #49 were merged on 2026-10-14, the stack squash-merged in order, each with the same source
+as its tested tip. The corpus is regenerated from `master` at `85a6813`, and again no number
+moved.
+
+#51 makes the GOS model's cross-sections twelve times faster and changes no result: case 160,
+regenerated from it, is byte-identical to `master`'s. The GOS and XFEL cases added with the
+port's GOS and XFEL, 161 to 163 and 181 to 183, were generated from it, at `334b819`; before it,
+one run of case 161 took the Java nine hours on a loaded machine.
 
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
@@ -748,6 +758,18 @@ From porting the simple Monte Carlo, reproduced by the port:
   its diffraction efficiency is the elastic count over that.
 
 For GOS, with its port:
+- **A distant collision with a subshell the edge table gives no binding energy loses the
+  electron.** The collision takes its binding energy Uk from `getShellBindingEnergy` (MC:1913),
+  the photoelectric edges, while the cross-sections that chose it use `getShellBindingSubshell`.
+  Phosphorus's valence subshell, M1, has no edge there: Uk = 0, so Qak = 0, the recoil Q is 0
+  (`getRecoilEnergyDistant`, CoefCalcCompute:5181), and a longitudinal collision's deflection is
+  the arccosine of a number just over 1 (`getGOSPrimaryScatterLong`, MC:3643): NaN. The
+  electron's direction becomes NaN, it is taken to have left the crystal, and what energy it had
+  is lost; a secondary from such a collision likewise (`secondaryScatterDistant`). Case 160 has
+  phosphate in its solvent, 0.4% of its inelastic collisions: carrying those electrons on
+  undeflected instead raises its GOS dose by 31% ± 1.4% and its ionisations per atom by 33%;
+  XFEL's case 180, whose electrons the pulse stops sooner, by 8.4% ± 0.9% and 9.0% (port, 20
+  runs each). Every crystal with phosphorus, a phosphate buffer or nucleic acid, is affected.
 - **In the surrounding, GOS mode uses the crystal's numbers**: an electron that leaves the crystal
   takes the crystal's shell probabilities (`getAllShellProbs(false)`, MC:2297) and keeps its
   inner-shell λ, and `getZlnI`, behind the Sternheimer correction, weights the surrounding's

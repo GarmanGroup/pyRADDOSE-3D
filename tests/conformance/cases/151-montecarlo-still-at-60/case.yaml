@@ -3,8 +3,8 @@ tier: B
 exercises: 'Monte Carlo: case 145''s crystal held still at 60 degrees in a beam 2
   um wide, which crosses 4.6 um of it rather than 8'
 seed: 20260917
-reference_version: 5.0.1094
-reference_commit: 398b800
+reference_version: 5.0.1096
+reference_commit: 85a6813
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 184.44

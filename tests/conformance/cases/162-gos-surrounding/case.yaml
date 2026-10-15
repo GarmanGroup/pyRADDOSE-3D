@@ -1,0 +1,23 @@
+case_id: 162-gos-surrounding
+tier: B
+exercises: 'Monte Carlo GOS: case 148''s salt surrounding, whose electrons are followed
+  without the GOS model'
+seed: 20260917
+reference_version: 5.0.1097
+reference_commit: 334b819
+gated:
+  outputXFEL.CSV/vResolvedNoCut:
+    mean: 115.03
+    cv: 0.0448
+  stdout/RADDOSE-GOS average dose exposed region (ADER):
+    mean: 115.03
+    cv: 0.0448
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 135.167
+    cv: 0.0389
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 5656130.0
+    cv: 0.182
+  outputXFEL.CSV/ions per atom:
+    mean: 0.262532
+    cv: 0.0452

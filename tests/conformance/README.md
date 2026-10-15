@@ -83,14 +83,18 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   mostly fail once one half is shifted by the claimed detectable bias.
   `test_tier_b_statistics.py` checks the false-alarm rate and the power by
   simulation.
-- **Cost.** The port takes about 40 minutes over the fourteen Monte
-  Carlo cases, so those comparisons are marked `slow`, and run with
+- **Cost.** The port takes about 70 minutes over the 22 Monte Carlo, GOS
+  and XFEL cases, so those comparisons are marked `slow`, and run with
   `uv run pytest -m slow tests/conformance/test_montecarlo_files.py`. Every
   case also runs briefly in the default suite, which checks that the port
   writes the files and printout RADDOSE-3D does. Regenerating the references
-  takes the Java longer: half an hour to an hour a Monte Carlo case, about
-  an hour each for GOS and XFEL, and for the cylinder, whose 124 triangles it
-  tests one by one, an hour at RADDOSE-3D #48 and ten before it.
+  takes the Java longer: half an hour to an hour a Monte Carlo case, and for
+  the cylinder, whose 124 triangles it tests one by one, an hour at
+  RADDOSE-3D #48 and ten before it. A GOS or XFEL case takes ten to thirty
+  minutes with #51, which stopped the Java recomputing the composition's
+  sums at each of the thousand points of a cross-section integral; before
+  it, a GOS run of case 161 took nine hours on a loaded machine. Cases 161 to
+  163 and 181 to 183 were generated with it, at `334b819`.
 
 The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows
@@ -102,6 +106,15 @@ held still at 60 degrees in a beam narrower than the crystal, where it
 absorbs 42% less than at 0. 152 and 153 test the surrounding: a cylinder in a
 thin one, whose shell must be as thick all round, and a pink beam in one of
 no given thickness, which the most energetic photon caps.
+
+GOS mode has four cases: 160, case 140's crystal; 161, 141's 5 um cube,
+which photoelectrons and their secondaries escape; 162, 148's surrounding,
+where electrons are followed without the GOS model; and 163, selenium above
+its K edge, whose vacancies relax through its L and M shells. XFEL has four
+too, which test its clock: 180, a 30 fs pulse; 181, a 1 fs pulse, in
+0.01 fs bins, before whose cutoff only a quarter of the dose arrives; 182, a
+pink beam, its softest photons first; and 183, 163's selenium in a 10 fs
+pulse, whose fluorescence carries its energy away.
 
 ## Regenerating
 

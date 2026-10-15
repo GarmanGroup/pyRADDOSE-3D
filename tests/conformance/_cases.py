@@ -147,6 +147,21 @@ def _simulated(
     }
 
 
+#: Selenium in the baseline's protein, as in selenomethionine.
+_SELENIUM: dict[str, Any] = {
+    "crystal": {"composition": {"protein_heavy_atoms": {"Se": 4.0}}}
+}
+
+
+def _xfel_pulse(
+    photons: int, pulse_fs: float, energy: float = 12.1, **beam: Any
+) -> dict[str, Any]:
+    """An XFEL case with a pulse of its own length, fs."""
+    overrides = _simulated("xfel", photons, energy, **beam)
+    overrides["wedges"] = [{"start": 0.0, "end": 0.0, "exposure_time": pulse_fs}]
+    return overrides
+
+
 def _escaping(
     photons: int,
     dimensions: list[float] | None = None,
@@ -154,6 +169,7 @@ def _escaping(
     beam: dict[str, Any] | None = None,
     crystal: dict[str, Any] | None = None,
     wedge: dict[str, Any] | None = None,
+    subprogram: str = "montecarlo",
 ) -> dict[str, Any]:
     """A Monte Carlo case electrons escape from: a crystal of a few um.
 
@@ -164,7 +180,7 @@ def _escaping(
     face sends every photon through it.
     """
     dimensions = dimensions or [5.0, 5.0, 5.0]
-    overrides = _simulated("montecarlo", photons, energy)
+    overrides = _simulated(subprogram, photons, energy)
     # Whole, so that a change of shape, which replaces the baseline's crystal
     # rather than merging into it, still has a composition.
     merged = {
@@ -1370,10 +1386,71 @@ _CASES: list[Case] = [
         _simulated("gos", 60_000, 12.1),
     ),
     Case(
+        "161-gos-escape",
+        "B",
+        "Monte Carlo GOS: case 141's 5 um cube, which photoelectrons and their "
+        "secondaries escape",
+        _escaping(1_200_000, subprogram="gos"),
+    ),
+    Case(
+        "162-gos-surrounding",
+        "B",
+        "Monte Carlo GOS: case 148's salt surrounding, whose electrons are "
+        "followed without the GOS model",
+        _escaping(
+            1_200_000,
+            subprogram="gos",
+            beam={
+                "type": "tophat",
+                "flux": 2.0e12,
+                "energy": 12.1,
+                "collimation": {"shape": "rectangular", "x": 9.0, "y": 9.0},
+            },
+            crystal={
+                "escape": {
+                    "surrounding": True,
+                    "surrounding_heavy_conc": {"Na": 500.0, "Cl": 500.0},
+                },
+                "simulation": {
+                    "photons": 1_200_000,
+                    "runs": RUNS,
+                    "surrounding_thickness": [2.0, 2.0, 2.0],
+                },
+            },
+        ),
+    ),
+    Case(
+        "163-gos-selenium",
+        "B",
+        "Monte Carlo GOS: selenium above its K edge, whose vacancies relax "
+        "through its L and M shells",
+        _merge(_simulated("gos", 400_000, 13.0), _SELENIUM),
+    ),
+    Case(
         "180-xfel-baseline",
         "B",
         "XFEL: the GOS simulation timed within a 30 fs pulse",
         _simulated("xfel", 100_000, 12.1),
+    ),
+    Case(
+        "181-xfel-one-femtosecond",
+        "B",
+        "XFEL: a 1 fs pulse, in 0.01 fs bins, before which a quarter of the "
+        "dose arrives; ten times the energy, so that %f resolves its ions",
+        _xfel_pulse(1_000_000, 1.0, pulse_energy=14.0),
+    ),
+    Case(
+        "182-xfel-pink",
+        "B",
+        "XFEL: a pink beam in a 5 fs pulse, its softest photons first",
+        _xfel_pulse(600_000, 5.0, energy_fwhm=1.0),
+    ),
+    Case(
+        "183-xfel-selenium",
+        "B",
+        "XFEL: case 163's selenium in a 10 fs pulse, whose fluorescence "
+        "carries its energy away",
+        _merge(_xfel_pulse(400_000, 10.0, energy=13.0), _SELENIUM),
     ),
 ]
 

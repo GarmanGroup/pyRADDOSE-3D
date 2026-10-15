@@ -1,0 +1,23 @@
+case_id: 163-gos-selenium
+tier: B
+exercises: 'Monte Carlo GOS: selenium above its K edge, whose vacancies relax through
+  its L and M shells'
+seed: 20260917
+reference_version: 5.0.1097
+reference_commit: 334b819
+gated:
+  outputXFEL.CSV/vResolvedNoCut:
+    mean: 29.2004
+    cv: 0.019
+  stdout/RADDOSE-GOS average dose exposed region (ADER):
+    mean: 29.2003
+    cv: 0.019
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 37.4972
+    cv: 0.0214
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 94288200.0
+    cv: 0.135
+  outputXFEL.CSV/ions per atom:
+    mean: 0.0369243
+    cv: 0.0274
