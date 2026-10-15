@@ -1012,9 +1012,10 @@ def track_gos(
                 ended[back[late]] = True
                 first_in[back[late]] = False
                 back, to_face = back[~late], to_face[~late]
-            e.position[back] += to_face[:, None] * e.direction[back]
-            e.outside[back] = False
-            _crystal_state(ctx, e, back)
+            if len(back):
+                e.position[back] += to_face[:, None] * e.direction[back]
+                e.outside[back] = False
+                _crystal_state(ctx, e, back)
         in_crystal = live & ~e.outside
         in_crystal[in_crystal] = ctx.crystal_has(
             e.target[in_crystal], e.owner[in_crystal]
