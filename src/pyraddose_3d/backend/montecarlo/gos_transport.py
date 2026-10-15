@@ -962,15 +962,13 @@ def track_gos(
         electrons and vacancies begin. 0 if not given.
     clock : Clock, optional
         The XFEL subprogram's: follow the electrons in time, and stop at
-        ``lastTime``. It has no surrounding.
+        ``lastTime``.
 
     Returns
     -------
     int
         How many passes it took.
     """
-    if clock is not None and surrounding is not None:
-        raise ValueError("the XFEL subprogram's surrounding is not this one")
     cascade = Cascade(rng, crystal, sink, clock)
     ctx = _Context(
         rng, crystal, surrounding, mesh, boxes, placement, sink, cascade, clock
@@ -1003,6 +1001,12 @@ def track_gos(
             to_face = exit_distance(
                 mesh, e.position[back], e.direction[back], placement.take(e.owner[back])
             )
+            if clock is not None:
+                e.time[back] += clock.flight(e.energy[back], to_face)
+                late = e.time[back] > clock.last
+                ended[back[late]] = True
+                first_in[back[late]] = False
+                back, to_face = back[~late], to_face[~late]
             e.position[back] += to_face[:, None] * e.direction[back]
             e.outside[back] = False
             _crystal_state(ctx, e, back)
@@ -1155,6 +1159,11 @@ def _wander(ctx: _Context, e: _Electrons, wandering: np.ndarray) -> np.ndarray:
         )
     ended[wandering[~still]] = True
     c = wandering[still]
+    if ctx.clock is not None and len(c):
+        e.time[c] += ctx.clock.flight(e.energy[c], e.step[c])
+        late = e.time[c] > ctx.clock.last
+        ended[c[late]] = True
+        c = c[~late]
     if len(c):
         surrounding = ctx.medium(True)
         loss = e.step[c] * surrounding.stopping_power(e.energy[c])

@@ -32,6 +32,7 @@ from pyraddose_3d.backend.montecarlo.geometry import (
     voxel_indices,
 )
 from pyraddose_3d.backend.montecarlo.gos_transport import (
+    Clock,
     GOSMedium,
     gos_medium,
     track_gos,
@@ -51,6 +52,12 @@ from pyraddose_3d.backend.montecarlo.photons import (
     shells,
 )
 from pyraddose_3d.backend.montecarlo.transport import Media, track
+from pyraddose_3d.backend.montecarlo.xfel import (
+    Pulse,
+    TimedSink,
+    pulse_timing,
+    xfel_runs,
+)
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.composition import Composition
@@ -241,6 +248,8 @@ class _Tallies:
     def __init__(self, runs: int, voxels: int, elements: int) -> None:
         self.dose = np.zeros(runs * voxels)  # doseSimple
         self.resolved = np.zeros(runs * voxels)  # voxelEnergyvResolved
+        # In the XFEL subprogram, its part from before each voxel's cutoff.
+        self.resolved_cut = np.zeros(runs * voxels)
         self.voxel_elastic = np.zeros(runs * voxels)  # voxelElastic
         self.raddose = np.zeros(runs)
         self.raddose_compton = np.zeros(runs)
@@ -367,9 +376,15 @@ class _GOSQueue:
     crystal stood for it, and its surrounding.
     """
 
-    def __init__(self, crystal: GOSMedium, surrounding: GOSMedium | None) -> None:
+    def __init__(
+        self,
+        crystal: GOSMedium,
+        surrounding: GOSMedium | None,
+        pulse: Pulse | None = None,
+    ) -> None:
         self.crystal = crystal
         self.surrounding = surrounding
+        self.pulse = pulse
         self._clear()
 
     def _clear(self) -> None:
@@ -391,8 +406,12 @@ class _GOSQueue:
         run: np.ndarray,
         placement: Placement,
         box: np.ndarray,
+        time: np.ndarray,
     ) -> None:
-        """A batch's electrons and vacancies, owned by its photons."""
+        """A batch's electrons and vacancies, owned by its photons.
+
+        ``time`` is when each photon interacted, fs.
+        """
         owner = np.concatenate([s[0] for s in starts])
         photons = np.unique(owner)
 
@@ -404,6 +423,7 @@ class _GOSQueue:
             angle=placement.angle[photons],
             offset=placement.offset[photons],
             box=box[photons],
+            time=time[photons],
             owner=record(owner),
             points=np.concatenate([s[1] for s in starts]),
             directions=np.concatenate([s[2] for s in starts]),
@@ -447,6 +467,12 @@ class _GOSQueue:
             if "vacancy_owner" in self.parts
             else None
         )
+        pulse = self.pulse
+        sink: _GOSSink | TimedSink = (
+            _GOSSink(grid, tallies, placement, run, setup.beam)
+            if pulse is None
+            else TimedSink(grid, tallies, placement, run, setup.beam, pulse)
+        )
         passes = track_gos(
             rng,
             self.crystal,
@@ -454,7 +480,7 @@ class _GOSQueue:
             setup.mesh,
             boxes,
             placement,
-            _GOSSink(grid, tallies, placement, run, setup.beam),
+            sink,
             self._get("points"),
             self._get("directions"),
             self._get("energies"),
@@ -463,6 +489,8 @@ class _GOSQueue:
             self._get("outside"),
             self._get("box")[owner],
             vacancies,
+            self._get("time"),
+            Clock(pulse.last) if pulse is not None else None,
         )
         tallies.passes = max(tallies.passes, passes)
         self._clear()
@@ -475,7 +503,8 @@ def _placements(setup: SimpleSetup, index: np.ndarray) -> Placement:
     to its end, as RADDOSE-3D has it since #48.
     """
     start, end = setup.start_angle, setup.end_angle
-    if abs(start - end) < setup.angular_resolution:
+    if setup.xfel or abs(start - end) < setup.angular_resolution:
+        # An XFEL pulse lasts femtoseconds: a still at the wedge's start.
         angle = np.full(len(index), start)
     else:
         angle = start + ((index / setup.photons) * (end - start))
@@ -641,6 +670,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         surrounding.material if surrounding is not None else None,
         box_meshes,
     )
+    pulse = pulse_timing(setup, grid.size[2]) if setup.xfel else None
     gos = None
     if setup.gos:
         highest = (
@@ -653,6 +683,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             gos_medium(surrounding.material, highest)
             if surrounding is not None
             else None,
+            pulse,
         )
 
     total = runs * photons
@@ -690,6 +721,15 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             )  # fmt: skip
             found.extend(paths)
 
+        # In the XFEL subprogram, when each photon interacts.
+        time = np.zeros(n)
+        timed = None
+        if pulse is not None:
+            slot = pulse.slots(in_run, photons)
+            for owner, points, _ in found:
+                time[owner] = pulse.arrival(slot[owner], points[:, 2])
+            timed = (TimedSink(grid, tallies, placement, run, setup.beam, pulse), time)
+
         starts: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool]] = []
         vacancies: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
         for owner, points, outside in found:
@@ -724,7 +764,8 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             if not outside:
                 _tally_crystal(
                     rng, setup, grid, tallies, z_of, yield_of, placement, run, x, y,
-                    absorbed, cs_owner, cs_energy, here.take(np.flatnonzero(compton)),
+                    absorbed, cs_owner, cs_points, cs_energy,
+                    here.take(np.flatnonzero(compton)), timed,
                 )  # fmt: skip
                 if setup.gos:
                     # An outer shell's vacancy has nothing to relax.
@@ -754,7 +795,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         electron_run = run[owner]
         np.add.at(tallies.electrons, electron_run, 1)
         if gos is not None:
-            gos.add(starts, vacancies, run, placement, box)
+            gos.add(starts, vacancies, run, placement, box, time)
             if gos.electrons >= _TRACKED:
                 gos.follow(rng, setup, grid, tallies, box_meshes)
             continue
@@ -773,6 +814,9 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
 
     if gos is not None:
         gos.follow(rng, setup, grid, tallies, box_meshes)
+    if pulse is not None:
+        volume = _sample_volume(setup.mesh) * 1e-12
+        return xfel_runs(setup, tallies, grid, volume, pulse.depth)
     return _process(setup, tallies, grid)
 
 
@@ -789,23 +833,38 @@ def _tally_crystal(
     y: np.ndarray,
     absorbed: _Absorbed,
     cs_owner: np.ndarray,
+    cs_points: np.ndarray,
     cs_energy: np.ndarray,
     cs_coefficients: PhotonCoefficients,
+    timed: tuple[TimedSink, np.ndarray] | None = None,
 ) -> None:
     """What an absorption in the crystal adds besides its electron.
 
     RADDOSE-3D-style energy, an ionisation of the element (and of the
     exposed region, if the photon was within the aperture), and the
-    relaxation of the atom a photoelectron left.
+    relaxation of the atom a photoelectron left. ``timed``: in the XFEL
+    subprogram, the sink that counts an ionisation only before its voxel's
+    cutoff, and each photon's time.
     """
     pe = absorbed.owner
     np.add.at(tallies.raddose, run[pe], absorbed.energy + absorbed.binding)
-    _ionise(tallies, run[pe], absorbed.element, setup.beam.exposes(x[pe], y[pe]))
+    if timed is None:
+        _ionise(tallies, run[pe], absorbed.element, setup.beam.exposes(x[pe], y[pe]))
+    else:
+        sink, time = timed
+        sink.ionise(
+            absorbed.points,
+            pe,
+            absorbed.element,
+            np.ones(len(pe), dtype=np.int64),
+            time[pe],
+        )
     if setup.gos:
         # GOS mode relaxes the atom in full, with the electrons.
         _compton_ions(
-            rng, setup, tallies, run, x, y, cs_owner, cs_energy, cs_coefficients
-        )
+            rng, setup, tallies, run, x, y, cs_owner, cs_points, cs_energy,
+            cs_coefficients, timed,
+        )  # fmt: skip
         return
     shell = absorbed.shell
     shell_yield = np.where(
@@ -818,7 +877,10 @@ def _tally_crystal(
     np.add.at(tallies.dose, flat, left)
     np.add.at(tallies.resolved, flat, resolved)
 
-    _compton_ions(rng, setup, tallies, run, x, y, cs_owner, cs_energy, cs_coefficients)
+    _compton_ions(
+        rng, setup, tallies, run, x, y, cs_owner, cs_points, cs_energy,
+        cs_coefficients,
+    )  # fmt: skip
 
 
 def _compton_ions(
@@ -829,14 +891,26 @@ def _compton_ions(
     x: np.ndarray,
     y: np.ndarray,
     cs_owner: np.ndarray,
+    cs_points: np.ndarray,
     cs_energy: np.ndarray,
     cs_coefficients: PhotonCoefficients,
+    timed: tuple[TimedSink, np.ndarray] | None = None,
 ) -> None:
     """A Compton scattering's RADDOSE-3D-style energy and ionisation."""
     np.add.at(tallies.raddose_compton, run[cs_owner], cs_energy)
     cs_element = choose(cs_coefficients.compton_cdf, rng.random(len(cs_owner)))
-    exposed = setup.beam.exposes(x[cs_owner], y[cs_owner])
-    _ionise(tallies, run[cs_owner], cs_element, exposed)
+    if timed is None:
+        exposed = setup.beam.exposes(x[cs_owner], y[cs_owner])
+        _ionise(tallies, run[cs_owner], cs_element, exposed)
+    else:
+        sink, time = timed
+        sink.ionise(
+            cs_points,
+            cs_owner,
+            cs_element,
+            np.ones(len(cs_owner), dtype=np.int64),
+            time[cs_owner],
+        )
 
 
 def _ionise(

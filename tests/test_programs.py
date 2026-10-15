@@ -183,12 +183,3 @@ def test_run_dose_runs_gos_and_xfel(
     assert capsys.readouterr().out.count(printed) == 2
     files = sorted(p.name for p in tmp_path.glob("output*.CSV"))
     assert files == ["outputIonsPerAtom.CSV", "outputXFEL.CSV"]
-
-
-def test_run_dose_refuses_an_xfel_rotation(tmp_path: Path) -> None:
-    """RADDOSE-3D would turn the voxels but not the crystal: refused, by
-    name, before anything is written."""
-    text = _STILL.format(subprogram="XFEL", intensity="PulseEnergy 1.4", end=90)
-    with pytest.raises(NotImplementedError, match="whole radians"):
-        _run_dose(text, tmp_path)
-    assert not list(tmp_path.glob("output*"))

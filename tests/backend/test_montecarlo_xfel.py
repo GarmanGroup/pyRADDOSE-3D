@@ -19,10 +19,12 @@ from pyraddose_3d.backend.montecarlo.gos_transport import (
     gos_medium,
 )
 from pyraddose_3d.models.experiment import Experiment
-from pyraddose_3d.solve import _refuse_unported_xfel, monte_carlo_setup
+from pyraddose_3d.solve import monte_carlo_setup
 
 #: Case 140's crystal.
 CASE = "tests/conformance/cases/140-montecarlo-baseline/config.yaml"
+#: Case 180, an XFEL pulse.
+XFEL_CASE = "tests/conformance/cases/180-xfel-baseline/config.yaml"
 
 _C = 299792458.0
 _REST_KEV = 9.10938356e-31 * _C**2 / KEV_TO_JOULES
@@ -115,33 +117,15 @@ def test_what_a_transition_leaves_comes_its_lifetime_later(selenium) -> None:  #
     assert later.min() > 0 and sink.ions > 0
 
 
-@pytest.mark.parametrize(
-    ("surrounding", "end_degrees", "offset", "refused"),
-    [
-        (False, 0.0, (0.0, 0.0, 0.0), None),
-        (False, 50.0, (0.0, 0.0, 0.0), None),
-        (True, 0.0, (0.0, 0.0, 0.0), "surrounding"),
-        (False, 60.0, (0.0, 0.0, 0.0), "whole radians"),
-        (False, 0.0, (1.0, 0.0, 0.0), "offset"),
-    ],
-)
-def test_the_xfel_inputs_the_port_does_not_run(
-    surrounding: bool,
-    end_degrees: float,
-    offset: tuple[float, float, float],
-    refused: str | None,
-) -> None:
-    """A wedge under a radian rotates nothing: RADDOSE-3D truncates it."""
-    args = (
-        surrounding,
-        0.0,
-        math.radians(end_degrees),
-        math.radians(0.1),
-        offset,
-        (0.0, 0.0, 0.0),
-    )
-    if refused is None:
-        _refuse_unported_xfel(*args)
-    else:
-        with pytest.raises(NotImplementedError, match=refused):
-            _refuse_unported_xfel(*args)
+def test_an_xfel_pulse_is_a_still_at_the_wedges_start() -> None:
+    """A pulse lasts femtoseconds, so the crystal stands still through it, at
+    the wedge's start, however far the wedge turns: as RADDOSE-3D has it
+    since #56. XFEL turned the voxels, not the crystal, by whole radians."""
+    from pyraddose_3d.backend.montecarlo.simple import _placements
+
+    experiment = Experiment.from_yaml(XFEL_CASE)
+    data = experiment.model_dump()
+    data["wedges"][-1].update(start=30.0, end=120.0)
+    setup = monte_carlo_setup(Experiment.model_validate(data))
+    placement = _placements(setup, np.arange(0, setup.photons, 997))
+    np.testing.assert_array_equal(placement.angle, math.radians(30.0))

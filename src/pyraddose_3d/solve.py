@@ -1039,15 +1039,7 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     Returns
     -------
     SimpleSetup
-        For :func:`pyraddose_3d.backend.montecarlo.simple.simulate_simple`,
-        or for the XFEL subprogram
-        :func:`pyraddose_3d.backend.montecarlo.xfel.simulate_xfel`.
-
-    Raises
-    ------
-    NotImplementedError
-        For the XFEL subprogram with a surrounding, or with a wedge it would
-        rotate or offset: not ported (``UPSTREAM_FIXES.md``).
+        For :func:`pyraddose_3d.backend.montecarlo.simple.simulate_simple`.
     """
     from pyraddose_3d.backend.montecarlo.photons import BeamShape
     from pyraddose_3d.backend.montecarlo.simple import SimpleSetup, Surrounding
@@ -1094,15 +1086,6 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     resolution = wedge_resolution(wedge.start, wedge.end, wedge.angular_resolution)
     ox, oy, oz = wedge.start_offset or (0.0, 0.0, 0.0)
     tx, ty, tz = wedge.translate_per_degree or (0.0, 0.0, 0.0)
-    if xfel:
-        _refuse_unported_xfel(
-            surrounding is not None,
-            math.radians(wedge.start),
-            math.radians(wedge.end),
-            math.radians(resolution),
-            (ox, oy, oz),
-            (math.degrees(tx), math.degrees(ty), math.degrees(tz)),
-        )
     return SimpleSetup(
         mesh=Mesh(np.asarray(mesh.vertices), np.asarray(mesh.triangles)),
         pixels_per_micron=pixels_per_micron(crystal, mesh),
@@ -1124,51 +1107,10 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         != (crystal.simulation.polarisation_direction == 90.0),
         energies=energies,
         surrounding=surrounding,
-        gos=crystal.subprogram == "gos",
+        gos=crystal.subprogram in ("gos", "xfel"),
         xfel=xfel,
         pulse_energy=float(beam.pulse_energy or 0.0),
     )
-
-
-def _refuse_unported_xfel(
-    surrounding: bool,
-    start: float,
-    end: float,
-    resolution: float,
-    offset: tuple[float, float, float],
-    translation_per_radian: tuple[float, float, float],
-) -> None:
-    """The XFEL subprogram's inputs the port does not run.
-
-    Its surrounding is a model of its own, unlike the Monte Carlo's. Its
-    rotation turns only the voxels the dose is tallied in, by whole radians
-    of the wedge, and its offset moves only them: the crystal stays where it
-    is. Angles in radians, lengths in um.
-    """
-    if surrounding:
-        raise NotImplementedError(
-            "RADDOSE-3D's XFEL subprogram models the surrounding its own way, "
-            "which pyRADDOSE-3D does not run (UPSTREAM_FIXES.md); leave the "
-            "surrounding out, or use Subprogram GOS"
-        )
-    still = abs(start - end) < resolution or end == 0
-    if not still and math.trunc(end - start) != 0:
-        raise NotImplementedError(
-            "RADDOSE-3D's XFEL subprogram turns the voxels the dose is "
-            "tallied in, but not the crystal, by whole radians of a wedge of "
-            "1 radian (57.3 degrees) or more, which pyRADDOSE-3D does not run "
-            "(UPSTREAM_FIXES.md); an XFEL pulse is a still"
-        )
-    moved = [
-        o + t * (0.0 - start)
-        for o, t in zip(offset, translation_per_radian, strict=True)
-    ]
-    if any(moved):
-        raise NotImplementedError(
-            "RADDOSE-3D's XFEL subprogram moves the voxels the dose is tallied "
-            "in by the wedge's offset, but not the crystal, which pyRADDOSE-3D "
-            "does not run (UPSTREAM_FIXES.md); leave the offset out"
-        )
 
 
 def _refuse_untabulated(
@@ -1213,13 +1155,9 @@ def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
         One per run.
     """
     from pyraddose_3d.backend.montecarlo.simple import simulate_simple
-    from pyraddose_3d.backend.montecarlo.xfel import simulate_xfel
 
     setup = monte_carlo_setup(experiment)
-    rng = np.random.default_rng(experiment.seed)
-    if setup.xfel:
-        return simulate_xfel(setup, rng)
-    return simulate_simple(setup, rng)
+    return simulate_simple(setup, np.random.default_rng(experiment.seed))
 
 
 #: How messages name RADDOSE-3D's engines.
