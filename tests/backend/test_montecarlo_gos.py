@@ -123,14 +123,27 @@ class _Collect:
         self.ions += int(np.sum(count))
 
 
-def test_a_cascade_counts_a_vacancy_more_than_once(material) -> None:  # type: ignore[no-untyped-def]
-    """A sulfur K vacancy: what it leaves, with its Auger electrons' energy,
-    comes to more than the 2.472 keV it holds. Each vacancy an Auger
-    transition leaves deposits its own binding energy as well; reproduced
-    (``UPSTREAM_FIXES.md``)."""
+def test_a_cascade_conserves_a_vacancys_energy(material) -> None:  # type: ignore[no-untyped-def]
+    """A sulfur K vacancy: what it leaves, its Auger electrons and its
+    fluorescence photons come to the 2.472 keV it holds, to rounding. Each
+    vacancy a transition leaves deposited its own binding energy as well
+    until RADDOSE-3D #53."""
     medium = gos_medium(material, 3.0)
     sink = _Collect()
     cascade = Cascade(np.random.default_rng(3), medium, sink)
+    photons: list[float] = []
+    transition = cascade._transition
+
+    def counting(table, z, shell):  # type: ignore[no-untyped-def]
+        index = transition(table, z, shell)
+        if table is cascade.fluorescence:
+            photons.extend(
+                table[(int(a), int(b))].energy_kev[i]
+                for a, b, i in zip(z, shell, index, strict=True)
+            )
+        return index
+
+    cascade._transition = counting  # type: ignore[method-assign]
     n = 4000
     s = _row(material, 16)
     born = _Born()
@@ -142,9 +155,9 @@ def test_a_cascade_counts_a_vacancy_more_than_once(material) -> None:  # type: i
         born,
     )
     freed = float(np.sum(np.concatenate(born.energies)))
-    per_vacancy = (sink.resolved_total + freed) / n
-    assert per_vacancy > 2.6
-    assert sink.ions > 0
+    per_vacancy = (sink.resolved_total + freed + sum(photons)) / n
+    assert per_vacancy == pytest.approx(2.472, rel=1e-12)
+    assert photons and sink.ions > 0
 
 
 def test_a_valence_collision_has_its_subshells_binding_energy() -> None:

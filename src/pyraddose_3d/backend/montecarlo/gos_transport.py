@@ -330,20 +330,21 @@ class Cascade:
     """``produceAugerElectron`` in GOS mode: a vacancy's relaxation, in full.
 
     A vacancy the tables cover fluoresces or emits an Auger electron, drawn
-    by the shell's fluorescence yield. An Auger transition leaves the binding
-    energy less the Auger electron's where the atom is, frees the electron,
-    to be followed, ionises the atom again, and leaves two vacancies, which
-    relax in turn. A fluorescence transition leaves the whole binding energy
-    and one vacancy. Any other vacancy leaves its binding energy, to GOS
-    mode's dose and to the Monte Carlo's. So a cascade counts its energy more
-    than once (``UPSTREAM_FIXES.md``); reproduced.
+    by the shell's fluorescence yield. An Auger transition frees the
+    electron, to be followed, ionises the atom again, and leaves two
+    vacancies, which relax in turn; a fluorescence transition emits a
+    photon, which escapes, and leaves one vacancy. Each leaves at the atom
+    only what the electron or photon and the vacancies it leaves do not
+    carry: a few eV where the tables disagree. Any other vacancy leaves its
+    binding energy, to GOS mode's dose and to the Monte Carlo's. As
+    RADDOSE-3D has it since #53: the vacancies' energy was counted twice,
+    and in GOS mode a fluorescence photon's left at the atom.
 
     With a :class:`Clock`, as the XFEL subprogram relaxes a vacancy
     (``XFEL.produceAugerElectron``, ``sendOutAuger`` and ``sendOutFl``): only
-    before ``lastTime``; a fluorescence photon carries its energy away, so
-    the binding energy less it is left; and the electron, the ionisation and
-    the vacancies a transition leaves come the transition's lifetime later,
-    and only if that is still before ``lastTime``.
+    before ``lastTime``; and the electron, the ionisation and the vacancies a
+    transition leaves come the transition's lifetime later, and only if that
+    is still before ``lastTime``.
     """
 
     def __init__(
@@ -374,6 +375,10 @@ class Cascade:
             )
             index[chosen] = np.maximum(hit, 0)
         return index
+
+    def _edge(self, element: np.ndarray, shell: np.ndarray) -> np.ndarray:
+        """``getShellBindingEnergy``: a vacancy's binding energy, keV; 0 past M5."""
+        return self.crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
 
     def _lifetimes(
         self, table: dict, z: np.ndarray, shell: np.ndarray, index: np.ndarray
@@ -459,9 +464,14 @@ class Cascade:
                 ],
                 dtype=np.int64,
             ).reshape(-1)
-            self.sink.resolved(
-                points[auger], owner[auger], binding[auger] - energy, time[auger]
+            # What the Auger electron and the two vacancies left do not carry.
+            left = (
+                binding[auger]
+                - energy
+                - self._edge(element[auger], exits)
+                - self._edge(element[auger], drops_a)
             )
+            self.sink.resolved(points[auger], owner[auger], left, time[auger])
             later_a = time[auger] + self._lifetimes(
                 self.auger, z[auger], shell[auger], index
             )
@@ -495,14 +505,14 @@ class Cascade:
                 ],
                 dtype=np.int64,
             ).reshape(-1)
-            left = binding[light]
-            if self.clock is not None:
-                left = left - np.array(
-                    [
-                        self.fluorescence[(int(zz), int(ss))].energy_kev[i]
-                        for zz, ss, i in zip(z[light], shell[light], index, strict=True)
-                    ]
-                ).reshape(-1)
+            # What the photon, which escapes, and the vacancy left do not carry.
+            photon = np.array(
+                [
+                    self.fluorescence[(int(zz), int(ss))].energy_kev[i]
+                    for zz, ss, i in zip(z[light], shell[light], index, strict=True)
+                ]
+            ).reshape(-1)
+            left = binding[light] - photon - self._edge(element[light], drops_f)
             self.sink.resolved(points[light], owner[light], left, time[light])
             later_f = time[light] + self._lifetimes(
                 self.fluorescence, z[light], shell[light], index
@@ -910,8 +920,9 @@ def _setup(ctx: _Context, e: _Electrons, fresh: np.ndarray) -> np.ndarray:
             there = there[e.time[there] < ctx.clock.last]
         primary = there[e.primary[there]]
         ctx.sink.dose(e.position[primary], e.owner[primary], e.start[primary])
+        # An Auger electron's too, as RADDOSE-3D has it since #53: it was lost.
         ctx.sink.resolved(
-            e.position[primary], e.owner[primary], e.start[primary], e.time[primary]
+            e.position[there], e.owner[there], e.start[there], e.time[there]
         )
         crystal_side = there[~e.outside[there]]
         points = e.position[crystal_side].copy()

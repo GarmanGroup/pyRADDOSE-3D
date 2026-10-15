@@ -83,18 +83,17 @@ def _relax(medium, row, clock, n=2000, time=0.0):  # type: ignore[no-untyped-def
     return sink, born
 
 
-def test_xfel_fluorescence_carries_its_energy_away(selenium) -> None:  # type: ignore[no-untyped-def]
+def test_gos_and_xfel_relax_a_vacancy_alike(selenium) -> None:  # type: ignore[no-untyped-def]
     """A selenium K vacancy fluoresces about half the time, with an 11 keV
-    photon: in the XFEL subprogram that energy leaves the atom; in GOS mode
-    the binding energy stays. The draws are the same either way."""
+    photon, which escapes in both. GOS mode left it at the atom until
+    RADDOSE-3D #53. From the same draws, the two now leave the same."""
     medium, row = selenium
     gos, gos_born = _relax(medium, row, None)
     xfel, xfel_born = _relax(medium, row, Clock(math.inf))
     np.testing.assert_array_equal(
         np.concatenate(gos_born.energies), np.concatenate(xfel_born.energies)
     )
-    per_vacancy = (gos.resolved_total - xfel.resolved_total) / 2000
-    assert 4.0 < per_vacancy < 8.0
+    assert gos.resolved_total == pytest.approx(xfel.resolved_total, rel=1e-12)
 
 
 def test_a_vacancy_relaxes_only_before_last_time(selenium) -> None:  # type: ignore[no-untyped-def]
