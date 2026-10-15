@@ -379,7 +379,11 @@ class Cascade:
     def _lifetimes(
         self, table: dict, z: np.ndarray, shell: np.ndarray, index: np.ndarray
     ) -> np.ndarray:
-        """Each transition's lifetime, fs; 0 without a clock."""
+        """How long each transition takes, fs; 0 without a clock.
+
+        Drawn from the exponential its lifetime is the mean of, as since
+        RADDOSE-3D #57: it took the lifetime itself, every time.
+        """
         if self.clock is None:
             return np.zeros(len(z))
         linewidth = np.array(
@@ -388,7 +392,8 @@ class Cascade:
                 for zz, ss, i in zip(z, shell, index, strict=True)
             ]
         ).reshape(-1)
-        return self.clock.lifetime(linewidth)
+        draws = -np.log(1 - self.rng.random(len(z)))
+        return np.asarray(self.clock.lifetime(linewidth) * draws)
 
     def relax(
         self,

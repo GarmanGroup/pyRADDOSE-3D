@@ -26,7 +26,6 @@ import numpy as np
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.montecarlo.geometry import Placement, voxel_indices
-from pyraddose_3d.backend.montecarlo.photons import photon_coefficients
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.montecarlo.photons import BeamShape
@@ -222,19 +221,6 @@ def xfel_runs(
     fraction = exposed_volume / volume_cm3
     z_of = [e.atomic_number for e in setup.composition.elements]
 
-    # The elastic photons: the share of the pulse's that the elastic
-    # coefficient, left at the last photon's energy, scatters in the crystal's
-    # depth.
-    last_energy = (
-        setup.photon_energy if setup.energies is None else float(setup.energies[-1])
-    )
-    elastic_coefficient = float(
-        photon_coefficients(setup.composition, np.array([last_energy])).elastic[0]
-    )
-    number_elastic = real_photons * (
-        1 - math.exp(-elastic_coefficient * (depth_nm / 1000))
-    )
-
     x = ((np.arange(nx) / setup.pixels_per_micron) + grid.minimum[0]) * 1000
     y = ((np.arange(ny) / setup.pixels_per_micron) + grid.minimum[1]) * 1000
     exposed_xy = setup.beam.exposes(np.repeat(x, ny), np.tile(y, nx)).reshape(nx, ny)
@@ -280,7 +266,10 @@ def xfel_runs(
                 non_h_ions += exposed
                 non_h_atoms += atoms_of[e] * fraction
         with np.errstate(invalid="ignore", divide="ignore"):
-            diffraction = np.float64(number_elastic) / np.float64(xfel_ader)
+            # The elastic photons simulated, as since RADDOSE-3D #57: the
+            # share of the pulse's that the elastic coefficient, at the last
+            # photon's energy, scatters in the crystal's depth was taken.
+            diffraction = np.float64(total_elastic) / np.float64(xfel_ader)
             per_non_h = np.float64(non_h_ions) / np.float64(non_h_atoms)
         results.append(
             SimpleRun(

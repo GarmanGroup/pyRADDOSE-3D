@@ -1037,8 +1037,12 @@ def _sample_volume(mesh: Mesh) -> float:
 
 
 def _pulse(exposure: float) -> tuple[float, float]:
-    """``PULSE_LENGTH`` (the exposure, rounded) and ``PULSE_BIN_LENGTH``."""
-    length = float(math.floor(exposure + 0.5))
+    """``PULSE_LENGTH`` (the exposure) and ``PULSE_BIN_LENGTH``.
+
+    The exposure as given, as since RADDOSE-3D #57: it was rounded to whole
+    femtoseconds, so a pulse under 0.5 fs had none.
+    """
+    length = float(exposure)
     if length <= 1:
         return length, 0.01
     if length <= 50:

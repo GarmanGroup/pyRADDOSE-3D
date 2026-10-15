@@ -85,17 +85,39 @@ def _relax(medium, row, clock, n=2000, time=0.0):  # type: ignore[no-untyped-def
     return sink, born
 
 
-def test_gos_and_xfel_relax_a_vacancy_alike(selenium) -> None:  # type: ignore[no-untyped-def]
+def test_an_xfel_cascade_conserves_a_vacancys_energy(selenium) -> None:  # type: ignore[no-untyped-def]
     """A selenium K vacancy fluoresces about half the time, with an 11 keV
-    photon, which escapes in both. GOS mode left it at the atom until
-    RADDOSE-3D #53. From the same draws, the two now leave the same."""
+    photon, which escapes, as in GOS mode since RADDOSE-3D #53: what it
+    leaves, its Auger electrons and its photons come to its 12.658 keV."""
     medium, row = selenium
-    gos, gos_born = _relax(medium, row, None)
-    xfel, xfel_born = _relax(medium, row, Clock(math.inf))
-    np.testing.assert_array_equal(
-        np.concatenate(gos_born.energies), np.concatenate(xfel_born.energies)
+    sink = _Collect()
+    cascade = Cascade(np.random.default_rng(5), medium, sink, Clock(math.inf))
+    photons: list[float] = []
+    transition = cascade._transition
+
+    def counting(table, z, shell):  # type: ignore[no-untyped-def]
+        index = transition(table, z, shell)
+        if table is cascade.fluorescence:
+            photons.extend(
+                table[(int(a), int(b))].energy_kev[i]
+                for a, b, i in zip(z, shell, index, strict=True)
+            )
+        return index
+
+    cascade._transition = counting  # type: ignore[method-assign]
+    n = 2000
+    born = _Born()
+    cascade.relax(
+        np.zeros((n, 3)),
+        np.zeros(n, dtype=np.int64),
+        np.full(n, row),
+        np.zeros(n, dtype=np.int64),
+        born,
+        np.zeros(n),
     )
-    assert gos.resolved_total == pytest.approx(xfel.resolved_total, rel=1e-12)
+    freed = float(np.sum(np.concatenate(born.energies)))
+    per_vacancy = (sink.resolved_total + freed + sum(photons)) / n
+    assert per_vacancy == pytest.approx(12.658, rel=1e-12)
 
 
 def test_a_vacancy_relaxes_only_before_last_time(selenium) -> None:  # type: ignore[no-untyped-def]
