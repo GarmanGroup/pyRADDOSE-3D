@@ -31,7 +31,11 @@ from pyraddose_3d.backend.montecarlo.geometry import (
     inside,
     voxel_indices,
 )
-from pyraddose_3d.backend.montecarlo.gos_transport import gos_medium, track_gos
+from pyraddose_3d.backend.montecarlo.gos_transport import (
+    GOSMedium,
+    gos_medium,
+    track_gos,
+)
 from pyraddose_3d.backend.montecarlo.material import stopping_power
 from pyraddose_3d.backend.montecarlo.photons import (
     OUTER_SHELL,
@@ -56,6 +60,8 @@ __all__ = ["SimpleRun", "SimpleSetup", "Surrounding", "simulate_simple"]
 
 #: Photons per batch.
 _BATCH = 250_000
+#: GOS electrons followed together, at most: more once a batch is added.
+_TRACKED = 200_000
 
 _SPEED_OF_LIGHT = 299792458.0
 
@@ -352,6 +358,117 @@ class _GOSSink:
         )
 
 
+class _GOSQueue:
+    """GOS electrons gathered over batches of photons, to be followed together.
+
+    A pass costs about as much for a few electrons as for many, and few of a
+    batch's photons free one, so they are followed up to ``_TRACKED`` at a
+    time rather than batch by batch. Each photon that freed one becomes a
+    record, which owns its electron and its vacancy: its run, how the
+    crystal stood for it, and its surrounding.
+    """
+
+    def __init__(self, crystal: GOSMedium, surrounding: GOSMedium | None) -> None:
+        self.crystal = crystal
+        self.surrounding = surrounding
+        self._clear()
+
+    def _clear(self) -> None:
+        self.records = 0
+        self.electrons = 0
+        self.parts: dict[str, list[np.ndarray]] = {}
+
+    def _put(self, **arrays: np.ndarray) -> None:
+        for name, array in arrays.items():
+            self.parts.setdefault(name, []).append(array)
+
+    def _get(self, name: str) -> np.ndarray:
+        return np.concatenate(self.parts[name])
+
+    def add(
+        self,
+        starts: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool]],
+        vacancies: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        run: np.ndarray,
+        placement: Placement,
+        box: np.ndarray,
+    ) -> None:
+        """A batch's electrons and vacancies, owned by its photons."""
+        owner = np.concatenate([s[0] for s in starts])
+        photons = np.unique(owner)
+
+        def record(of: np.ndarray) -> np.ndarray:
+            return self.records + np.searchsorted(photons, of)
+
+        self._put(
+            run=run[photons],
+            angle=placement.angle[photons],
+            offset=placement.offset[photons],
+            box=box[photons],
+            owner=record(owner),
+            points=np.concatenate([s[1] for s in starts]),
+            directions=np.concatenate([s[2] for s in starts]),
+            energies=np.concatenate([s[3] for s in starts]),
+            outside=np.concatenate([np.full(len(s[0]), s[4]) for s in starts]),
+        )
+        for points, of, element, shell in vacancies:
+            self._put(
+                vacancy_points=points,
+                vacancy_owner=record(of),
+                vacancy_element=element,
+                vacancy_shell=shell,
+            )
+        self.records += len(photons)
+        self.electrons += len(owner)
+
+    def follow(
+        self,
+        rng: np.random.Generator,
+        setup: SimpleSetup,
+        grid: _Grid,
+        tallies: _Tallies,
+        boxes: list[Mesh],
+    ) -> None:
+        """Follow every electron gathered, and start again."""
+        if not self.electrons:
+            return
+        run = self._get("run")
+        placement = Placement(self._get("angle"), self._get("offset"))
+        owner = self._get("owner")
+        vacancies = (
+            tuple(
+                self._get(name)
+                for name in (
+                    "vacancy_points",
+                    "vacancy_owner",
+                    "vacancy_element",
+                    "vacancy_shell",
+                )
+            )
+            if "vacancy_owner" in self.parts
+            else None
+        )
+        passes = track_gos(
+            rng,
+            self.crystal,
+            self.surrounding,
+            setup.mesh,
+            boxes,
+            placement,
+            _GOSSink(grid, tallies, placement, run, setup.beam),
+            self._get("points"),
+            self._get("directions"),
+            self._get("energies"),
+            owner,
+            np.ones(len(owner), dtype=bool),
+            self._get("outside"),
+            self._get("box")[owner],
+            vacancies,
+        )
+        tallies.passes = max(tallies.passes, passes)
+        self._clear()
+
+
 def _placements(setup: SimpleSetup, index: np.ndarray) -> Placement:
     """How the crystal stands for each photon: its place in its run.
 
@@ -525,16 +642,19 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         surrounding.material if surrounding is not None else None,
         box_meshes,
     )
-    gos_crystal = gos_surrounding = None
+    gos = None
     if setup.gos:
         highest = (
             setup.photon_energy
             if setup.energies is None
             else float(np.max(setup.energies))
         )
-        gos_crystal = gos_medium(setup.material, highest)
-        if surrounding is not None:
-            gos_surrounding = gos_medium(surrounding.material, highest)
+        gos = _GOSQueue(
+            gos_medium(setup.material, highest),
+            gos_medium(surrounding.material, highest)
+            if surrounding is not None
+            else None,
+        )
 
     total = runs * photons
     for first in range(0, total, _BATCH):
@@ -634,27 +754,10 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         electron_place = placement.take(owner)
         electron_run = run[owner]
         np.add.at(tallies.electrons, electron_run, 1)
-        if gos_crystal is not None:
-            passes = track_gos(
-                rng,
-                gos_crystal,
-                gos_surrounding,
-                setup.mesh,
-                box_meshes,
-                placement,
-                _GOSSink(grid, tallies, placement, run, setup.beam),
-                np.concatenate([s[1] for s in starts]),
-                np.concatenate([s[2] for s in starts]),
-                np.concatenate([s[3] for s in starts]),
-                owner,
-                np.ones(len(owner), dtype=bool),
-                np.concatenate([np.full(len(s[0]), s[4]) for s in starts]),
-                box[owner],
-                tuple(np.concatenate([v[i] for v in vacancies]) for i in range(4))
-                if vacancies
-                else None,
-            )
-            tallies.passes = max(tallies.passes, passes)
+        if gos is not None:
+            gos.add(starts, vacancies, run, placement, box)
+            if gos.electrons >= _TRACKED:
+                gos.follow(rng, setup, grid, tallies, box_meshes)
             continue
         passes = track(
             rng,
@@ -669,6 +772,8 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         )
         tallies.passes = max(tallies.passes, passes)
 
+    if gos is not None:
+        gos.follow(rng, setup, grid, tallies, box_meshes)
     return _process(setup, tallies, grid)
 
 
