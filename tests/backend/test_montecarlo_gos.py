@@ -145,3 +145,27 @@ def test_a_cascade_counts_a_vacancy_more_than_once(material) -> None:  # type: i
     per_vacancy = (sink.resolved_total + freed) / n
     assert per_vacancy > 2.6
     assert sink.ions > 0
+
+
+def test_a_valence_collision_has_its_subshells_binding_energy() -> None:
+    """Phosphorus's and selenium's valence subshells have no photoelectric
+    edge. A collision with one took 0, recoiled by nothing, and deflected its
+    electron by an undefined angle; it now takes the subshell's binding
+    energy, as the model's cross-sections do, and the deflection is defined."""
+    experiment = Experiment.from_yaml(CASE)
+    data = experiment.model_dump()
+    data["crystal"]["composition"]["protein_heavy_atoms"]["Se"] = 4.0
+    material = monte_carlo_setup(Experiment.model_validate(data)).material
+    medium = gos_medium(material, 12.1)
+    for z in (15, 34, 16, 6):
+        row = _row(material, z)
+        valence = int(medium.inner[row])
+        uk = medium.valence_binding[row] * 1000
+        assert uk == material.atoms[row].subshell_binding(valence) * 1000 > 0
+        wk = medium.wk[row, valence]
+        energy = np.full(1000, 12.1)
+        q = gos.recoil_distant(
+            np.random.default_rng(z), energy, np.full(1000, wk), np.full(1000, uk)
+        )
+        theta = gos.primary_angle_distant(energy, q, np.full(1000, wk))
+        assert np.isfinite(theta).all(), z

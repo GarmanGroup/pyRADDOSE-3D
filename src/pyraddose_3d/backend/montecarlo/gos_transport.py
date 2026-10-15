@@ -188,7 +188,12 @@ class GOSMedium:
         ``(elements, 10)``: ``getWkMolecule`` for each subshell row, eV.
     binding : numpy.ndarray
         ``(elements, _SHELL_COLUMNS)``: ``getShellBindingEnergy``, keV: K, L1
-        to L3, M1 to M5, then zeros.
+        to L3, M1 to M5, then zeros. An inner-shell collision's binding
+        energy, and a photoelectric vacancy's.
+    valence_binding : numpy.ndarray
+        Each element's valence subshell's ``getShellBindingSubshell``, keV: a
+        valence collision's binding energy, from the table the model's
+        cross-sections are built with (``MC.collisionBindingEnergy``).
     plasma : float
         ``getPlasmaEnergy``, keV.
     z : numpy.ndarray
@@ -200,6 +205,7 @@ class GOSMedium:
     inner: np.ndarray
     wk: np.ndarray
     binding: np.ndarray
+    valence_binding: np.ndarray
     plasma: float
     z: np.ndarray
 
@@ -265,6 +271,12 @@ def gos_medium(material: ElectronMaterial, highest: float) -> GOSMedium:
         inner=inner,
         wk=wk,
         binding=binding,
+        valence_binding=np.array(
+            [
+                atom.subshell_binding(int(v))
+                for atom, v in zip(atoms, inner, strict=True)
+            ]
+        ),
         plasma=material.plasma_energy / 1000,
         z=np.array([atom.z for atom in atoms]),
     )
@@ -385,29 +397,35 @@ class Cascade:
         shell: np.ndarray,
         born: _Born,
         time: np.ndarray | None = None,
+        held: np.ndarray | None = None,
     ) -> None:
         """Relax each vacancy, and every one it leaves, to the end.
 
-        ``time`` is when each vacancy was made, fs.
+        ``time`` is when each vacancy was made, fs. ``held`` is the binding
+        energy each holds, keV, where a collision gave it one other than its
+        shell's edge; the vacancies it leaves hold their edges.
         """
         crystal = self.crystal
         if time is None:
             time = np.zeros(len(element))
+        if held is None:
+            held = crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
         for _ in range(_MAX_GENERATIONS):
             if self.clock is not None:
                 on_time = np.flatnonzero(time < self.clock.last)
-                points, owner, element, shell, time = (
+                points, owner, element, shell, time, held = (
                     points[on_time],
                     owner[on_time],
                     element[on_time],
                     shell[on_time],
                     time[on_time],
+                    held[on_time],
                 )
             if not len(element):
                 return
             shell = np.minimum(shell, _SHELL_COLUMNS - 1)
             z = crystal.z[element]
-            binding = crystal.binding[element, shell]
+            binding = held
             relaxing = _relaxes(z, shell)
             if (~relaxing).any():
                 rest = np.flatnonzero(~relaxing)
@@ -497,6 +515,7 @@ class Cascade:
             element = np.concatenate([element[auger], element[auger], element[light]])
             shell = np.concatenate([exits, drops_a, drops_f])
             time = np.concatenate([later_a, later_a, later_f])
+            held = crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
 
 
 @dataclass
@@ -741,7 +760,7 @@ def _inelastic(
     energy = e.energy[chosen]
     points = e.position[chosen]
     owner = e.owner[chosen]
-    element, shell, _ = _choose_element(ctx, e, chosen)
+    element, shell, inner = _choose_element(ctx, e, chosen)
     plasmon = element < 0
 
     # The kind of collision: distant longitudinal (0), transverse (1), close (2).
@@ -759,7 +778,21 @@ def _inelastic(
 
     safe_element = np.maximum(element, 0)
     safe_shell = np.clip(shell, 0, 9)
-    uk = np.where(plasmon, 0.0, crystal.binding[safe_element, safe_shell] * 1000)
+    # A valence collision's binding energy is its subshell's, as the model's
+    # cross-sections have it; an inner shell's, its edge. As RADDOSE-3D has
+    # it since #52: the edges have none for the valence subshells of Al, Si,
+    # P, As and Se, whose collisions then recoiled by nothing and lost their
+    # electron to an undefined deflection.
+    uk = np.where(
+        plasmon,
+        0.0,
+        np.where(
+            inner,
+            crystal.binding[safe_element, safe_shell],
+            crystal.valence_binding[safe_element],
+        )
+        * 1000,
+    )
     wk = np.where(plasmon, 0.0, crystal.wk[safe_element, safe_shell])
     q_ak = np.where(plasmon, wk, qak(energy, wk, uk))
     w_ak = wak(energy, wk, uk)
@@ -816,8 +849,15 @@ def _inelastic(
             ctx.sink.resolved(points[slow], owner[slow], secondary[slow], time[slow])
             _low_energy_ions(ctx, e, chosen[slow], secondary[slow], points[slow])
         # The vacancy relaxes, wherever it is.
+        # The vacancy holds the binding energy the collision gave it.
         ctx.cascade.relax(
-            points[freed], owner[freed], element[freed], shell[freed], born, time[freed]
+            points[freed],
+            owner[freed],
+            element[freed],
+            shell[freed],
+            born,
+            time[freed],
+            uk[freed] / 1000,
         )
 
     phi = 2 * math.pi * rng.random(n)
