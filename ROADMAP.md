@@ -250,7 +250,7 @@ first:
    escape from: there it moves the dose by 7 to 15%. They vary the beam's shape and energy, the
    crystal's shape and rotation, the polarisation, a surrounding and a pink beam, and include
    iodine and sodium for [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)'s fix. The
-   comparisons with the port take twenty minutes, and are `slow`; every case also runs
+   comparisons with the port take forty minutes, and are `slow`; every case also runs
    briefly in the default suite. Next: GOS.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
    MicroED. (Under way: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to

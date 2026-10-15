@@ -83,7 +83,7 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   mostly fail once one half is shifted by the claimed detectable bias.
   `test_tier_b_statistics.py` checks the false-alarm rate and the power by
   simulation.
-- **Cost.** The port takes about 25 minutes over the fourteen Monte
+- **Cost.** The port takes about 40 minutes over the fourteen Monte
   Carlo cases, so those comparisons are marked `slow`, and run with
   `uv run pytest -m slow tests/conformance/test_montecarlo_files.py`. Every
   case also runs briefly in the default suite, which checks that the port
