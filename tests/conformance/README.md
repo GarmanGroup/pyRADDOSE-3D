@@ -93,8 +93,8 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   RADDOSE-3D #48 and ten before it. A GOS or XFEL case takes ten to thirty
   minutes with #51, which stopped the Java recomputing the composition's
   sums at each of the thousand points of a cross-section integral; before
-  it, a GOS run of case 161 took nine hours on a loaded machine. Cases 161 to
-  163 and 181 to 183 were generated with it, at `334b819`.
+  it, a GOS run of case 161 took nine hours on a loaded machine. The eight
+  GOS and XFEL cases are generated from #52, stacked on it, at `3af3274`.
 
 The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows

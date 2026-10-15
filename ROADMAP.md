@@ -238,8 +238,8 @@ first:
      itself must pass, and mutations of the claimed detectable size must fail. (Done: 22
      cases, 20 runs each, five quantities each compared by Welch's t, 110 comparisons sharing a
      false-alarm rate of 1e-3; RADDOSE-3D's first ten runs agree with its last ten, and so do
-     the port's. The doses' detectable bias is 4 to 7% for MONTECARLO, 4 to 8% for GOS and 6
-     to 8% for XFEL, but 17% for the first case of each of these two, made when the Java took
+     the port's. The doses' detectable bias is 4 to 7% for MONTECARLO, 5 to 7% for GOS and 6%
+     for XFEL, but about 19% for the first case of each of these two, made when the Java took
      a second per absorbed photon.)
 3. **A timing gate**: the vectorised core for the simple Monte Carlo against the Java. Within
    about 3× of it, continue; otherwise reconsider. (Passed: on case 140, the port takes 0.4–0.5 s
@@ -331,7 +331,10 @@ copyright holders, so relicensing is on the critical path for CCP4 alone.
 The port's fixes are merged into RADDOSE-3D as #36, #37, #38, #40 and #42, all on 2026-10-13,
 and #43 to #49, the Monte Carlo and XFEL's, on 2026-10-14 (`UPSTREAM_FIXES.md` has each, with
 measurements). #41 adds MicroED's beam requirements and output files to the user guide. The
-corpus follows `master` at `85a6813`.
+corpus follows `master` at `85a6813`, but for its eight GOS and XFEL cases, which follow #52
+(`3af3274`), open: stacked on #51, which makes the GOS model twelve times faster, it stops GOS and
+XFEL losing every electron that collides with the valence electrons of phosphorus or selenium,
+which raises the GOS dose of a crystal in phosphate by a quarter.
 
 **Still open in the Java**, each with the milestone that takes it up:
 

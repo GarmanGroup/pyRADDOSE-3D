@@ -170,53 +170,53 @@ tier_b:
       outputMC.CSV/numEl: 0.317
       outputXFEL.CSV/ions per atom: 0.0676
     160-gos-baseline:
-      outputXFEL.CSV/vResolvedNoCut: 0.168
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.168
-      outputXFEL.CSV/RD3D-ADWC: 0.146
-      outputXFEL.CSV/Diffraction efficiency: 0.646
-      outputXFEL.CSV/ions per atom: 0.177
+      outputXFEL.CSV/vResolvedNoCut: 0.189
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.189
+      outputXFEL.CSV/RD3D-ADWC: 0.187
+      outputXFEL.CSV/Diffraction efficiency: 0.735
+      outputXFEL.CSV/ions per atom: 0.195
     161-gos-escape:
-      outputXFEL.CSV/vResolvedNoCut: 0.0529
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0529
-      outputXFEL.CSV/RD3D-ADWC: 0.0542
-      outputXFEL.CSV/Diffraction efficiency: 0.195
-      outputXFEL.CSV/ions per atom: 0.0525
+      outputXFEL.CSV/vResolvedNoCut: 0.0495
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0495
+      outputXFEL.CSV/RD3D-ADWC: 0.0485
+      outputXFEL.CSV/Diffraction efficiency: 0.169
+      outputXFEL.CSV/ions per atom: 0.0489
     162-gos-surrounding:
-      outputXFEL.CSV/vResolvedNoCut: 0.0846
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0846
-      outputXFEL.CSV/RD3D-ADWC: 0.0735
-      outputXFEL.CSV/Diffraction efficiency: 0.344
-      outputXFEL.CSV/ions per atom: 0.0854
+      outputXFEL.CSV/vResolvedNoCut: 0.0672
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0672
+      outputXFEL.CSV/RD3D-ADWC: 0.0791
+      outputXFEL.CSV/Diffraction efficiency: 0.314
+      outputXFEL.CSV/ions per atom: 0.067
     163-gos-selenium:
-      outputXFEL.CSV/vResolvedNoCut: 0.0359
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0359
-      outputXFEL.CSV/RD3D-ADWC: 0.0404
-      outputXFEL.CSV/Diffraction efficiency: 0.255
-      outputXFEL.CSV/ions per atom: 0.0517
+      outputXFEL.CSV/vResolvedNoCut: 0.0572
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0572
+      outputXFEL.CSV/RD3D-ADWC: 0.0584
+      outputXFEL.CSV/Diffraction efficiency: 0.268
+      outputXFEL.CSV/ions per atom: 0.0672
     180-xfel-baseline:
-      outputXFEL.CSV/XFEL-ADWC: 0.175
-      outputXFEL.CSV/XFEL-ADER: 0.175
-      outputXFEL.CSV/RD3D-ADWC: 0.138
-      outputXFEL.CSV/Diffraction efficiency: 0.177
-      outputXFEL.CSV/ions per atom: 0.176
+      outputXFEL.CSV/XFEL-ADWC: 0.182
+      outputXFEL.CSV/XFEL-ADER: 0.182
+      outputXFEL.CSV/RD3D-ADWC: 0.158
+      outputXFEL.CSV/Diffraction efficiency: 0.198
+      outputXFEL.CSV/ions per atom: 0.186
     181-xfel-one-femtosecond:
-      outputXFEL.CSV/XFEL-ADWC: 0.0602
-      outputXFEL.CSV/XFEL-ADER: 0.0602
-      outputXFEL.CSV/RD3D-ADWC: 0.0353
-      outputXFEL.CSV/Diffraction efficiency: 0.0601
-      outputXFEL.CSV/ions per atom: 0.0529
+      outputXFEL.CSV/XFEL-ADWC: 0.061
+      outputXFEL.CSV/XFEL-ADER: 0.061
+      outputXFEL.CSV/RD3D-ADWC: 0.0442
+      outputXFEL.CSV/Diffraction efficiency: 0.0585
+      outputXFEL.CSV/ions per atom: 0.0636
     182-xfel-pink:
-      outputXFEL.CSV/XFEL-ADWC: 0.0757
-      outputXFEL.CSV/XFEL-ADER: 0.0757
-      outputXFEL.CSV/RD3D-ADWC: 0.0472
-      outputXFEL.CSV/Diffraction efficiency: 0.0765
-      outputXFEL.CSV/ions per atom: 0.0772
+      outputXFEL.CSV/XFEL-ADWC: 0.0557
+      outputXFEL.CSV/XFEL-ADER: 0.0557
+      outputXFEL.CSV/RD3D-ADWC: 0.0633
+      outputXFEL.CSV/Diffraction efficiency: 0.0557
+      outputXFEL.CSV/ions per atom: 0.0572
     183-xfel-selenium:
-      outputXFEL.CSV/XFEL-ADWC: 0.0659
-      outputXFEL.CSV/XFEL-ADER: 0.0659
-      outputXFEL.CSV/RD3D-ADWC: 0.0625
-      outputXFEL.CSV/Diffraction efficiency: 0.0667
-      outputXFEL.CSV/ions per atom: 0.0652
+      outputXFEL.CSV/XFEL-ADWC: 0.061
+      outputXFEL.CSV/XFEL-ADER: 0.061
+      outputXFEL.CSV/RD3D-ADWC: 0.0493
+      outputXFEL.CSV/Diffraction efficiency: 0.0619
+      outputXFEL.CSV/ions per atom: 0.0663
 tier_b_rationale: 'The Monte Carlo and XFEL subprograms follow each electron with
   random numbers whose order depends on its history, so the port is compared with
   them statistically. Each case is run with Runs K on each side, and the means of

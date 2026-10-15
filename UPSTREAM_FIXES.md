@@ -37,6 +37,7 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48) | `jd_mc_bookkeeping`, onto #47 | *Monte Carlo and XFEL*: fluorescence energies, phosphorus, the elastic chance, wedges, a face at z = 0 | merged as `d51e441` |
 | [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49) | `jd_mc_surrounding`, onto #48 | *Monte Carlo*: the surrounding | merged as `85a6813` |
 | [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) | `jd_gos_integral`, onto `master` | *GOS*: the distant collisions' integral finds its ends once; no result changes | open |
+| [#52](https://github.com/GarmanGroup/RADDOSE-3D/pull/52) | `jd_gos_valence_binding`, onto #51 | *GOS and XFEL*: a valence collision takes its subshell's binding energy | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -47,9 +48,9 @@ as its tested tip. The corpus is regenerated from `master` at `85a6813`, and aga
 moved.
 
 #51 makes the GOS model's cross-sections twelve times faster and changes no result: case 160,
-regenerated from it, is byte-identical to `master`'s. The GOS and XFEL cases added with the
-port's GOS and XFEL, 161 to 163 and 181 to 183, were generated from it, at `334b819`; before it,
-one run of case 161 took the Java nine hours on a loaded machine.
+regenerated from it, is byte-identical to `master`'s. Before it, one run of case 161 took the
+Java nine hours on a loaded machine. #52, stacked on it, fixes the GOS and XFEL defect below, and
+the eight GOS and XFEL cases, 160 to 163 and 180 to 183, are generated from its tip, `3af3274`.
 
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
@@ -747,6 +748,16 @@ top of the stack on all fourteen Monte Carlo cases.
 | #49 | The thickness was capped photon by photon by overwriting it, a running minimum: under a pink beam, the first, least energetic photon's reach | MC:443–447 | capped once, at the most energetic photon's | 153, a pink beam in salt of no given thickness: +5.1% ± 1.2%, with the surrounding behind |
 | #49 | An electron coming back with under 0.05 keV lost it; one leaving with under 0.05 keV had it added to the dose but to no voxel | MC:1665–1679, 2258–2263 | left where it crossed | within noise |
 
+### Physics, fixed in both: [#52](https://github.com/GarmanGroup/RADDOSE-3D/pull/52)
+
+Found while porting GOS and XFEL, opened on 15 October 2026 on #51, with the group's sign-off.
+Each effect is RADDOSE-3D's, 20 runs on either side from the same seed; the port, changed the same
+way, agrees with #52 on all eight GOS and XFEL cases (largest |t| 1.8, thresholds about 5).
+
+| PR | defect | where | fix | effect on the GOS or XFEL dose |
+|---|---|---|---|---|
+| #52 | A collision with an element's valence subshell took its binding energy Uk from the photoelectric edges, while the GOS model built that subshell's cross-section, Wk and energy-loss range from `getShellBindingSubshell`. The edges have none for the valence subshells of Al, Si and P (M1), and As and Se (past M5): Uk was 0, so the recoil limit Qak and the recoil Q were 0, a longitudinal collision's deflection the arccosine of a number just over 1, NaN, and the electron, its direction undefined, was taken to have left the crystal with what energy it had; a secondary likewise | MC:2042, 3643; CoefCalcCompute:5181 | the subshell's binding energy, from the model's own table, which the vacancy then deposits; an inner shell keeps its edge. S, Cl, Ar and K, whose edges were up to 8 eV from their subshells', move slightly | every case has 0.425 M phosphate. 160, GOS: +23.9% ± 3.4%. 161 to 163: +24.6%, +26.2%, +32.1% ± 1.0 to 1.4% (163's selenium: ions per atom +61.8%). XFEL, whose pulse ends most tracks: 180, 30 fs, +10.1% ± 3.2%; 181 to 183: +1.7%, +3.5%, +4.7% ± 1.1%. RADDOSE-3D-style doses unchanged |
+
 ### Still to fix
 
 From porting the simple Monte Carlo, reproduced by the port:
@@ -758,18 +769,6 @@ From porting the simple Monte Carlo, reproduced by the port:
   its diffraction efficiency is the elastic count over that.
 
 For GOS, with its port:
-- **A distant collision with a subshell the edge table gives no binding energy loses the
-  electron.** The collision takes its binding energy Uk from `getShellBindingEnergy` (MC:1913),
-  the photoelectric edges, while the cross-sections that chose it use `getShellBindingSubshell`.
-  Phosphorus's valence subshell, M1, has no edge there: Uk = 0, so Qak = 0, the recoil Q is 0
-  (`getRecoilEnergyDistant`, CoefCalcCompute:5181), and a longitudinal collision's deflection is
-  the arccosine of a number just over 1 (`getGOSPrimaryScatterLong`, MC:3643): NaN. The
-  electron's direction becomes NaN, it is taken to have left the crystal, and what energy it had
-  is lost; a secondary from such a collision likewise (`secondaryScatterDistant`). Case 160 has
-  phosphate in its solvent, 0.4% of its inelastic collisions: carrying those electrons on
-  undeflected instead raises its GOS dose by 31% ± 1.4% and its ionisations per atom by 33%;
-  XFEL's case 180, whose electrons the pulse stops sooner, by 8.4% ± 0.9% and 9.0% (port, 20
-  runs each). Every crystal with phosphorus, a phosphate buffer or nucleic acid, is affected.
 - **In the surrounding, GOS mode uses the crystal's numbers**: an electron that leaves the crystal
   takes the crystal's shell probabilities (`getAllShellProbs(false)`, MC:2297) and keeps its
   inner-shell λ, and `getZlnI`, behind the Sternheimer correction, weights the surrounding's

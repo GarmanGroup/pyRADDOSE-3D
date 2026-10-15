@@ -3,21 +3,21 @@ tier: B
 exercises: 'XFEL: a 1 fs pulse, in 0.01 fs bins, before which a quarter of the dose
   arrives; ten times the energy, so that %f resolves its ions'
 seed: 20260917
-reference_version: 5.0.1097
-reference_commit: 334b819
+reference_version: 5.0.1098
+reference_commit: 3af3274
 gated:
   outputXFEL.CSV/XFEL-ADWC:
-    mean: 0.468999
-    cv: 0.0319
+    mean: 0.477152
+    cv: 0.0323
   outputXFEL.CSV/XFEL-ADER:
-    mean: 0.468999
-    cv: 0.0319
+    mean: 0.477152
+    cv: 0.0323
   outputXFEL.CSV/RD3D-ADWC:
-    mean: 6.38753
-    cv: 0.0187
+    mean: 6.40759
+    cv: 0.0234
   outputXFEL.CSV/Diffraction efficiency:
-    mean: 3718940000.0
-    cv: 0.0318
+    mean: 3655350000.0
+    cv: 0.031
   outputXFEL.CSV/ions per atom:
-    mean: 0.0008808
-    cv: 0.028
+    mean: 0.0008995
+    cv: 0.0337
