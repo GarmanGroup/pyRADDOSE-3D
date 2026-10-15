@@ -67,12 +67,14 @@ if TYPE_CHECKING:
     from pyraddose_3d.backend.composition import Composition
 
 __all__ = [
+    "SUBSHELL_ROWS",
     "ElectronMaterial",
     "MicroEDResult",
     "csda_range",
     "elastic_mean_free_path",
     "electron_material",
     "inelastic_mean_free_path",
+    "inelastic_shells",
     "microed",
     "stopping_power",
 ]
@@ -781,29 +783,31 @@ def _distant_integral(energy: float, binding: float, wk: float) -> float:
     return float(np.add.accumulate(trapezia)[-1])
 
 
-def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float:
-    """``getGOSInel``: the inelastic mean free path, in nm.
+#: Rows of ``populateGOSInel``'s table per element: K, L1, ..., the valence.
+SUBSHELL_ROWS = 10
 
-    The generalised oscillator strength model: for every subshell of every
-    element, distant collisions -- longitudinal and transverse -- and close
-    ones, each a cross-section per atom times the atoms per cell over the
-    cell's volume.
+
+def inelastic_shells(material: ElectronMaterial, energy: float) -> np.ndarray:
+    """``populateGOSInel`` for n = 0: each subshell's inverse mean free paths.
+
+    For every element, in the material's order, and every subshell up to its
+    valence one: distant longitudinal, distant transverse and close
+    collisions, and their sum, in nm^-1 -- the Java's ``GOSinelastic`` map,
+    with an element of no atoms left at zero. Rows past an element's valence
+    subshell are zero, as the Java leaves them.
 
     Parameters
     ----------
     material : ElectronMaterial
-        The crystal.
+        The crystal or the surrounding.
     energy : float
         Electron kinetic energy in keV.
 
     Returns
     -------
-    float
-        The mean free path in nm; NaN for a crystal containing an element
-        in :func:`lacking_bindings`.
+    numpy.ndarray
+        ``(elements, SUBSHELL_ROWS, 4)``.
     """
-    if lacking_bindings(material):
-        return math.nan
     a = material.sternheimer_a
     m = _ELECTRON_MASS
     csquared = _SPEED_OF_LIGHT * _SPEED_OF_LIGHT
@@ -815,9 +819,8 @@ def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float
     )
     delta_f = 0.0
     per_cell = material.cell_volume / 1000
-    total = 0.0
-    sum_fcb = 0.0
-    for atom in material.atoms:
+    table = np.zeros((len(material.atoms), SUBSHELL_ROWS, 4))
+    for row, atom in enumerate(material.atoms):
         if not atom.count > 0:
             continue
         valence, inner = atom.valence
@@ -830,7 +833,6 @@ def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float
                 continue
             uk = atom.subshell_binding(index) * 1000
             if uk < _FCB_CUTOFF:
-                sum_fcb += fk * atom.count
                 fk = 0
             wak = _wak(energy, wk, uk)
             qak = _qak(energy, wk, uk)
@@ -871,11 +873,46 @@ def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float
                     * constant
                     * (atom.count * fk * _close_integral(energy, uk, qak))
                 ) / per_cell
-                total += longitudinal + transverse + close
+                table[row, index] = (
+                    longitudinal,
+                    transverse,
+                    close,
+                    longitudinal + transverse + close,
+                )
     # The plasmon term: zero, since nothing joins the conduction band.
     wcb = _wcb(material)
     if wcb > 0 and energy * 1000 > wcb:
         raise NotImplementedError("a conduction-band plasmon term is never reached")
+    return table
+
+
+def inelastic_mean_free_path(material: ElectronMaterial, energy: float) -> float:
+    """``getGOSInel``: the inelastic mean free path, in nm.
+
+    The generalised oscillator strength model: for every subshell of every
+    element, distant collisions -- longitudinal and transverse -- and close
+    ones, each a cross-section per atom times the atoms per cell over the
+    cell's volume (:func:`inelastic_shells`), summed in the Java's order.
+
+    Parameters
+    ----------
+    material : ElectronMaterial
+        The crystal.
+    energy : float
+        Electron kinetic energy in keV.
+
+    Returns
+    -------
+    float
+        The mean free path in nm; NaN for a crystal containing an element
+        in :func:`lacking_bindings`.
+    """
+    if lacking_bindings(material):
+        return math.nan
+    total = 0.0
+    for shells in inelastic_shells(material, energy):
+        for row in shells:
+            total += float(row[3])
     return 1 / total
 
 

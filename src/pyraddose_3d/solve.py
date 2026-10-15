@@ -1047,8 +1047,8 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     from pyraddose_3d.models.beam import TophatBeam as TophatBeamModel
 
     crystal, beam = experiment.crystal, experiment.beam
-    if crystal.subprogram != "montecarlo":
-        raise ValueError("the simple Monte Carlo is Subprogram MONTECARLO")
+    if crystal.subprogram not in ("montecarlo", "gos"):
+        raise ValueError("the Monte Carlo is Subprogram MONTECARLO or GOS")
     # The model allows only these, with a flux, for the Monte Carlo.
     assert isinstance(beam, (GaussianBeamModel, TophatBeamModel))
     assert beam.flux is not None
@@ -1105,6 +1105,7 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         != (crystal.simulation.polarisation_direction == 90.0),
         energies=energies,
         surrounding=surrounding,
+        gos=crystal.subprogram == "gos",
     )
 
 
@@ -1132,16 +1133,15 @@ def _refuse_untabulated(
 
 
 def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
-    """Run RADDOSE-3D's simple Monte Carlo, ``Subprogram MONTECARLO``.
+    """Run RADDOSE-3D's Monte Carlo, ``Subprogram MONTECARLO`` or ``GOS``.
 
-    Being ported (``ROADMAP.md``, Milestone 7): its five headline quantities
-    per run, not yet its files. Compared with RADDOSE-3D statistically, by
+    Compared with RADDOSE-3D statistically, by
     ``tests/conformance/test_montecarlo_files.py``.
 
     Parameters
     ----------
     experiment : Experiment
-        A crystal with ``subprogram: montecarlo``. Its ``seed`` seeds NumPy's
+        A crystal with ``subprogram: montecarlo`` or ``gos``. Its ``seed`` seeds NumPy's
         generator; the port does not reproduce RADDOSE-3D's draws, only
         their distribution.
 
@@ -1208,7 +1208,7 @@ def simulate(
             "this experiment runs RADDOSE-3D's MicroED engine; call "
             "pyraddose_3d.solve.microed"
         )
-    if experiment.crystal.subprogram == "montecarlo":
+    if experiment.crystal.subprogram in ("montecarlo", "gos"):
         raise ValueError(
             "this experiment runs RADDOSE-3D's Monte Carlo subprogram; call "
             "pyraddose_3d.solve.monte_carlo"

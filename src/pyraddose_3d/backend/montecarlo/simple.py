@@ -31,6 +31,7 @@ from pyraddose_3d.backend.montecarlo.geometry import (
     inside,
     voxel_indices,
 )
+from pyraddose_3d.backend.montecarlo.gos_transport import gos_medium, track_gos
 from pyraddose_3d.backend.montecarlo.material import stopping_power
 from pyraddose_3d.backend.montecarlo.photons import (
     OUTER_SHELL,
@@ -130,6 +131,10 @@ class SimpleSetup:
         photons are simulated; ``None`` for one energy.
     surrounding : Surrounding | None
         The medium around the crystal, if any.
+    gos : bool
+        ``Subprogram GOS``: electrons in the GOS model, with secondaries and
+        full relaxation (:mod:`.gos_transport`), rather than by stopping
+        power alone.
     """
 
     mesh: Mesh
@@ -151,6 +156,7 @@ class SimpleSetup:
     rotated_polarisation: bool = False
     energies: np.ndarray | None = None
     surrounding: Surrounding | None = None
+    gos: bool = False
 
 
 @dataclass
@@ -179,6 +185,11 @@ class SimpleRun:
         exposed region.
     resolved_no_cut, dwd_coarse, dwd : float
         ``vResolvedNoCut``, ``DWDcoarse`` and ``DWD``.
+    resolved_no_cut_exposed : float
+        ``vResolvedNoCut`` over the exposed region, MGy: what GOS mode
+        prints as its exposed region's dose.
+    gos : bool
+        Whether the run was in the GOS model.
     ions_per_element : dict[int, float]
         ``outputIonsPerAtom.CSV``: ionisations per atom in the exposed
         region, for each element ionised, by atomic number.
@@ -199,6 +210,8 @@ class SimpleRun:
     resolved_no_cut: float = 0.0
     dwd_coarse: float = 0.0
     dwd: float = 0.0
+    resolved_no_cut_exposed: float = 0.0
+    gos: bool = False
     ions_per_element: dict[int, float] = field(default_factory=dict)
     diagnostics: dict[str, float] = field(default_factory=dict)
 
@@ -271,6 +284,53 @@ class _Owned:
         np.add.at(self.tallies.dose, flat, energy)
         if starting:
             np.add.at(self.tallies.resolved, flat, energy)
+
+
+@dataclass
+class _GOSSink:
+    """Where GOS electrons leave energy and ions, by the photon they began with."""
+
+    grid: _Grid
+    tallies: _Tallies
+    placement: Placement
+    run: np.ndarray
+    beam: BeamShape
+
+    def _flat(self, points: np.ndarray, owner: np.ndarray) -> np.ndarray:
+        return self.grid.flat(points, self.placement.take(owner), self.run[owner])
+
+    def dose(self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray) -> None:
+        """``doseSimple``."""
+        if len(owner):
+            np.add.at(self.tallies.dose, self._flat(points, owner), energy)
+
+    def resolved(
+        self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray
+    ) -> None:
+        """``voxelEnergyvResolved``."""
+        if len(owner):
+            np.add.at(self.tallies.resolved, self._flat(points, owner), energy)
+
+    def ionise(
+        self,
+        points: np.ndarray,
+        owner: np.ndarray,
+        element: np.ndarray,
+        count: np.ndarray,
+    ) -> None:
+        """``addIonisation``: an element of -1 counts in the total alone."""
+        if not len(owner):
+            return
+        run = self.run[owner]
+        np.add.at(self.tallies.ionisations, run, count)
+        known = element >= 0
+        np.add.at(self.tallies.element_ions, (run[known], element[known]), count[known])
+        exposed = known & self.beam.exposes(points[:, 0], points[:, 1])
+        np.add.at(
+            self.tallies.element_ions_exposed,
+            (run[exposed], element[exposed]),
+            count[exposed],
+        )
 
 
 def _placements(setup: SimpleSetup, index: np.ndarray) -> Placement:
@@ -444,6 +504,16 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         surrounding.material if surrounding is not None else None,
         box_meshes,
     )
+    gos_crystal = gos_surrounding = None
+    if setup.gos:
+        highest = (
+            setup.photon_energy
+            if setup.energies is None
+            else float(np.max(setup.energies))
+        )
+        gos_crystal = gos_medium(setup.material, highest)
+        if surrounding is not None:
+            gos_surrounding = gos_medium(surrounding.material, highest)
 
     total = runs * photons
     for first in range(0, total, _BATCH):
@@ -481,6 +551,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             found.extend(paths)
 
         starts: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool]] = []
+        vacancies: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
         for owner, points, outside in found:
             if not len(owner):
                 continue
@@ -515,6 +586,17 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
                     rng, setup, grid, tallies, z_of, yield_of, placement, run, x, y,
                     absorbed, cs_owner, cs_energy, here.take(np.flatnonzero(compton)),
                 )  # fmt: skip
+                if setup.gos:
+                    # An outer shell's vacancy has nothing to relax.
+                    held = absorbed.shell != OUTER_SHELL
+                    vacancies.append(
+                        (
+                            absorbed.points[held],
+                            absorbed.owner[held],
+                            absorbed.element[held],
+                            absorbed.shell[held],
+                        )
+                    )
             starts.append(
                 (
                     np.concatenate([absorbed.owner, cs_owner]),
@@ -531,6 +613,28 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         electron_place = placement.take(owner)
         electron_run = run[owner]
         np.add.at(tallies.electrons, electron_run, 1)
+        if gos_crystal is not None:
+            passes = track_gos(
+                rng,
+                gos_crystal,
+                gos_surrounding,
+                setup.mesh,
+                box_meshes,
+                placement,
+                _GOSSink(grid, tallies, placement, run, setup.beam),
+                np.concatenate([s[1] for s in starts]),
+                np.concatenate([s[2] for s in starts]),
+                np.concatenate([s[3] for s in starts]),
+                owner,
+                np.ones(len(owner), dtype=bool),
+                np.concatenate([np.full(len(s[0]), s[4]) for s in starts]),
+                box[owner],
+                tuple(np.concatenate([v[i] for v in vacancies]) for i in range(4))
+                if vacancies
+                else None,
+            )
+            tallies.passes = max(tallies.passes, passes)
+            continue
         passes = track(
             rng,
             media,
@@ -572,6 +676,12 @@ def _tally_crystal(
     pe = absorbed.owner
     np.add.at(tallies.raddose, run[pe], absorbed.energy + absorbed.binding)
     _ionise(tallies, run[pe], absorbed.element, setup.beam.exposes(x[pe], y[pe]))
+    if setup.gos:
+        # GOS mode relaxes the atom in full, with the electrons.
+        _compton_ions(
+            rng, setup, tallies, run, x, y, cs_owner, cs_energy, cs_coefficients
+        )
+        return
     shell = absorbed.shell
     shell_yield = np.where(
         shell >= 0, yield_of[absorbed.element, np.maximum(shell, 0)], 0.0
@@ -583,6 +693,21 @@ def _tally_crystal(
     np.add.at(tallies.dose, flat, left)
     np.add.at(tallies.resolved, flat, resolved)
 
+    _compton_ions(rng, setup, tallies, run, x, y, cs_owner, cs_energy, cs_coefficients)
+
+
+def _compton_ions(
+    rng: np.random.Generator,
+    setup: SimpleSetup,
+    tallies: _Tallies,
+    run: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    cs_owner: np.ndarray,
+    cs_energy: np.ndarray,
+    cs_coefficients: PhotonCoefficients,
+) -> None:
+    """A Compton scattering's RADDOSE-3D-style energy and ionisation."""
     np.add.at(tallies.raddose_compton, run[cs_owner], cs_energy)
     cs_element = choose(cs_coefficients.compton_cdf, rng.random(len(cs_owner)))
     exposed = setup.beam.exposes(x[cs_owner], y[cs_owner])
@@ -816,6 +941,11 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
                 ions_per_atom=(ions / total_atoms) / fraction,
                 ions_per_non_h_atom=float(per_non_h),
                 resolved_no_cut=(float(resolved.sum()) / mass) / 1e6,
+                resolved_no_cut_exposed=(
+                    float(resolved[exposed_xy].sum()) / exposed_mass
+                )
+                / 1e6,
+                gos=setup.gos,
                 dwd_coarse=(coarse / (voxel_mass * length_ratio)) / 1e6,
                 dwd=(dwd / voxel_mass) / 1e6,
                 ions_per_element=per_element,

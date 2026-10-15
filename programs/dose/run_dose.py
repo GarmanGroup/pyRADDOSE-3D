@@ -52,7 +52,7 @@ def main() -> None:
     if experiment.crystal.subprogram == "microed":
         run_microed(experiment, start_time)
         return
-    if experiment.crystal.subprogram == "montecarlo":
+    if experiment.crystal.subprogram in ("montecarlo", "gos"):
         run_monte_carlo(experiment, start_time)
         return
     simulation = simulate(experiment, record_images=PER_IMAGE_FILES)

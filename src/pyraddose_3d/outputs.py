@@ -961,20 +961,31 @@ def monte_carlo_ions_csv(run: SimpleRun) -> str:
 
 
 def monte_carlo_report(run: SimpleRun) -> str:
-    """What ``processDose`` prints for one run of the simple Monte Carlo."""
+    """What ``processDose`` prints for one run: its doses.
+
+    The simple Monte Carlo's own doses, or in GOS mode the GOS model's.
+    """
+    if run.gos:
+        whole, exposed = run.resolved_no_cut, run.resolved_no_cut_exposed
+        name = "RADDOSE-GOS"
+    else:
+        whole, exposed = run.mc_adwc, run.mc_ader
+        name = "Monte Carlo"
     return (
         " \n"
         f"RADDOSE-3D style average dose whole crystal: {java_f(run.rd3d_adwc, 3)}\n"
         f"RADDOSE-3D style average dose exposed region: {java_f(run.rd3d_ader, 3)}\n"
-        f"Monte Carlo average dose whole crystal (ADWC): {java_f(run.mc_adwc, 3)}\n"
-        f"Monte Carlo average dose exposed region (ADER): {java_f(run.mc_ader, 3)}\n"
+        f"{name} average dose whole crystal (ADWC): {java_f(whole, 3)}\n"
+        f"{name} average dose exposed region (ADER): {java_f(exposed, 3)}\n"
     )
 
 
 def write_monte_carlo_outputs(
     runs: Sequence[SimpleRun], directory: str | Path = "."
 ) -> list[Path]:
-    """Write the three files a simple Monte Carlo run writes.
+    """Write the files a Monte Carlo run writes.
+
+    The simple Monte Carlo writes three; GOS mode, all but ``outputMC.CSV``.
 
     Parameters
     ----------
@@ -990,11 +1001,13 @@ def write_monte_carlo_outputs(
         The files written.
     """
     written = []
-    for name, text in (
-        ("outputMC.CSV", monte_carlo_csv(runs)),
+    files = [
         ("outputXFEL.CSV", monte_carlo_xfel_csv(runs)),
         ("outputIonsPerAtom.CSV", monte_carlo_ions_csv(runs[-1])),
-    ):
+    ]
+    if not runs[-1].gos:
+        files.insert(0, ("outputMC.CSV", monte_carlo_csv(runs)))
+    for name, text in files:
         path = Path(directory) / name
         with path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)

@@ -46,11 +46,13 @@ _UNPORTED = pytest.mark.xfail(
     strict=True,
     reason="being ported: ROADMAP.md, Milestone 7",
 )
+#: The subprograms the port runs.
+_PORTED = ("montecarlo", "gos")
 PORT_PARAMS = [
     pytest.param(
         case_dir,
         id=case_dir.name,
-        marks=() if _subprogram(case_dir) == "montecarlo" else _UNPORTED,
+        marks=() if _subprogram(case_dir) in _PORTED else _UNPORTED,
     )
     for case_dir in TIER_B
 ]
@@ -153,7 +155,7 @@ def _runs_of(experiment: Experiment, directory: Path) -> dict[str, list[float]]:
 def port(case_dir: Path) -> dict[str, list[float]]:
     """The port's runs of a case, keyed as the reference's quantities."""
     experiment = Experiment.from_yaml(case_dir / "config.yaml")
-    if experiment.crystal.subprogram != "montecarlo":
+    if experiment.crystal.subprogram not in _PORTED:
         raise NotImplementedError(f"Subprogram {experiment.crystal.subprogram}")
     with tempfile.TemporaryDirectory() as directory:
         return _runs_of(experiment, Path(directory))
@@ -208,7 +210,7 @@ def test_the_port_writes_what_raddose_3d_writes(case_dir: Path, tmp_path: Path) 
     a column, shows in every run of the suite.
     """
     experiment = Experiment.from_yaml(case_dir / "config.yaml")
-    if experiment.crystal.subprogram != "montecarlo":
+    if experiment.crystal.subprogram not in _PORTED:
         raise NotImplementedError(f"Subprogram {experiment.crystal.subprogram}")
     short = experiment.crystal.simulation.model_copy(
         update={"photons": 20_000, "runs": 2}
