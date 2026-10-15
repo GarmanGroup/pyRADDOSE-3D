@@ -22,16 +22,12 @@ slows by its stopping power, depositing nothing, as in the simple model.
 
 Here every electron takes one step per pass, and the secondaries and Auger
 electrons each step frees join the next pass. Each carries the Java's
-per-electron state, its quirks included (``UPSTREAM_FIXES.md``):
-
-- the inner shells' mean free path in its total is the one at the energy the
-  electron started with, ``startingInnerShellLambda``, never updated;
-- with none at the start, the total took ``1 / gosOuterLambda``, an inverse
-  length, for a length -- for the first step, and after leaving or coming
-  back into the crystal; later updates below 0.5 keV take the length;
-- the chance an inelastic collision is with an inner shell is not updated
-  while no inner shell is open, and comes back into the crystal computed at
-  the starting energy, as do the inner shells' relative chances.
+per-electron state: its mean free paths and the chance an inelastic
+collision is with an inner shell, at its energy, brought up to date as it
+loses energy and when it comes back into the crystal. Until RADDOSE-3D #54
+the inner shells' mean free path stayed at the starting energy's, an
+inverse length was taken for a length where none was open at the start,
+and the chance went stale (``UPSTREAM_FIXES.md``).
 
 The XFEL subprogram follows the same electrons with a :class:`Clock`: each
 carries the time since the pulse began, which its steps advance by their
@@ -544,11 +540,10 @@ class _Electrons:
     fresh: np.ndarray  # not yet set up
     step: np.ndarray  # s
     inelastic_free_path: np.ndarray  # gosInelasticLambda
-    inner_start: np.ndarray  # startingInnerShellLambda, crystal
     p_inner: np.ndarray  # Pinner
     p_inelastic: np.ndarray  # Pinel
     inner_energy: np.ndarray  # where ionisationProbs was last computed
-    inner_current: np.ndarray  # innerShellLamda: the last inner-shell update
+    inner_current: np.ndarray  # innerShellLamda, at inner_energy
     time: np.ndarray  # timeStamp, fs
 
     @classmethod
@@ -639,20 +634,16 @@ def _total_free_path(elastic: np.ndarray, inelastic: np.ndarray) -> np.ndarray:
         return np.where(inelastic > 0, 1 / (1 / elastic + 1 / inelastic), elastic)
 
 
-def _combined(
-    outer: np.ndarray, inner_start: np.ndarray, inverted: np.ndarray
-) -> np.ndarray:
-    """``gosInelasticLambda``: outer subshells with the starting inner shells.
-
-    Without inner shells at the start, ``inverted`` says whether the Java took
-    ``1 / gosOuterLambda`` there, as it does but for an update below 0.5 keV.
-    """
+def _combined(outer: np.ndarray, inner: np.ndarray) -> np.ndarray:
+    """``gosInelasticLambda``: the outer subshells with the inner shells."""
     with np.errstate(divide="ignore"):
-        return np.where(
-            inner_start > 0,
-            1 / (1 / outer + 1 / inner_start),
-            np.where(inverted, 1 / outer, outer),
-        )
+        return np.where(inner > 0, 1 / (1 / outer + 1 / inner), outer)
+
+
+def _inner_chance(free_path: np.ndarray, inner: np.ndarray) -> np.ndarray:
+    """``Pinner``: the chance an inelastic collision is with an inner shell."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(inner > 0, free_path / inner, 0.0)
 
 
 def _draw_step(
@@ -673,22 +664,15 @@ def _draw_step(
         )
 
 
-def _crystal_state(
-    ctx: _Context, e: _Electrons, chosen: np.ndarray, inner_energy: np.ndarray
-) -> None:
+def _crystal_state(ctx: _Context, e: _Electrons, chosen: np.ndarray) -> None:
     """Set up an electron in the crystal, at its start or coming back in."""
     energy = e.energy[chosen]
-    inner_start, _ = ctx.crystal.inner_shells(e.start[chosen])
-    e.inner_start[chosen] = inner_start
-    e.inner_energy[chosen] = inner_energy
+    inner, _ = ctx.crystal.inner_shells(energy)
+    e.inner_current[chosen] = inner
+    e.inner_energy[chosen] = energy
     outer, _ = ctx.crystal.outer(energy)
-    e.inelastic_free_path[chosen] = _combined(
-        outer, inner_start, np.ones(len(chosen), dtype=bool)
-    )
-    with np.errstate(divide="ignore", invalid="ignore"):
-        e.p_inner[chosen] = np.where(
-            inner_start > 0, e.inelastic_free_path[chosen] / inner_start, 0.0
-        )
+    e.inelastic_free_path[chosen] = _combined(outer, inner)
+    e.p_inner[chosen] = _inner_chance(e.inelastic_free_path[chosen], inner)
     _draw_step(ctx, e, chosen, ctx.crystal.elastic_free_path(energy))
 
 
@@ -895,13 +879,12 @@ def _setup(ctx: _Context, e: _Electrons, fresh: np.ndarray) -> np.ndarray:
     ended = np.zeros(len(e), dtype=bool)
     inside_crystal = fresh[~e.outside[fresh]]
     if len(inside_crystal):
-        _crystal_state(ctx, e, inside_crystal, e.start[inside_crystal])
+        _crystal_state(ctx, e, inside_crystal)
     in_surrounding = fresh[e.outside[fresh]]
     if len(in_surrounding):
         # No GOS model out there: the electron scatters elastically only.
         e.inelastic_free_path[in_surrounding] = 0.0
         e.p_inner[in_surrounding] = 0.0
-        e.inner_start[in_surrounding] = 0.0
         e.inner_energy[in_surrounding] = e.start[in_surrounding]
         _draw_step(
             ctx,
@@ -1022,7 +1005,7 @@ def track_gos(
             )
             e.position[back] += to_face[:, None] * e.direction[back]
             e.outside[back] = False
-            _crystal_state(ctx, e, back, e.start[back])
+            _crystal_state(ctx, e, back)
         in_crystal = live & ~e.outside
         in_crystal[in_crystal] = ctx.crystal_has(
             e.target[in_crystal], e.owner[in_crystal]
@@ -1117,16 +1100,10 @@ def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> np.
         u = a[update]
         e.energy[u] -= loss[update]
         outer, _ = crystal.outer(e.energy[u])
-        e.inelastic_free_path[u] = _combined(outer, e.inner_start[u], above[update])
         e.inner_current[u], _ = crystal.inner_shells(e.energy[u])
+        e.inelastic_free_path[u] = _combined(outer, e.inner_current[u])
         e.inner_energy[u] = e.energy[u]
-    # After every step, from the last inner-shell update -- just back in the
-    # crystal, the surrounding's, from when it left.
-    current = e.inner_current[a]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        e.p_inner[a] = np.where(
-            current > 0, e.inelastic_free_path[a] / current, e.p_inner[a]
-        )
+    e.p_inner[a] = _inner_chance(e.inelastic_free_path[a], e.inner_current[a])
     going = a[e.energy[a] >= 0]
     _draw_step(
         ctx, e, going, crystal.elastic_free_path(np.maximum(e.energy[going], 1e-9))
@@ -1137,8 +1114,10 @@ def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> np.
 def _leave(ctx: _Context, e: _Electrons, leaving: np.ndarray) -> np.ndarray:
     """Out of the crystal: lost, or on into the surrounding.
 
-    Just past the face, with the surrounding's cross-sections for one step.
-    Returns which have ended.
+    Just past the face, scattering elastically, as it does from then on out
+    there: the GOS model is not used in the surrounding. Until RADDOSE-3D #54
+    the first step there took its inelastic mean free path too. Returns
+    which have ended.
     """
     ended = np.zeros(len(e), dtype=bool)
     if ctx.surrounding is None:
@@ -1154,18 +1133,9 @@ def _leave(ctx: _Context, e: _Electrons, leaving: np.ndarray) -> np.ndarray:
     e.outside[leaving] = True
     on = leaving[e.energy[leaving] > STOPPED_KEV]
     if len(on):
-        surrounding = ctx.surrounding
-        outer, _ = surrounding.outer(e.energy[on])
-        e.inelastic_free_path[on] = _combined(
-            outer, e.inner_start[on], np.ones(len(on), dtype=bool)
-        )
-        inner, _ = surrounding.inner_shells(e.energy[on])
-        e.inner_current[on] = inner
-        with np.errstate(divide="ignore", invalid="ignore"):
-            e.p_inner[on] = np.where(
-                inner > 0, e.inelastic_free_path[on] / inner, e.p_inner[on]
-            )
-        _draw_step(ctx, e, on, surrounding.elastic_free_path(e.energy[on]))
+        e.inelastic_free_path[on] = 0.0
+        e.p_inner[on] = 0.0
+        _draw_step(ctx, e, on, ctx.surrounding.elastic_free_path(e.energy[on]))
     return ended
 
 
