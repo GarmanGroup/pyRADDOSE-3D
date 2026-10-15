@@ -4,9 +4,9 @@ Run once to produce the files in ``src/pyraddose_3d/data/``. Kept in the
 repository so the derivation is auditable rather than folklore, in the same
 spirit as ``DumpMeshes.java`` next door.
 
-The input is 87 elements by 80 tab-separated columns with no header, no
+The input is 87 elements by 81 tab-separated columns with no header, no
 column names in the file, and nothing to stop a row being the wrong length
-(gadolinium's had 82 fields). Seventy-three of the columns are named only in
+(gadolinium's has 82 fields). Seventy-four of the columns are named only in
 ``ElementDatabase.DatabaseFields``, a Java enum in a different repository;
 the other seven are named nowhere at all.
 
@@ -104,6 +104,7 @@ TABLES: dict[str, list[tuple[str, int]]] = {
         ("l1_binding_kev", 72),
         ("m1_binding_kev", 73),
         ("n1_binding_kev", 74),
+        ("valence_binding_kev", 80),
     ],
     "elsepa_elastic.tsv": [
         ("ev_50", 65),
@@ -187,10 +188,15 @@ HEADERS: dict[str, str] = {
 # mean_excitation_energy_ev        I, for the stopping power (Element.getI)
 # l1/m1/n1_binding_kev             subshell binding energies (getL1Binding,
 #                                  getM1Binding, getN1Binding)
+# valence_binding_kev              from Z = 35, the GOS model's valence
+#                                  subshell's binding energy
+#                                  (getValenceBinding): the occupancy-weighted
+#                                  geometric mean of Carlson's binding
+#                                  energies past M5
 #
-# The binding energies and I are used by the MicroED subprogram's stopping
-# power and inelastic model; the K-shell constants by the Monte Carlo
-# subprogram, which is not ported.
+# The binding energies and I are used by the MicroED and Monte Carlo
+# subprograms' stopping power and inelastic model; the K-shell constants by
+# the Monte Carlo subprogram.
 """,
     "elsepa_elastic.tsv": """\
 # ELSEPA elastic scattering cross-sections, by electron energy in eV.
@@ -222,7 +228,7 @@ def _format(field: str) -> str:
 
 
 def read_source(path: Path) -> list[list[str]]:
-    """Read ``MuCalcConstants.txt`` into rows of exactly 80 fields.
+    """Read ``MuCalcConstants.txt`` into rows of exactly 81 fields.
 
     Parameters
     ----------
@@ -232,12 +238,12 @@ def read_source(path: Path) -> list[list[str]]:
     Returns
     -------
     list[list[str]]
-        One list of 80 fields per element, in file order.
+        One list of 81 fields per element, in file order.
 
     Raises
     ------
     ValueError
-        If a row has fewer than 80 fields. Rows with more are accepted only
+        If a row has fewer than 81 fields. Rows with more are accepted only
         when the surplus is blank -- gadolinium's row has two stray trailing
         tabs, which is exactly the kind of thing a header would have caught.
     """
@@ -246,12 +252,12 @@ def read_source(path: Path) -> list[list[str]]:
         if not line.strip():
             continue
         fields = line.split("\t")
-        if len(fields) < 80 or any(f.strip() for f in fields[80:]):
+        if len(fields) < 81 or any(f.strip() for f in fields[81:]):
             raise ValueError(
-                f"{path}:{number} has {len(fields)} fields, expected 80, and "
+                f"{path}:{number} has {len(fields)} fields, expected 81, and "
                 f"the surplus is not blank"
             )
-        rows.append(fields[:80])
+        rows.append(fields[:81])
     return rows
 
 

@@ -1126,6 +1126,21 @@ _CASES: list[Case] = [
         "MicroED: 4 nm thick, less than one 5 nm slice",
         {**MICROED, "crystal": _microed_crystal(dimensions=[2.0, 2.0, 0.004])},
     ),
+    Case(
+        "134-microed-iodine",
+        "A",
+        "MicroED: 1 M iodide, whose 53 electrons the inelastic model bound by "
+        "its K edge",
+        {
+            **MICROED,
+            "crystal": _microed_crystal(
+                composition={
+                    **BASELINE_COMPOSITION,
+                    "solvent_heavy_conc": {"P": 425.0, "I": 1000.0},
+                }
+            ),
+        },
+    ),
     # --- Monte Carlo and XFEL (Subprogram MONTECARLO, GOS, XFEL): tier B -------
     # 12.1 keV, above zinc's K edge, so its Auger cascade is exercised.
     # The doses' run-to-run spread comes from how many photons are absorbed:

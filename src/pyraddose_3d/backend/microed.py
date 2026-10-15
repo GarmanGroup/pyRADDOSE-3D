@@ -96,8 +96,10 @@ _W_BINS = 1000
 #: joins the conduction band. At zero, none does, so the plasmon term never
 #: contributes.
 _FCB_CUTOFF = 0.0
-#: Electrons in each subshell, K, L1, L2, L3, M1, ..., N1.
-_SUBSHELL_ELECTRONS = (2, 2, 2, 4, 2, 2, 4, 10, 2, 30)
+#: ``CoefCalcCompute.SUBSHELL_ELECTRONS``: electrons in each subshell the GOS
+#: model can treat as inner, K, L1, L2, L3, M1, ..., N1. An element's valence
+#: subshell holds all its other electrons instead, so the N1 entry is unused.
+_SUBSHELL_ELECTRONS = (2, 2, 2, 4, 2, 2, 4, 4, 6, 2)
 #: Elements whose mean excitation energy the table already gives for the
 #: condensed phase; every other one is multiplied by 1.13.
 _CONDENSED_PHASE = frozenset({1, 6, 7, 8, 9, 17})
@@ -222,7 +224,9 @@ class _Shells:
     subshells : tuple[float | None, ...]
         Binding energies in keV, as ``getShellBindingSubshell`` returns them
         for subshells 0 to 9 -- K, L1, L2, L3, M1, M2, M3, M4, M5, N1. L1, M1
-        and N1 are binding energies; the others are absorption edges.
+        and N1 are binding energies; the others are absorption edges. From
+        Z = 35 the tenth is the valence subshell's binding energy, which
+        holds every electron past M5.
     shells : tuple[float | None, ...]
         As ``getShellBinding`` returns them for shells 0 to 2: the K, L1 and
         M1 absorption edges, a missing M1 edge read as zero.
@@ -252,7 +256,9 @@ def _shell_table() -> dict[int, _Shells]:
                 _number(edge["m3_kev"]),
                 _number(edge["m4_kev"]),
                 _number(edge["m5_kev"]),
-                _number(row["n1_binding_kev"]),
+                _number(
+                    row["valence_binding_kev"] if z >= 35 else row["n1_binding_kev"]
+                ),
             ),
             shells=(
                 _number(edge["k_kev"]),
@@ -281,8 +287,7 @@ class _Atom:
     def valence(self) -> tuple[int, int]:
         """``getNumValenceElectronsSubshells``: (valence electrons, inner subshells).
 
-        Elements from Z = 35 have no inner subshells: all their electrons
-        count as valence. RADDOSE-3D's model stops there; reproduced.
+        From arsenic on, K to M5 are inner and every other electron valence.
         """
         z = self.z
         if 2 < z <= 10:
@@ -299,7 +304,7 @@ class _Atom:
             return z - 14, 6
         if 24 <= z <= 32:
             return z - 18, 7
-        if 33 <= z <= 34:
+        if z >= 33:
             return z - 28, 9
         return z, 0
 

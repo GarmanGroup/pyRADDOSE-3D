@@ -513,3 +513,12 @@ def test_fluorescence_transitions_are_the_fluorescence_tables() -> None:
     for k in np.flatnonzero(chance):
         share = np.mean(np.isclose(left, 2.472 - table.energy_kev[k]))
         assert share == pytest.approx(chance[k], abs=0.01), k
+
+
+def test_every_heavy_element_has_its_shells_binding_energies() -> None:
+    """Xenon and heavier, but gadolinium, had no L1 binding energy: in
+    RADDOSE-3D a photoelectron from platinum's L1 shell stopped the run."""
+    heavy = [z for z in sorted(microed._shell_table()) if z >= 35]
+    for z in heavy:
+        binding = photons.shells(z).binding
+        assert np.isfinite(binding).all() and (binding > 0).all(), z

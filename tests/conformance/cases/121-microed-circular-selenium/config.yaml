@@ -1,5 +1,10 @@
 crystal:
   subprogram: microed
+  simulation:
+    photons: 1000000
+    runs: 1
+    polarisation_direction: 0.0
+    surrounding_thickness: null
   pixels_per_micron: 20.0
   angle_p: 0.0
   angle_l: 0.0

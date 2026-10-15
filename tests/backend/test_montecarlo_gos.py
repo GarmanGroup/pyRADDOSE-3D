@@ -9,10 +9,19 @@ by RADDOSE-3D at ``master`` ``85a6813`` for case 160's insulin crystal:
 
 from __future__ import annotations
 
+import dataclasses
+import itertools
+
 import numpy as np
 import pytest
 
-from pyraddose_3d.backend.microed import inelastic_shells
+from pyraddose_3d.backend.microed import (
+    _SUBSHELL_ELECTRONS,
+    ElectronMaterial,
+    _Atom,
+    _shell_table,
+    inelastic_shells,
+)
 from pyraddose_3d.backend.montecarlo import gos
 from pyraddose_3d.backend.montecarlo.gos_transport import Cascade, _Born, gos_medium
 from pyraddose_3d.models.experiment import Experiment
@@ -182,3 +191,49 @@ def test_a_valence_collision_has_its_subshells_binding_energy() -> None:
         )
         theta = gos.primary_angle_distant(energy, q, np.full(1000, wk))
         assert np.isfinite(theta).all(), z
+
+
+def _atoms(material: ElectronMaterial, zs: list[int]) -> list[_Atom]:
+    """Material's first atom made each element of ``zs`` in turn."""
+    table = _shell_table()
+    return [
+        dataclasses.replace(material.atoms[0], z=z, symbol=str(z), shells=table[z])
+        for z in zs
+    ]
+
+
+def test_every_element_has_as_many_electrons_as_its_atomic_number(
+    material: ElectronMaterial,
+) -> None:
+    """Arsenic and selenium had two more: their 4s counted in M5 and again as
+    valence."""
+    for atom in _atoms(material, sorted(_shell_table())):
+        valence, inner = atom.valence
+        assert valence + sum(_SUBSHELL_ELECTRONS[:inner]) == atom.z
+
+
+def test_heavy_atoms_have_inner_subshells_and_a_valence_subshell(
+    material: ElectronMaterial,
+) -> None:
+    """From bromine on every electron was valence, bound by the K edge."""
+    heavy = [z for z in sorted(_shell_table()) if z >= 35]
+    for atom in _atoms(material, heavy):
+        assert atom.valence == (atom.z - 28, 9)
+        binding = [atom.subshell_binding(i) for i in range(10)]
+        assert all(a > b for a, b in itertools.pairwise(binding)), atom.z
+    # Iodine's valence electrons, 4s to 5p, are bound by 193 to 10 eV.
+    (iodine,) = _atoms(material, [53])
+    assert 0.010 < iodine.subshell_binding(9) < 0.193
+
+
+def test_a_heavy_atom_leaves_the_sternheimer_factor_to_the_composition(
+    material: ElectronMaterial,
+) -> None:
+    """1 M iodide, its 53 electrons bound by its K edge, took the factor from
+    1.65 to 1.2, and iodine had no collisions below 33 keV."""
+    data = Experiment.from_yaml(CASE).model_dump()
+    data["crystal"]["composition"]["solvent_heavy_conc"]["I"] = 1000.0
+    iodide = monte_carlo_setup(Experiment.model_validate(data)).material
+    assert iodide.sternheimer_a == pytest.approx(material.sternheimer_a, abs=0.02)
+    shells = inelastic_shells(iodide, 10.0)
+    assert shells[_row(iodide, 53), 9, 3] > 0

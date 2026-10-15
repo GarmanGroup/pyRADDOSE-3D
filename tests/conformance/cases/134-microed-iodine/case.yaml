@@ -1,0 +1,7 @@
+case_id: 134-microed-iodine
+tier: A
+exercises: 'MicroED: 1 M iodide, whose 53 electrons the inelastic model bound by its
+  K edge'
+seed: 20260917
+reference_version: 5.0.1105
+reference_commit: 0ccd6b0
