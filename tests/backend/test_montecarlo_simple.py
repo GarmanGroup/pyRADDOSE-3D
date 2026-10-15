@@ -384,11 +384,14 @@ def test_an_electron_leaving_with_under_50_ev_leaves_it(setup) -> None:  # type:
     )
 
 
-def test_the_ions_file_iterates_as_a_hash_map_does() -> None:
-    """Element.hashCode is the atomic number; the table has 16 buckets."""
-    from pyraddose_3d.outputs import _hash_map_order
+def test_the_ions_file_lists_elements_by_atomic_number() -> None:
+    """As since RADDOSE-3D #55; it listed them in a HashMap's bucket order."""
+    from pyraddose_3d.backend.montecarlo.simple import SimpleRun
+    from pyraddose_3d.outputs import monte_carlo_ions_csv
 
-    assert _hash_map_order([1, 6, 7, 8, 15, 16, 30]) == [16, 1, 6, 7, 8, 30, 15]
+    run = SimpleRun(ions_per_element={16: 0.5, 1: 0.1, 30: 0.2, 6: 0.3, 15: 0.4})
+    lines = monte_carlo_ions_csv(run).splitlines()[1:]
+    assert [int(line.split(",")[0]) for line in lines] == [1, 6, 15, 16, 30]
 
 
 def test_the_files_are_laid_out_as_raddose_3ds() -> None:

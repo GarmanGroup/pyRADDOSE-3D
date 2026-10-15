@@ -188,9 +188,8 @@ class SimpleRun:
         Elastically scattered photons, scaled to the real photon count:
         ``numEl``.
     xfel_adwc, xfel_ader : float
-        ``outputXFEL.CSV``'s XFEL doses, which in simple mode hold only the
-        binding energies of atoms that do not relax and the energy of
-        electrons freed with under 0.05 keV, MGy.
+        ``outputXFEL.CSV``'s doses: GOS mode's, or in simple mode the Monte
+        Carlo's own, MGy.
     diffraction_efficiency : float
         ``numEl`` over ``xfel_ader``.
     ions_per_atom, ions_per_non_h_atom : float
@@ -1020,7 +1019,10 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
         rd3d = ((tallies.raddose[r] * to_joules) / mass) / 1e6 + (
             (tallies.raddose_compton[r] * to_joules) / mass
         ) / 1e6
-        resolved = resolved_all[r] * to_joules
+        # In simple mode, outputXFEL.CSV's doses are the Monte Carlo's own, as
+        # since RADDOSE-3D #55: the GOS tally there held only the binding
+        # energies of atoms that do not relax and the slowest electrons.
+        resolved = (resolved_all[r] if setup.gos else dose[r]) * to_joules
         cut = resolved * kept[None, None, :]
         voxel_elastic = elastic_all[r] * scale
         total_elastic = float(tallies.elastic[r] * scale)

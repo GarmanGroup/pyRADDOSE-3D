@@ -935,27 +935,15 @@ def monte_carlo_xfel_csv(runs: Sequence[SimpleRun]) -> str:
     return "".join(lines)
 
 
-def _hash_map_order(numbers: Sequence[int]) -> list[int]:
-    """The order a ``HashMap`` keyed by element iterates: by bucket.
-
-    ``Element.hashCode`` is the atomic number, so the bucket is the atomic
-    number modulo the table's size: 16, doubled whenever it is more than
-    three-quarters full. Elements sharing a bucket iterate in the order they
-    were first ionised, which here is taken as atomic-number order.
-    """
-    capacity = 16
-    while len(numbers) > capacity * 3 // 4:
-        capacity *= 2
-    return sorted(numbers, key=lambda z: (z & (capacity - 1), z))
-
-
 def monte_carlo_ions_csv(run: SimpleRun) -> str:
     """``WriteElements``: ``outputIonsPerAtom.CSV``, for one run.
 
     RADDOSE-3D rewrites it every run, so its file holds the last run's.
+    The elements come in atomic-number order, as since RADDOSE-3D #55: they
+    came in a ``HashMap``'s bucket order.
     """
     lines = ["Atomic number,ionisationsPerAtom\n"]
-    for z in _hash_map_order(list(run.ions_per_element)):
+    for z in sorted(run.ions_per_element):
         lines.append(f" {z}, {java_f(run.ions_per_element[z])}\n")
     return "".join(lines)
 
