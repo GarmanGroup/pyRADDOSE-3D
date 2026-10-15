@@ -22,7 +22,8 @@ from pyraddose_3d.solve import microed, monte_carlo, simulate
 # RADDOSE-3D input file like dose_example_input.txt, which is read unchanged.
 # Anything not ending in .yaml or .yml is read as a RADDOSE-3D input file.
 # A MicroED experiment, like microed_example_config.yaml, runs that engine,
-# and one with subprogram montecarlo (Subprogram MONTECARLO) the Monte Carlo.
+# and one with subprogram montecarlo, gos or xfel (Subprogram MONTECARLO, GOS
+# or XFEL) the Monte Carlo.
 CONFIG_PATH = "/path/to/dose_example_config.yaml"
 
 # Prepended to every output file name, as RADDOSE-3D's --prefix does, so the
@@ -52,7 +53,7 @@ def main() -> None:
     if experiment.crystal.subprogram == "microed":
         run_microed(experiment, start_time)
         return
-    if experiment.crystal.subprogram in ("montecarlo", "gos"):
+    if experiment.crystal.subprogram in ("montecarlo", "gos", "xfel"):
         run_monte_carlo(experiment, start_time)
         return
     simulation = simulate(experiment, record_images=PER_IMAGE_FILES)
@@ -81,7 +82,7 @@ def run_microed(experiment: Experiment, start_time: float) -> None:
 
 
 def run_monte_carlo(experiment: Experiment, start_time: float) -> None:
-    """The Monte Carlo: print each run's doses, and write its three files."""
+    """The Monte Carlo or XFEL: print each run's doses, and write its files."""
     runs = monte_carlo(experiment)
     for run in runs:
         print(monte_carlo_report(run))

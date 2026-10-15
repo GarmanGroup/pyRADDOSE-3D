@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import runpy
-import warnings
-from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -122,30 +120,75 @@ def test_run_dose_runs_the_monte_carlo(
     assert len(files["outputXFEL.CSV"].splitlines()[1].split(",")) == 11
 
 
-@pytest.mark.parametrize("subprogram", ["GOS", "XFEL"])
-def test_run_dose_refuses_the_subprograms_not_yet_ported(
-    subprogram: str, tmp_path: Path
-) -> None:
-    """Read, but refused by name before anything runs."""
-    text = (DOSE / "dose_example_input.txt").read_text()
-    text = text.replace("Crystal\n", f"Crystal\nSubprogram {subprogram}\n", 1)
-    if subprogram == "XFEL":
-        text = text.replace("Beam\n", "Beam\nPulseEnergy 1.4\n", 1)
+#: A small still for the GOS and XFEL subprograms, whose electrons are slow.
+_STILL = """Crystal
+Type Cuboid
+Dimensions 10 10 10
+PixelsPerMicron 0.5
+AbsCoefCalc RD3D
+UnitCell 78.02 78.02 78.02
+NumMonomers 24
+NumResidues 51
+ProteinHeavyAtoms Zn 0.333 S 6
+SolventHeavyConc P 425
+SolventFraction 0.64
+Subprogram {subprogram}
+SimPhotons 3000
+Runs 2
+
+Beam
+Type Gaussian
+{intensity}
+FWHM 20 20
+Energy 12.1
+Collimation Rectangular 40 40
+
+Wedge 0 {end}
+ExposureTime 10
+"""
+
+
+def _run_dose(text: str, tmp_path: Path) -> None:
     config = tmp_path / "input.txt"
     config.write_text(text)
-    with (
-        pytest.warns(match="Flux is ignored") if subprogram == "XFEL" else nullcontext()
-    ):
-        assert Experiment.from_file(config).crystal.subprogram == subprogram.lower()
-
     script = runpy.run_path(str(DOSE / "run_dose.py"))
     script["main"].__globals__.update(
         CONFIG_PATH=str(config), OUTPUT_PREFIX=str(tmp_path / "output-")
     )
-    with (
-        pytest.raises(NotImplementedError, match="Milestone 7"),
-        warnings.catch_warnings(),
-    ):
-        warnings.simplefilter("ignore")
-        script["main"]()
-    assert not list(tmp_path.glob("output-*"))
+    script["main"]()
+
+
+@pytest.mark.parametrize(
+    ("subprogram", "intensity", "printed"),
+    [
+        ("GOS", "Flux 2e12", "RADDOSE-GOS average dose whole crystal (ADWC): "),
+        (
+            "XFEL",
+            "PulseEnergy 1.4",
+            "RADDOSE-XFEL average dose whole crystal (ADWC) (MGy): ",
+        ),
+    ],
+)
+def test_run_dose_runs_gos_and_xfel(
+    subprogram: str,
+    intensity: str,
+    printed: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """What RADDOSE-3D prints, and its two files: not ``outputMC.CSV``."""
+    _run_dose(
+        _STILL.format(subprogram=subprogram, intensity=intensity, end=0), tmp_path
+    )
+    assert capsys.readouterr().out.count(printed) == 2
+    files = sorted(p.name for p in tmp_path.glob("output*.CSV"))
+    assert files == ["outputIonsPerAtom.CSV", "outputXFEL.CSV"]
+
+
+def test_run_dose_refuses_an_xfel_rotation(tmp_path: Path) -> None:
+    """RADDOSE-3D would turn the voxels but not the crystal: refused, by
+    name, before anything is written."""
+    text = _STILL.format(subprogram="XFEL", intensity="PulseEnergy 1.4", end=90)
+    with pytest.raises(NotImplementedError, match="whole radians"):
+        _run_dose(text, tmp_path)
+    assert not list(tmp_path.glob("output*"))

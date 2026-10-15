@@ -963,8 +963,11 @@ def monte_carlo_ions_csv(run: SimpleRun) -> str:
 def monte_carlo_report(run: SimpleRun) -> str:
     """What ``processDose`` prints for one run: its doses.
 
-    The simple Monte Carlo's own doses, or in GOS mode the GOS model's.
+    The simple Monte Carlo's own doses, or in GOS mode the GOS model's. The
+    XFEL subprogram prints its doses, cut off in time, and more.
     """
+    if run.xfel:
+        return _xfel_report(run)
     if run.gos:
         whole, exposed = run.resolved_no_cut, run.resolved_no_cut_exposed
         name = "RADDOSE-GOS"
@@ -980,12 +983,42 @@ def monte_carlo_report(run: SimpleRun) -> str:
     )
 
 
+def _xfel_report(run: SimpleRun) -> str:
+    """``XFEL.processDose``'s printout."""
+    warning = (
+        "Warning, damage may begin to be seen at these doses\n"
+        if run.xfel_ader > 400
+        else ""
+    )
+    return (
+        " \n"
+        "RADDOSE-3D style average dose whole crystal (MGy): "
+        f"{java_f(run.rd3d_adwc, 3)}\n"
+        "RADDOSE-3D style average dose exposed region (MGy): "
+        f"{java_f(run.rd3d_ader, 3)}\n"
+        "RADDOSE-XFEL average dose whole crystal (ADWC) (MGy): "
+        f"{java_f(run.xfel_adwc, 3)}\n"
+        "RADDOSE-XFEL average dose exposed region (ADER) (MGy): "
+        f"{java_f(run.xfel_ader, 3)}\n"
+        f"{warning}"
+        "Diffraction Efficiency (number elastic/ADER): "
+        f"{java_f(run.diffraction_efficiency, 3)}\n"
+        " \n"
+        "Average ionisations per atom exposed region: "
+        f"{java_f(run.printed_ions_per_atom, 3)}\n"
+        "Average ionisations per non-hydrogen atom exposed region: "
+        f"{java_f(run.ions_per_non_h_atom, 3)}\n"
+        " \n"
+    )
+
+
 def write_monte_carlo_outputs(
     runs: Sequence[SimpleRun], directory: str | Path = "."
 ) -> list[Path]:
     """Write the files a Monte Carlo run writes.
 
-    The simple Monte Carlo writes three; GOS mode, all but ``outputMC.CSV``.
+    The simple Monte Carlo writes three; GOS mode and the XFEL subprogram,
+    all but ``outputMC.CSV``.
 
     Parameters
     ----------

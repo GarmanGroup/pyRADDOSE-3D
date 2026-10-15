@@ -1026,7 +1026,7 @@ def _escape(
 
 
 def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
-    """What RADDOSE-3D's simple Monte Carlo reads of an experiment.
+    """What RADDOSE-3D's Monte Carlo and XFEL subprograms read of an experiment.
 
     The last wedge: each wedge reruns the simulation, and RADDOSE-3D's files
     keep the last's.
@@ -1034,12 +1034,20 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     Parameters
     ----------
     experiment : Experiment
-        A crystal with ``subprogram: montecarlo``.
+        A crystal with ``subprogram: montecarlo``, ``gos`` or ``xfel``.
 
     Returns
     -------
     SimpleSetup
-        For :func:`pyraddose_3d.backend.montecarlo.simple.simulate_simple`.
+        For :func:`pyraddose_3d.backend.montecarlo.simple.simulate_simple`,
+        or for the XFEL subprogram
+        :func:`pyraddose_3d.backend.montecarlo.xfel.simulate_xfel`.
+
+    Raises
+    ------
+    NotImplementedError
+        For the XFEL subprogram with a surrounding, or with a wedge it would
+        rotate or offset: not ported (``UPSTREAM_FIXES.md``).
     """
     from pyraddose_3d.backend.montecarlo.photons import BeamShape
     from pyraddose_3d.backend.montecarlo.simple import SimpleSetup, Surrounding
@@ -1047,11 +1055,13 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     from pyraddose_3d.models.beam import TophatBeam as TophatBeamModel
 
     crystal, beam = experiment.crystal, experiment.beam
-    if crystal.subprogram not in ("montecarlo", "gos"):
-        raise ValueError("the Monte Carlo is Subprogram MONTECARLO or GOS")
-    # The model allows only these, with a flux, for the Monte Carlo.
+    if crystal.subprogram not in ("montecarlo", "gos", "xfel"):
+        raise ValueError("the Monte Carlo is Subprogram MONTECARLO, GOS or XFEL")
+    xfel = crystal.subprogram == "xfel"
+    # The model allows only these, with a flux for the Monte Carlo and a
+    # pulse energy for the XFEL subprogram.
     assert isinstance(beam, (GaussianBeamModel, TophatBeamModel))
-    assert beam.flux is not None
+    assert beam.pulse_energy is not None if xfel else beam.flux is not None
     mesh = crystal_mesh(crystal)
     built, density_ = crystal_material(crystal.composition)
     assert built is not None
@@ -1084,6 +1094,15 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     resolution = wedge_resolution(wedge.start, wedge.end, wedge.angular_resolution)
     ox, oy, oz = wedge.start_offset or (0.0, 0.0, 0.0)
     tx, ty, tz = wedge.translate_per_degree or (0.0, 0.0, 0.0)
+    if xfel:
+        _refuse_unported_xfel(
+            surrounding is not None,
+            math.radians(wedge.start),
+            math.radians(wedge.end),
+            math.radians(resolution),
+            (ox, oy, oz),
+            (math.degrees(tx), math.degrees(ty), math.degrees(tz)),
+        )
     return SimpleSetup(
         mesh=Mesh(np.asarray(mesh.vertices), np.asarray(mesh.triangles)),
         pixels_per_micron=pixels_per_micron(crystal, mesh),
@@ -1092,7 +1111,7 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         material=electron_material(built, density_),
         beam=BeamShape.from_model(beam),
         photon_energy=float(beam.energy),
-        flux=float(beam.flux),
+        flux=float(beam.flux or 0.0),
         exposure=float(wedge.exposure_time),
         start_angle=math.radians(wedge.start),
         end_angle=math.radians(wedge.end),
@@ -1106,7 +1125,50 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         energies=energies,
         surrounding=surrounding,
         gos=crystal.subprogram == "gos",
+        xfel=xfel,
+        pulse_energy=float(beam.pulse_energy or 0.0),
     )
+
+
+def _refuse_unported_xfel(
+    surrounding: bool,
+    start: float,
+    end: float,
+    resolution: float,
+    offset: tuple[float, float, float],
+    translation_per_radian: tuple[float, float, float],
+) -> None:
+    """The XFEL subprogram's inputs the port does not run.
+
+    Its surrounding is a model of its own, unlike the Monte Carlo's. Its
+    rotation turns only the voxels the dose is tallied in, by whole radians
+    of the wedge, and its offset moves only them: the crystal stays where it
+    is. Angles in radians, lengths in um.
+    """
+    if surrounding:
+        raise NotImplementedError(
+            "RADDOSE-3D's XFEL subprogram models the surrounding its own way, "
+            "which pyRADDOSE-3D does not run (UPSTREAM_FIXES.md); leave the "
+            "surrounding out, or use Subprogram GOS"
+        )
+    still = abs(start - end) < resolution or end == 0
+    if not still and math.trunc(end - start) != 0:
+        raise NotImplementedError(
+            "RADDOSE-3D's XFEL subprogram turns the voxels the dose is "
+            "tallied in, but not the crystal, by whole radians of a wedge of "
+            "1 radian (57.3 degrees) or more, which pyRADDOSE-3D does not run "
+            "(UPSTREAM_FIXES.md); an XFEL pulse is a still"
+        )
+    moved = [
+        o + t * (0.0 - start)
+        for o, t in zip(offset, translation_per_radian, strict=True)
+    ]
+    if any(moved):
+        raise NotImplementedError(
+            "RADDOSE-3D's XFEL subprogram moves the voxels the dose is tallied "
+            "in by the wedge's offset, but not the crystal, which pyRADDOSE-3D "
+            "does not run (UPSTREAM_FIXES.md); leave the offset out"
+        )
 
 
 def _refuse_untabulated(
@@ -1133,7 +1195,7 @@ def _refuse_untabulated(
 
 
 def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
-    """Run RADDOSE-3D's Monte Carlo, ``Subprogram MONTECARLO`` or ``GOS``.
+    """Run RADDOSE-3D's Monte Carlo, ``Subprogram MONTECARLO``, ``GOS`` or ``XFEL``.
 
     Compared with RADDOSE-3D statistically, by
     ``tests/conformance/test_montecarlo_files.py``.
@@ -1141,9 +1203,9 @@ def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
     Parameters
     ----------
     experiment : Experiment
-        A crystal with ``subprogram: montecarlo`` or ``gos``. Its ``seed`` seeds NumPy's
-        generator; the port does not reproduce RADDOSE-3D's draws, only
-        their distribution.
+        A crystal with ``subprogram: montecarlo``, ``gos`` or ``xfel``. Its
+        ``seed`` seeds NumPy's generator; the port does not reproduce
+        RADDOSE-3D's draws, only their distribution.
 
     Returns
     -------
@@ -1151,9 +1213,13 @@ def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
         One per run.
     """
     from pyraddose_3d.backend.montecarlo.simple import simulate_simple
+    from pyraddose_3d.backend.montecarlo.xfel import simulate_xfel
 
     setup = monte_carlo_setup(experiment)
-    return simulate_simple(setup, np.random.default_rng(experiment.seed))
+    rng = np.random.default_rng(experiment.seed)
+    if setup.xfel:
+        return simulate_xfel(setup, rng)
+    return simulate_simple(setup, rng)
 
 
 #: How messages name RADDOSE-3D's engines.
@@ -1197,10 +1263,11 @@ def simulate(
     ------
     KeyError
         If an override names a path that is not tunable.
+    ValueError
+        If the experiment runs RADDOSE-3D's MicroED engine, or its Monte
+        Carlo or XFEL subprogram, which have entry points of their own.
     NotImplementedError
-        If escape modelling is asked for with tensor overrides, or the
-        experiment runs RADDOSE-3D's Monte Carlo or XFEL subprogram, which
-        this port does not run yet.
+        If escape modelling is asked for with tensor overrides.
     """
     xray = experiment.beam
     if xray.type == "electron":
@@ -1208,16 +1275,11 @@ def simulate(
             "this experiment runs RADDOSE-3D's MicroED engine; call "
             "pyraddose_3d.solve.microed"
         )
-    if experiment.crystal.subprogram in ("montecarlo", "gos"):
-        raise ValueError(
-            "this experiment runs RADDOSE-3D's Monte Carlo subprogram; call "
-            "pyraddose_3d.solve.monte_carlo"
-        )
     if experiment.crystal.subprogram in SIMULATED:
-        raise NotImplementedError(
+        raise ValueError(
             f"this experiment runs RADDOSE-3D's "
-            f"{_ENGINES[experiment.crystal.subprogram]}, which pyRADDOSE-3D "
-            f"is still being taught (ROADMAP.md, Milestone 7)"
+            f"{_ENGINES[experiment.crystal.subprogram]}; call "
+            "pyraddose_3d.solve.monte_carlo"
         )
     overrides = dict(overrides or {})
     as_run = apply_overrides(experiment, overrides)

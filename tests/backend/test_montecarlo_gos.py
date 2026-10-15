@@ -116,10 +116,10 @@ class _Collect:
     def dose(self, points, owner, energy) -> None:  # type: ignore[no-untyped-def]
         self.dose_total += float(np.sum(energy))
 
-    def resolved(self, points, owner, energy) -> None:  # type: ignore[no-untyped-def]
+    def resolved(self, points, owner, energy, time) -> None:  # type: ignore[no-untyped-def]
         self.resolved_total += float(np.sum(energy))
 
-    def ionise(self, points, owner, element, count) -> None:  # type: ignore[no-untyped-def]
+    def ionise(self, points, owner, element, count, time) -> None:  # type: ignore[no-untyped-def]
         self.ions += int(np.sum(count))
 
 

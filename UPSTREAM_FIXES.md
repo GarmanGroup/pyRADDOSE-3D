@@ -759,14 +759,30 @@ For GOS, with its port:
 - **GOS mean free paths are inconsistent**: `1/gosOuterLambda` against `gosOuterLambda`, and an
   inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
 
-For XFEL, with its port:
-- Its surrounding is a different, older model: a box the size of a photoelectron's reach around
-  the crystal's bounding dimensions, which ignores `SurroundingThickness`.
-- Its rotation truncates the angle to whole radians and ignores the start (XFEL:368), and its
-  occupancy test uses unrotated normals.
-- The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs divides by zero.
-- Coefficients are left at the last photon's energy for the diffraction efficiency, which matters
-  for a pink beam.
+For XFEL, with its port. XFEL kept MC's code from before #44, and differs from it in more than
+time; the port reproduces these, but refuses the first three inputs:
+- **Its surrounding is a different, older model**: a box the size of a photoelectron's reach
+  around the crystal's bounding dimensions, which ignores `SurroundingThickness`, with electrons
+  turned by absolute angles there (XFEL:404–476, 2266–2490). The port refuses an XFEL
+  surrounding; MC's (#49) could replace it.
+- **Its rotation turns the voxels, not the crystal**: the angle is the wedge's whole radians,
+  truncated, times the photon's place in the run, ignoring the start (XFEL:375–385). It goes
+  only into `convertToPixelCoordinates`, which translates before rotating, the order #44 fixed in
+  MC (XFEL:3901–3927); whether a point is in the crystal is asked of the unrotated mesh. So a
+  wedge under a radian rotates nothing, and one of a radian or more tallies dose in voxels the
+  crystal is not in. Refused by the port.
+- **Its start offset likewise moves the voxels and not the crystal.** Refused by the port.
+- Photons start at the bounding box's front face (XFEL:446), so a curved crystal attenuates them
+  through the gap before its face.
+- Every K-shell photoelectron follows the polarisation (`polarised > 0`, XFEL:1253), where MC
+  sends three in four.
+- A fluorescing vacancy deposits its binding energy less the photon's (XFEL:1424), where GOS
+  mode deposits it all.
+- The crystal's volume and mass are its bounding box's (XFEL:755), not its mesh's.
+- The diffraction efficiency's elastic count is not the simulated one but the share of the real
+  photons that the elastic coefficient scatters in the crystal's depth (XFEL:973), at the last
+  photon's energy: for a pink beam, the hardest.
+- The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs has no length.
 - Lifetimes are fixed delays, not sampled.
 - Two random numbers are drawn and not used in fluorescence.
 

@@ -251,7 +251,16 @@ first:
    crystal's shape and rotation, the polarisation, a surrounding and a pink beam, and include
    iodine and sodium for [#43](https://github.com/GarmanGroup/RADDOSE-3D/pull/43)'s fix. The
    comparisons with the port take forty minutes, and are `slow`; every case also runs
-   briefly in the default suite. Next: GOS.)
+   briefly in the default suite. GOS is ported too: `gos_transport.py` follows each electron
+   through the GOS model's collisions with the Java's per-electron state, its quirks included,
+   frees secondaries and relaxes every vacancy in full, from tables of the subshells' cross
+   sections built once per run. So is XFEL, the same transport with a clock: photons arrive
+   through the pulse, steps take their flight time and relaxations their lifetimes, nothing is
+   followed past the last photon's exit, and each voxel keeps what arrives before its cutoff.
+   On case 180 the time cut keeps 62% of the dose on both sides. The port refuses three XFEL
+   inputs that RADDOSE-3D runs inconsistently: a surrounding, which XFEL models its own older
+   way, and a rotation or offset, which move only the voxels the dose is tallied in, not the
+   crystal.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
    MicroED. (Under way: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to
    [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49), stacked, fix a rotated crystal's

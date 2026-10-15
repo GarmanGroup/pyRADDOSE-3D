@@ -32,6 +32,12 @@ per-electron state, its quirks included (``UPSTREAM_FIXES.md``):
 - the chance an inelastic collision is with an inner shell is not updated
   while no inner shell is open, and comes back into the crystal computed at
   the starting energy, as do the inner shells' relative chances.
+
+The XFEL subprogram follows the same electrons with a :class:`Clock`: each
+carries the time since the pulse began, which its steps advance by their
+flight time and a relaxation by the transition's lifetime, and nothing is
+followed past ``lastTime``, when the pulse's last photon has left the
+crystal. Every deposit and ionisation is passed on with its time.
 """
 
 from __future__ import annotations
@@ -42,6 +48,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
+from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.microed import _wk
 from pyraddose_3d.backend.montecarlo import tables
 from pyraddose_3d.backend.montecarlo.angles import deflection_angles
@@ -77,7 +84,7 @@ if TYPE_CHECKING:
     from pyraddose_3d.backend.microed import ElectronMaterial
     from pyraddose_3d.backend.montecarlo.geometry import Placement
 
-__all__ = ["Cascade", "GOSMedium", "Sink", "gos_medium", "track_gos"]
+__all__ = ["Cascade", "Clock", "GOSMedium", "Sink", "gos_medium", "track_gos"]
 
 #: Above this energy, keV, an electron's cross-sections are brought up to date
 #: only after it loses energy.
@@ -93,15 +100,59 @@ _SHELL_COLUMNS = 20
 #: within a few.
 _MAX_GENERATIONS = 64
 
+#: ``XFEL.c``, ``m`` and ``h``: m/s, kg and J s.
+_SPEED_OF_LIGHT = 299792458.0
+_ELECTRON_MASS = 9.10938356e-31
+_PLANCK = 6.62607004e-34
+
+
+@dataclass(frozen=True)
+class Clock:
+    """The XFEL subprogram's time, in fs.
+
+    Attributes
+    ----------
+    last : float
+        ``lastTime``: the pulse's length, rounded to whole fs, and the time
+        light takes to cross the crystal. An electron whose step ends later
+        is dropped, with the energy it had; a vacancy that would relax later
+        is left as it is.
+    """
+
+    last: float
+
+    @staticmethod
+    def flight(energy: np.ndarray, distance: np.ndarray) -> np.ndarray:
+        """``getTimeToDistance``: fs for ``distance`` nm at ``energy`` keV."""
+        rest = _ELECTRON_MASS * _SPEED_OF_LIGHT**2
+        beta_squared = 1 - ((rest / (energy * KEV_TO_JOULES + rest)) ** 2)
+        speed = np.sqrt(beta_squared * _SPEED_OF_LIGHT**2) * 1e9 / 1e15  # nm/fs
+        return np.asarray((1 / speed) * distance)
+
+    @staticmethod
+    def lifetime(linewidth_ev: np.ndarray) -> np.ndarray:
+        """A transition's lifetime from its natural linewidth: hbar over it, fs."""
+        return np.asarray(
+            1e15 * ((_PLANCK / (2 * math.pi)) / ((linewidth_ev / 1000) * KEV_TO_JOULES))
+        )
+
 
 class Sink(Protocol):
-    """Where electrons leave their energy and ionisations."""
+    """Where electrons leave their energy and ionisations.
+
+    Each deposit and ionisation comes with its time, fs: 0 but in the XFEL
+    subprogram.
+    """
 
     def dose(self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray) -> None:
         """``doseSimple``: the Monte Carlo's own dose, keV."""
 
     def resolved(
-        self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray
+        self,
+        points: np.ndarray,
+        owner: np.ndarray,
+        energy: np.ndarray,
+        time: np.ndarray,
     ) -> None:
         """``voxelEnergyvResolved``: GOS mode's dose, keV."""
 
@@ -111,6 +162,7 @@ class Sink(Protocol):
         owner: np.ndarray,
         element: np.ndarray,
         count: np.ndarray,
+        time: np.ndarray,
     ) -> None:
         """``addIonisation``: ``count`` ions of ``element`` at each point.
 
@@ -244,6 +296,7 @@ class _Born:
     directions: list[np.ndarray] = field(default_factory=list)
     energies: list[np.ndarray] = field(default_factory=list)
     owners: list[np.ndarray] = field(default_factory=list)
+    times: list[np.ndarray] = field(default_factory=list)
 
     def add(
         self,
@@ -251,12 +304,14 @@ class _Born:
         directions: np.ndarray,
         energies: np.ndarray,
         owners: np.ndarray,
+        times: np.ndarray,
     ) -> None:
         if len(energies):
             self.points.append(points)
             self.directions.append(directions)
             self.energies.append(energies)
             self.owners.append(owners)
+            self.times.append(times)
 
 
 class Cascade:
@@ -270,14 +325,26 @@ class Cascade:
     and one vacancy. Any other vacancy leaves its binding energy, to GOS
     mode's dose and to the Monte Carlo's. So a cascade counts its energy more
     than once (``UPSTREAM_FIXES.md``); reproduced.
+
+    With a :class:`Clock`, as the XFEL subprogram relaxes a vacancy
+    (``XFEL.produceAugerElectron``, ``sendOutAuger`` and ``sendOutFl``): only
+    before ``lastTime``; a fluorescence photon carries its energy away, so
+    the binding energy less it is left; and the electron, the ionisation and
+    the vacancies a transition leaves come the transition's lifetime later,
+    and only if that is still before ``lastTime``.
     """
 
     def __init__(
-        self, rng: np.random.Generator, crystal: GOSMedium, sink: Sink
+        self,
+        rng: np.random.Generator,
+        crystal: GOSMedium,
+        sink: Sink,
+        clock: Clock | None = None,
     ) -> None:
         self.rng = rng
         self.crystal = crystal
         self.sink = sink
+        self.clock = clock
         self.yields = np.zeros((len(crystal.z), _SHELL_COLUMNS))
         for row, z in enumerate(crystal.z):
             self.yields[row, :9] = shells(int(z)).fluorescence_yield
@@ -296,6 +363,20 @@ class Cascade:
             index[chosen] = np.maximum(hit, 0)
         return index
 
+    def _lifetimes(
+        self, table: dict, z: np.ndarray, shell: np.ndarray, index: np.ndarray
+    ) -> np.ndarray:
+        """Each transition's lifetime, fs; 0 without a clock."""
+        if self.clock is None:
+            return np.zeros(len(z))
+        linewidth = np.array(
+            [
+                table[(int(zz), int(ss))].linewidth_ev[i]
+                for zz, ss, i in zip(z, shell, index, strict=True)
+            ]
+        ).reshape(-1)
+        return self.clock.lifetime(linewidth)
+
     def relax(
         self,
         points: np.ndarray,
@@ -303,10 +384,25 @@ class Cascade:
         element: np.ndarray,
         shell: np.ndarray,
         born: _Born,
+        time: np.ndarray | None = None,
     ) -> None:
-        """Relax each vacancy, and every one it leaves, to the end."""
+        """Relax each vacancy, and every one it leaves, to the end.
+
+        ``time`` is when each vacancy was made, fs.
+        """
         crystal = self.crystal
+        if time is None:
+            time = np.zeros(len(element))
         for _ in range(_MAX_GENERATIONS):
+            if self.clock is not None:
+                on_time = np.flatnonzero(time < self.clock.last)
+                points, owner, element, shell, time = (
+                    points[on_time],
+                    owner[on_time],
+                    element[on_time],
+                    shell[on_time],
+                    time[on_time],
+                )
             if not len(element):
                 return
             shell = np.minimum(shell, _SHELL_COLUMNS - 1)
@@ -315,7 +411,7 @@ class Cascade:
             relaxing = _relaxes(z, shell)
             if (~relaxing).any():
                 rest = np.flatnonzero(~relaxing)
-                self.sink.resolved(points[rest], owner[rest], binding[rest])
+                self.sink.resolved(points[rest], owner[rest], binding[rest], time[rest])
                 self.sink.dose(points[rest], owner[rest], binding[rest])
             chosen = np.flatnonzero(relaxing)
             fluoresces = ~(
@@ -345,18 +441,31 @@ class Cascade:
                 ],
                 dtype=np.int64,
             ).reshape(-1)
-            self.sink.resolved(points[auger], owner[auger], binding[auger] - energy)
+            self.sink.resolved(
+                points[auger], owner[auger], binding[auger] - energy, time[auger]
+            )
+            later_a = time[auger] + self._lifetimes(
+                self.auger, z[auger], shell[auger], index
+            )
+            directions = isotropic_directions(self.rng, len(auger))
+            emitted = (
+                np.flatnonzero(later_a < self.clock.last)
+                if self.clock is not None
+                else np.arange(len(auger))
+            )
             self.sink.ionise(
-                points[auger],
-                owner[auger],
-                element[auger],
-                np.ones(len(auger), dtype=np.int64),
+                points[auger[emitted]],
+                owner[auger[emitted]],
+                element[auger[emitted]],
+                np.ones(len(emitted), dtype=np.int64),
+                later_a[emitted],
             )
             born.add(
-                points[auger],
-                isotropic_directions(self.rng, len(auger)),
-                energy,
-                owner[auger],
+                points[auger[emitted]],
+                directions[emitted],
+                energy[emitted],
+                owner[auger[emitted]],
+                later_a[emitted],
             )
 
             light = chosen[fluoresces]
@@ -368,7 +477,18 @@ class Cascade:
                 ],
                 dtype=np.int64,
             ).reshape(-1)
-            self.sink.resolved(points[light], owner[light], binding[light])
+            left = binding[light]
+            if self.clock is not None:
+                left = left - np.array(
+                    [
+                        self.fluorescence[(int(zz), int(ss))].energy_kev[i]
+                        for zz, ss, i in zip(z[light], shell[light], index, strict=True)
+                    ]
+                ).reshape(-1)
+            self.sink.resolved(points[light], owner[light], left, time[light])
+            later_f = time[light] + self._lifetimes(
+                self.fluorescence, z[light], shell[light], index
+            )
 
             # The vacancies left: the Auger electron's and the one filled
             # from, then the fluorescence's, each relaxed in turn.
@@ -376,6 +496,7 @@ class Cascade:
             owner = np.concatenate([owner[auger], owner[auger], owner[light]])
             element = np.concatenate([element[auger], element[auger], element[light]])
             shell = np.concatenate([exits, drops_a, drops_f])
+            time = np.concatenate([later_a, later_a, later_f])
 
 
 @dataclass
@@ -399,6 +520,7 @@ class _Electrons:
     p_inelastic: np.ndarray  # Pinel
     inner_energy: np.ndarray  # where ionisationProbs was last computed
     inner_current: np.ndarray  # innerShellLamda: the last inner-shell update
+    time: np.ndarray  # timeStamp, fs
 
     @classmethod
     def blank(cls, n: int) -> _Electrons:
@@ -432,6 +554,7 @@ class _Electrons:
         primary: bool,
         outside: np.ndarray,
         box: np.ndarray,
+        times: np.ndarray,
     ) -> _Electrons:
         """These electrons, and new ones, fresh, to be set up."""
         new = _Electrons.blank(len(energies))
@@ -444,6 +567,7 @@ class _Electrons:
         new.outside = np.asarray(outside, dtype=bool)
         new.owner = np.asarray(owners, dtype=np.int64)
         new.box = np.asarray(box, dtype=np.int64)
+        new.time = np.asarray(times, dtype=float)
         return _Electrons(
             **{
                 name: np.concatenate([getattr(self, name), getattr(new, name)])
@@ -468,6 +592,7 @@ class _Context:
     placement: Placement  # by owner
     sink: Sink
     cascade: Cascade
+    clock: Clock | None
 
     def crystal_has(self, points: np.ndarray, owner: np.ndarray) -> np.ndarray:
         return inside(self.mesh, points, self.placement.take(owner))
@@ -559,7 +684,7 @@ def _low_energy_ions(
     if not len(chosen):
         return
     element = _choose_element(ctx, e, chosen)[0]
-    ctx.sink.ionise(points, e.owner[chosen], element, count)
+    ctx.sink.ionise(points, e.owner[chosen], element, count, e.time[chosen])
 
 
 def _choose_element(
@@ -657,12 +782,14 @@ def _inelastic(
 
     secondary = loss - uk / 1000
     freed = np.flatnonzero(secondary > 0)
+    time = e.time[chosen]
     if len(freed):
         ctx.sink.ionise(
             points[freed],
             owner[freed],
             element[freed],
             np.ones(len(freed), dtype=np.int64),
+            time[freed],
         )
         followed = freed[secondary[freed] > STOPPED_KEV]
         if len(followed):
@@ -677,14 +804,15 @@ def _inelastic(
                 new_directions(e.direction[chosen[followed]], angle, phi),
                 secondary[followed],
                 owner[followed],
+                time[followed],
             )
         slow = freed[secondary[freed] <= STOPPED_KEV]
         if len(slow):
-            ctx.sink.resolved(points[slow], owner[slow], secondary[slow])
+            ctx.sink.resolved(points[slow], owner[slow], secondary[slow], time[slow])
             _low_energy_ions(ctx, e, chosen[slow], secondary[slow], points[slow])
         # The vacancy relaxes, wherever it is.
         ctx.cascade.relax(
-            points[freed], owner[freed], element[freed], shell[freed], born
+            points[freed], owner[freed], element[freed], shell[freed], born, time[freed]
         )
 
     phi = 2 * math.pi * rng.random(n)
@@ -727,14 +855,19 @@ def _setup(ctx: _Context, e: _Electrons, fresh: np.ndarray) -> np.ndarray:
             ctx.medium(True).elastic_free_path(e.energy[in_surrounding]),
         )
 
-    # Freed with under 0.05 keV: left where it was, if that is in the crystal.
+    # Freed with under 0.05 keV: left where it was, if that is in the crystal
+    # (and, in the XFEL subprogram, before lastTime).
     low = fresh[e.start[fresh] < STOPPED_KEV]
     if len(low):
         ended[low] = True
         there = low[ctx.crystal_has(e.position[low], e.owner[low])]
+        if ctx.clock is not None:
+            there = there[e.time[there] < ctx.clock.last]
         primary = there[e.primary[there]]
         ctx.sink.dose(e.position[primary], e.owner[primary], e.start[primary])
-        ctx.sink.resolved(e.position[primary], e.owner[primary], e.start[primary])
+        ctx.sink.resolved(
+            e.position[primary], e.owner[primary], e.start[primary], e.time[primary]
+        )
         crystal_side = there[~e.outside[there]]
         points = e.position[crystal_side].copy()
         points[:, :2] = e.target[crystal_side, :2]
@@ -758,6 +891,8 @@ def track_gos(
     in_surrounding: np.ndarray,
     box: np.ndarray,
     vacancies: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
+    start_time: np.ndarray | None = None,
+    clock: Clock | None = None,
 ) -> int:
     """Follow every electron, and every one they free, to its end.
 
@@ -783,21 +918,34 @@ def track_gos(
     vacancies : tuple, optional
         Vacancies to relax first: points, owners, elements, shells -- the
         photoelectric absorptions' in the crystal.
+    start_time : numpy.ndarray, optional
+        By owner: when its photon was absorbed, fs, and so when its first
+        electrons and vacancies begin. 0 if not given.
+    clock : Clock, optional
+        The XFEL subprogram's: follow the electrons in time, and stop at
+        ``lastTime``. It has no surrounding.
 
     Returns
     -------
     int
         How many passes it took.
     """
-    cascade = Cascade(rng, crystal, sink)
-    ctx = _Context(rng, crystal, surrounding, mesh, boxes, placement, sink, cascade)
-    e = _Electrons.blank(0).extend(
-        position, direction, energy, owner, False, in_surrounding, box
+    if clock is not None and surrounding is not None:
+        raise ValueError("the XFEL subprogram's surrounding is not this one")
+    cascade = Cascade(rng, crystal, sink, clock)
+    ctx = _Context(
+        rng, crystal, surrounding, mesh, boxes, placement, sink, cascade, clock
     )
+    if start_time is None:
+        start_time = np.zeros(int(np.max(owner, initial=-1)) + 1)
+    e = _Electrons.blank(0).extend(
+        position, direction, energy, owner, False, in_surrounding, box,
+        start_time[owner],
+    )  # fmt: skip
     e.primary[:] = np.asarray(primary, dtype=bool)
     born = _Born()
     if vacancies is not None:
-        cascade.relax(*vacancies, born)
+        cascade.relax(*vacancies, born, start_time[vacancies[1]])
     e = _join(e, born, crystal)
 
     passes = 0
@@ -826,7 +974,7 @@ def track_gos(
 
         a = np.flatnonzero(in_crystal)
         if len(a):
-            _in_crystal(ctx, e, a, born)
+            ended |= _in_crystal(ctx, e, a, born)
 
         leaving = np.flatnonzero(live & ~in_crystal & ~e.outside)
         if len(leaving):
@@ -847,7 +995,9 @@ def track_gos(
                 e.owner[primary_there],
                 e.energy[primary_there],
             )
-            sink.resolved(e.position[there], e.owner[there], e.energy[there])
+            sink.resolved(
+                e.position[there], e.owner[there], e.energy[there], e.time[there]
+            )
             # Its ionisations' exposure is judged where its next step would
             # have ended, as the Java passes it.
             points = e.position[there].copy()
@@ -871,12 +1021,23 @@ def _join(e: _Electrons, born: _Born, crystal: GOSMedium) -> _Electrons:
         False,
         np.zeros(len(energies), dtype=bool),
         np.zeros(len(energies), dtype=np.int64),
+        np.concatenate(born.times),
     )
 
 
-def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> None:
-    """A step that ends in the crystal: deposit, collide, update, step on."""
+def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> np.ndarray:
+    """A step that ends in the crystal: deposit, collide, update, step on.
+
+    With a clock, the step first takes its flight time, and one that ends
+    after ``lastTime`` ends the electron there. Returns which have ended.
+    """
     crystal = ctx.crystal
+    ended = np.zeros(len(e), dtype=bool)
+    if ctx.clock is not None:
+        e.time[a] += ctx.clock.flight(e.energy[a], e.step[a])
+        late = e.time[a] > ctx.clock.last
+        ended[a[late]] = True
+        a = a[~late]
     energy = e.energy[a]
     primary = a[e.primary[a]]
     ctx.sink.dose(
@@ -914,6 +1075,7 @@ def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> Non
     _draw_step(
         ctx, e, going, crystal.elastic_free_path(np.maximum(e.energy[going], 1e-9))
     )
+    return ended
 
 
 def _leave(ctx: _Context, e: _Electrons, leaving: np.ndarray) -> np.ndarray:

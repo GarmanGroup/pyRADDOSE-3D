@@ -47,7 +47,7 @@ _UNPORTED = pytest.mark.xfail(
     reason="being ported: ROADMAP.md, Milestone 7",
 )
 #: The subprograms the port runs.
-_PORTED = ("montecarlo", "gos")
+_PORTED = ("montecarlo", "gos", "xfel")
 PORT_PARAMS = [
     pytest.param(
         case_dir,

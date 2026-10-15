@@ -59,10 +59,14 @@ The whole MX calculation is ported, photoelectron and fluorescence escape
 included: escape is Monte Carlo, and the port draws its random numbers in
 the Java's order, so given RADDOSE-3D's seed it gives RADDOSE-3D's answer.
 So is the MicroED engine (`Subprogram EMED`), RADDOSE-3D's dose to a thin
-crystal in an electron beam. Not ported: the Monte Carlo and XFEL
-subprograms, whose input is read but not yet run, and `AbsCoefCalc
-RDV2`/`RDV3`, which run the original Fortran RADDOSE as an external program.
-Asking for any of them is an error, not a silently different answer.
+crystal in an electron beam, and its Monte Carlo and XFEL subprograms
+(`Subprogram MonteCarlo`, `GOS` and `XFEL`), which follow every electron;
+those are random, and agree with RADDOSE-3D statistically. Not ported:
+`AbsCoefCalc RDV2`/`RDV3`, which run the original Fortran RADDOSE as an
+external program, and three XFEL inputs RADDOSE-3D runs inconsistently -- a
+surrounding, and a rotation or offset, which it applies to the voxels but
+not the crystal. Asking for any of them is an error, not a silently
+different answer.
 
 ## Licence
 

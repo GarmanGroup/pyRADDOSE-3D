@@ -135,6 +135,11 @@ class SimpleSetup:
         ``Subprogram GOS``: electrons in the GOS model, with secondaries and
         full relaxation (:mod:`.gos_transport`), rather than by stopping
         power alone.
+    xfel : bool
+        ``Subprogram XFEL``: the GOS model, followed in time through one
+        pulse (:mod:`.xfel`).
+    pulse_energy : float
+        The XFEL pulse's energy, mJ.
     """
 
     mesh: Mesh
@@ -157,6 +162,8 @@ class SimpleSetup:
     energies: np.ndarray | None = None
     surrounding: Surrounding | None = None
     gos: bool = False
+    xfel: bool = False
+    pulse_energy: float = 0.0
 
 
 @dataclass
@@ -190,6 +197,11 @@ class SimpleRun:
         prints as its exposed region's dose.
     gos : bool
         Whether the run was in the GOS model.
+    xfel : bool
+        Whether it was the XFEL subprogram's.
+    printed_ions_per_atom : float
+        The XFEL subprogram's printed ionisations per atom in the exposed
+        region: as ``ions_per_atom``, but unrounded.
     ions_per_element : dict[int, float]
         ``outputIonsPerAtom.CSV``: ionisations per atom in the exposed
         region, for each element ionised, by atomic number.
@@ -212,6 +224,8 @@ class SimpleRun:
     dwd: float = 0.0
     resolved_no_cut_exposed: float = 0.0
     gos: bool = False
+    xfel: bool = False
+    printed_ions_per_atom: float = 0.0
     ions_per_element: dict[int, float] = field(default_factory=dict)
     diagnostics: dict[str, float] = field(default_factory=dict)
 
@@ -305,7 +319,11 @@ class _GOSSink:
             np.add.at(self.tallies.dose, self._flat(points, owner), energy)
 
     def resolved(
-        self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray
+        self,
+        points: np.ndarray,
+        owner: np.ndarray,
+        energy: np.ndarray,
+        time: np.ndarray,
     ) -> None:
         """``voxelEnergyvResolved``."""
         if len(owner):
@@ -317,6 +335,7 @@ class _GOSSink:
         owner: np.ndarray,
         element: np.ndarray,
         count: np.ndarray,
+        time: np.ndarray,
     ) -> None:
         """``addIonisation``: an element of -1 counts in the total alone."""
         if not len(owner):
@@ -465,7 +484,9 @@ def _photoabsorb(
         shell[chosen] = ionised_shells(shell_cdf(z, energy[chosen]), u[chosen])
         known = chosen[shell[chosen] != OUTER_SHELL]
         binding[known] = shells(z).binding[shell[known]]
-    direction = photoelectron_directions(rng, shell == 0, setup.rotated_polarisation)
+    direction = photoelectron_directions(
+        rng, shell == 0, setup.rotated_polarisation, always_polarised=setup.xfel
+    )
     return _Absorbed(
         owner, points, direction, energy - binding, element, shell, binding
     )
