@@ -105,9 +105,12 @@ def elastic_cross_sections(
     rows = []
     for atom in material.atoms:
         z = float(atom.z)
-        formula = ((1.4e-6 * math.pow(z, 1.5)) / beta_squared) * (
-            1 - (0.26 * z) / (137 * np.power(beta_squared, 0.5))
-        )
+        # Infinite for an electron at rest: an Auger electron of an empty
+        # transition slot, which stops before it takes a step, as in the Java.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            formula = ((1.4e-6 * math.pow(z, 1.5)) / beta_squared) * (
+                1 - (0.26 * z) / (137 * np.power(beta_squared, 0.5))
+            )
         table = atom.elastic
         tabulated = _elsepa_at(table.energies, table.cross_sections, energy)
         rows.append(np.where(in_range & (tabulated > 0.0), tabulated, formula))

@@ -101,13 +101,20 @@ class BeamShape:
         return math.pi * (x / 2) * (y / 2) if self.circular else x * y
 
     def exposes(self, x_nm: np.ndarray, y_nm: np.ndarray) -> np.ndarray:
-        """``testIfInsideExposedArea``: points within the aperture."""
+        """``testIfInsideExposedArea``: points within the aperture.
+
+        A point is outside only if a comparison says so, as in the Java: so an
+        undefined one, where an electron's last step was drawn from a
+        negative mean free path, is inside.
+        """
         half_x, half_y = self.collimation[0] / 2, self.collimation[1] / 2
         if self.circular:
-            return (np.power(x_nm / 1000, 2) / math.pow(half_x, 2)) + (
-                np.power(y_nm / 1000, 2) / math.pow(half_y, 2)
-            ) <= 1
-        return (np.abs(x_nm / 1000) <= half_x) & (np.abs(y_nm / 1000) <= half_y)
+            return ~(
+                (np.power(x_nm / 1000, 2) / math.pow(half_x, 2))
+                + (np.power(y_nm / 1000, 2) / math.pow(half_y, 2))
+                > 1
+            )
+        return ~(np.abs(x_nm / 1000) > half_x) & ~(np.abs(y_nm / 1000) > half_y)
 
 
 def beam_positions(

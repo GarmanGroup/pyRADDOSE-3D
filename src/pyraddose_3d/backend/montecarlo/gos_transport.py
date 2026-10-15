@@ -631,12 +631,17 @@ def _draw_step(
 ) -> None:
     """Draw ``s``, the chance of an inelastic collision, and the step's end.
 
-    From the electron's current mean free paths.
+    From the electron's current mean free paths. An electron at rest, whose
+    mean free paths are infinite, or one whose direction is undefined, gets
+    an undefined step, as in the Java; it stops or leaves before taking it.
     """
     total = _total_free_path(elastic, e.inelastic_free_path[chosen])
-    e.step[chosen] = -total * np.log(ctx.rng.random(len(chosen)))
-    e.p_inelastic[chosen] = 1 - total / elastic
-    e.target[chosen] = e.position[chosen] + e.step[chosen, None] * e.direction[chosen]
+    with np.errstate(invalid="ignore"):
+        e.step[chosen] = -total * np.log(ctx.rng.random(len(chosen)))
+        e.p_inelastic[chosen] = 1 - total / elastic
+        e.target[chosen] = (
+            e.position[chosen] + e.step[chosen, None] * e.direction[chosen]
+        )
 
 
 def _crystal_state(
