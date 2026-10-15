@@ -417,25 +417,20 @@ def about_axis(
 
 
 def photoelectron_directions(
-    rng: np.random.Generator,
-    k_shell: np.ndarray,
-    rotated_polarisation: bool,
-    always_polarised: bool = False,
+    rng: np.random.Generator, k_shell: np.ndarray, rotated_polarisation: bool
 ) -> np.ndarray:
     """``producePhotoElectron``'s direction for each photoelectron, ``(N, 3)``.
 
-    From the K shell, three times in four, at an angle to the polarisation
-    drawn from the dipole distribution, uniformly around it; otherwise
-    uniformly over the sphere. The polarisation is the beam's, and does not
-    turn with the crystal. ``rotated_polarisation`` is whether the goniometer
-    and the polarisation are at right angles: the polarisation is along x if
-    so, along y if not. As RADDOSE-3D has it since #47.
-
-    ``always_polarised``: every K-shell photoelectron, as the XFEL
-    subprogram has it (its draw is against 0, not 0.25).
+    From the K shell, at an angle to the polarisation drawn from the dipole
+    distribution, uniformly around it; otherwise uniformly over the sphere.
+    The polarisation is the beam's, and does not turn with the crystal.
+    ``rotated_polarisation`` is whether the goniometer and the polarisation
+    are at right angles: the polarisation is along x if so, along y if not.
+    As RADDOSE-3D has it since #47, and every K-shell photoelectron since
+    #58: three in four did, but in XFEL.
     """
     n = len(k_shell)
-    polarised = (rng.random(n) > (0.0 if always_polarised else 0.25)) & k_shell
+    polarised = np.asarray(k_shell, dtype=bool)
     direction = np.empty((n, 3))
     m = int(polarised.sum())
     if m:

@@ -629,9 +629,7 @@ def _photoabsorb(
         shell[chosen] = ionised_shells(shell_cdf(z, energy[chosen]), u[chosen])
         known = chosen[shell[chosen] != OUTER_SHELL]
         binding[known] = shells(z).binding[shell[known]]
-    direction = photoelectron_directions(
-        rng, shell == 0, setup.rotated_polarisation, always_polarised=setup.xfel
-    )
+    direction = photoelectron_directions(rng, shell == 0, setup.rotated_polarisation)
     return _Absorbed(
         owner, points, direction, energy - binding, element, shell, binding
     )

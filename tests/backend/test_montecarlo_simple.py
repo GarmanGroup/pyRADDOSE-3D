@@ -163,8 +163,8 @@ def test_polarised_directions_are_uniform_around_the_axis() -> None:
 def test_photoelectron_angles_follow_the_dipole_distribution() -> None:
     """``cos^2`` per solid angle: the cosine's square averages 3/5.
 
-    Three in four K-shell photoelectrons follow it, the rest are isotropic:
-    along the polarisation, ``0.75 * 3/5 + 0.25 / 3``.
+    Every K-shell photoelectron follows it, as since RADDOSE-3D #58; three
+    in four did, the rest isotropic.
     """
     assert photons._EMISSION[-1] == pytest.approx(1.0, abs=1e-12)
     rng = np.random.default_rng(7)
@@ -173,7 +173,7 @@ def test_photoelectron_angles_follow_the_dipole_distribution() -> None:
     k_shell = np.ones(200_000, dtype=bool)
     for rotated, axis in ((True, 0), (False, 1)):
         d = photons.photoelectron_directions(rng, k_shell, rotated)
-        assert np.mean(d[:, axis] ** 2) == pytest.approx(0.45 + 0.25 / 3, abs=0.005)
+        assert np.mean(d[:, axis] ** 2) == pytest.approx(0.6, abs=0.005)
 
 
 def test_compton_angles_follow_klein_and_nishina() -> None:
