@@ -202,9 +202,9 @@ class PdbComposition(RD3DModel):
     Attributes
     ----------
     pdb : str
-        Either a path ending in ``.pdb``, read locally, or a four-character
-        PDB code, which the reference implementation downloads from RCSB.
-        Prefer a local path: a downloading test is not reproducible.
+        A path to a PDB or mmCIF file, or a four-character PDB code, such as
+        ``3I40``, which is downloaded from RCSB, as RADDOSE-3D downloads it.
+        A local path is reproducible; an entry can be revised.
     """
 
     method: Literal["pdb"] = "pdb"

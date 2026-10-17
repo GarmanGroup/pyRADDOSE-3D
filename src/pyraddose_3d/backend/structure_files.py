@@ -26,6 +26,11 @@ Where results differ from RADDOSE-3D
 - **The whole file is read.** RADDOSE-3D stopped at the first line too short
   for its fixed columns. Well-formed files are padded to 80 columns.
 - **mmCIF is read as well as PDB format.** RADDOSE-3D reads PDB format only.
+- **Only a four-character code is downloaded.** RADDOSE-3D reads a name ending
+  in ``.pdb`` as a file and downloads anything else from RCSB, as
+  ``https://files.rcsb.org/view/<CODE>.pdb``; here a PDB code, such as
+  ``3I40``, is downloaded from the same address, once per process, and any
+  other name is read as a path, so that a local mmCIF file works too.
 - **CIF items are found wherever CIF allows them**: a formula in double
   quotes, on the line after its tag, or in a text field, and a tag in any
   case. RADDOSE-3D found ``_chemical_formula_sum`` only in single quotes on
@@ -35,8 +40,12 @@ Where results differ from RADDOSE-3D
 
 from __future__ import annotations
 
+import functools
 import math
+import re
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import gemmi
@@ -55,9 +64,8 @@ from pyraddose_3d.backend.residues import ResidueType, residue_database
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
-__all__ = ["composition_from_cif", "composition_from_pdb"]
+__all__ = ["composition_from_cif", "composition_from_pdb", "is_pdb_code"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
@@ -199,8 +207,8 @@ def composition_from_pdb(
 ) -> Composition:
     """Read a unit cell composition from a PDB or mmCIF file.
 
-    Ports ``CoefCalcFromPDB``, minus its ability to download an entry from
-    RCSB by four-letter code. Five things are read:
+    Ports ``CoefCalcFromPDB``: a four-character PDB code is downloaded from
+    RCSB, as RADDOSE-3D downloads it. Five things are read:
 
     the unit cell
         Its dimensions give the volume.
@@ -225,7 +233,8 @@ def composition_from_pdb(
     Parameters
     ----------
     path : str | Path
-        Path to a PDB or mmCIF file.
+        Path to a PDB or mmCIF file, or a four-character PDB code, such as
+        ``3I40``, to download from RCSB.
     solvent_concentrations : Mapping[str, Array], optional
         Heavy-atom concentrations in the solvent, in millimolar, keyed by
         element symbol. Displaces water, as in
@@ -241,13 +250,16 @@ def composition_from_pdb(
     ValueError
         If the file has no crystal unit cell, since without a cell volume
         there is nothing to divide by, or a space group Gemmi does not
-        recognise.
+        recognise; or if a code cannot be downloaded.
 
     Notes
     -----
     The module docstring lists where this differs from RADDOSE-3D.
     """
-    structure = gemmi.read_structure(str(path), format=gemmi.CoorFormat.Detect)
+    if is_pdb_code(path):
+        structure = _read_downloaded(str(path))
+    else:
+        structure = gemmi.read_structure(str(path), format=gemmi.CoorFormat.Detect)
     records = _structure_records(structure, path)
 
     monomers = records.monomers
@@ -267,6 +279,49 @@ def composition_from_pdb(
     return _assemble(
         records.cell_volume, scaled, solvent_fraction, solvent_concentrations
     )
+
+
+#: A PDB entry's code: a digit and three letters or digits, as RCSB issues them.
+_PDB_CODE = re.compile(r"[0-9][A-Za-z0-9]{3}")
+#: Where RADDOSE-3D downloads an entry from: ``CoefCalcFromPDB.getPDBURL``.
+_RCSB_URL = "https://files.rcsb.org/view/{}.pdb"
+
+
+def is_pdb_code(name: str | Path) -> bool:
+    """Whether ``name`` is a PDB code to download rather than a path to read."""
+    return isinstance(name, str) and _PDB_CODE.fullmatch(name) is not None
+
+
+@functools.cache
+def _download_pdb(code: str) -> str:
+    """An entry's PDB-format file from RCSB, downloaded once per process."""
+    import urllib.error
+    import urllib.request
+
+    url = _RCSB_URL.format(code.upper())
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            return str(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as error:
+        raise ValueError(
+            f"RCSB has no PDB-format file for {code.upper()} ({url}: HTTP "
+            f"{error.code}). Large entries come only as mmCIF: download it, and "
+            f"give the path to the .cif file instead"
+        ) from error
+    except urllib.error.URLError as error:
+        raise ValueError(
+            f"could not download PDB entry {code.upper()} from {url} "
+            f"({error.reason}); give the path to a local copy instead"
+        ) from error
+
+
+def _read_downloaded(code: str) -> gemmi.Structure:
+    """Read a downloaded entry exactly as a local file of it is read."""
+    text = _download_pdb(code.upper())
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / f"{code.upper()}.pdb"
+        path.write_text(text, encoding="utf-8")
+        return gemmi.read_structure(str(path), format=gemmi.CoorFormat.Detect)
 
 
 _CIF_FORMULA_KEY = "_chemical_formula_sum"

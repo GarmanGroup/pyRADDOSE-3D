@@ -8,11 +8,16 @@ codebases.
 """
 
 import csv
+import io
 import pathlib
+import urllib.error
+import urllib.request
 from collections import defaultdict
+from collections.abc import Iterator
 
 import pytest
 
+from pyraddose_3d.backend import structure_files
 from pyraddose_3d.backend.coefficients import density, material_coefficients
 from pyraddose_3d.backend.composition import Composition
 from pyraddose_3d.backend.structure_files import (
@@ -477,3 +482,75 @@ def test_a_file_that_is_not_cif_is_refused(tmp_path: pathlib.Path) -> None:
     cif.write_text("_chemical_formula_sum 'C H4 N2 O'\n", encoding="ascii")
     with pytest.raises(ValueError, match="data_"):
         composition_from_cif(cif)
+
+
+# --- PDB entries by code ------------------------------------------------------
+
+
+def _same(a: Composition, b: Composition) -> bool:
+    assert a.solvent_fraction is not None and b.solvent_fraction is not None
+    return (
+        [e.atomic_number for e in a.elements] == [e.atomic_number for e in b.elements]
+        and list(map(float, a.counts)) == list(map(float, b.counts))
+        and float(a.cell_volume) == float(b.cell_volume)
+        and float(a.solvent_fraction) == float(b.solvent_fraction)
+    )
+
+
+@pytest.fixture
+def rcsb(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """RCSB, serving the local 3I40.pdb for any entry; records each request."""
+    requests: list[str] = []
+
+    def urlopen(url: str, timeout: float) -> io.BytesIO:
+        requests.append(url)
+        return io.BytesIO((DATA / "3I40.pdb").read_bytes())
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    structure_files._download_pdb.cache_clear()
+    yield requests
+    structure_files._download_pdb.cache_clear()
+
+
+def test_a_pdb_code_is_downloaded_as_raddose_3d_downloads_it(rcsb: list[str]) -> None:
+    """From RCSB's address for the upper-cased code, once per process, and
+    read exactly as a local copy is."""
+    downloaded = composition_from_pdb("3i40")
+    assert rcsb == ["https://files.rcsb.org/view/3I40.pdb"]
+    assert _same(downloaded, composition_from_pdb(DATA / "3I40.pdb"))
+    composition_from_pdb("3I40")
+    assert len(rcsb) == 1
+
+
+def test_only_a_pdb_code_is_downloaded() -> None:
+    assert structure_files.is_pdb_code("3I40")
+    assert structure_files.is_pdb_code("1a34")
+    for name in ("3I40.pdb", "ABCD", "3I40X", str(DATA / "3I40.pdb"), "3I40.cif"):
+        assert not structure_files.is_pdb_code(name), name
+    assert not structure_files.is_pdb_code(pathlib.Path("3I40"))
+
+
+def test_a_failed_download_says_what_to_do(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(url: str, timeout: float) -> io.BytesIO:
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)  # type: ignore[arg-type]
+
+    def offline(url: str, timeout: float) -> io.BytesIO:
+        raise urllib.error.URLError("no network")
+
+    structure_files._download_pdb.cache_clear()
+    monkeypatch.setattr(urllib.request, "urlopen", missing)
+    with pytest.raises(ValueError, match=r"no PDB-format file for 9ZZZ.*mmCIF"):
+        composition_from_pdb("9zzz")
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    with pytest.raises(ValueError, match="could not download PDB entry 9ZZZ"):
+        composition_from_pdb("9zzz")
+
+
+@pytest.mark.network
+def test_a_pdb_entry_downloads_from_rcsb() -> None:
+    """The real download, deselected by default: an entry can be revised, so
+    only its cell is compared with the local copy."""
+    structure_files._download_pdb.cache_clear()
+    downloaded = composition_from_pdb("3I40")
+    local = composition_from_pdb(DATA / "3I40.pdb")
+    assert float(downloaded.cell_volume) == pytest.approx(float(local.cell_volume))
