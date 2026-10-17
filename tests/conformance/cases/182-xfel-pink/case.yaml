@@ -2,21 +2,21 @@ case_id: 182-xfel-pink
 tier: B
 exercises: 'XFEL: a pink beam in a 5 fs pulse, its softest photons first'
 seed: 20260917
-reference_version: 5.0.1104
-reference_commit: c1566d2
+reference_version: 5.0.1105
+reference_commit: 29347d6
 gated:
   outputXFEL.CSV/XFEL-ADWC:
-    mean: 0.0665691
-    cv: 0.0406
+    mean: 0.0650745
+    cv: 0.0425
   outputXFEL.CSV/XFEL-ADER:
-    mean: 0.0665691
-    cv: 0.0406
+    mean: 0.0650745
+    cv: 0.0425
   outputXFEL.CSV/RD3D-ADWC:
-    mean: 0.641381
-    cv: 0.0268
+    mean: 0.642435
+    cv: 0.0262
   outputXFEL.CSV/Diffraction efficiency:
-    mean: 1350090000.0
-    cv: 0.135
+    mean: 1397840000.0
+    cv: 0.142
   outputXFEL.CSV/ions per atom:
-    mean: 0.00016225
-    cv: 0.0406
+    mean: 0.0001586
+    cv: 0.0426

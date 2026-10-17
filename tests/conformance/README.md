@@ -83,7 +83,7 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   mostly fail once one half is shifted by the claimed detectable bias.
   `test_tier_b_statistics.py` checks the false-alarm rate and the power by
   simulation.
-- **Cost.** The port takes about an hour over the 27 Monte Carlo, GOS and
+- **Cost.** The port takes about an hour over the 28 Monte Carlo, GOS and
   XFEL cases, so those comparisons are marked `slow`, and run with
   `uv run pytest -m slow tests/conformance/test_montecarlo_files.py`. Every
   case also runs briefly in the default suite, which checks that the port
@@ -95,8 +95,9 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   sums at each of the thousand points of a cross-section integral; before
   it, a GOS run of case 161 took nine hours on a loaded machine. The Monte
   Carlo, GOS and XFEL cases are generated from the top of RADDOSE-3D #54 to
-  #60, a stack of open PRs: from #59 at `c1566d2`, and the seven that #60
-  changes or adds from #60 at `cff0a59`.
+  #62, a stack of open PRs: from #59 at `c1566d2`; the seven that #60
+  changes or adds from #60 at `cff0a59`; 182 from #61 at `29347d6`; and 187
+  from #62 at `e0529dc`.
 
 The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows
@@ -115,13 +116,14 @@ which photoelectrons and their secondaries escape; 162, 148's surrounding,
 where electrons are followed without the GOS model; and 163, selenium above
 its K edge, whose vacancies relax through its L and M shells; and 164, 1 M
 iodide, whose electrons the model had bound by iodine's K edge. XFEL has
-seven, which test its clock: 180, a 30 fs pulse; 181, a 1 fs pulse, in
+eight, which test its clock: 180, a 30 fs pulse; 181, a 1 fs pulse, in
 0.01 fs bins, before whose cutoff only a quarter of the dose arrives; 182, a
-pink beam, its softest photons first; 183, 163's selenium in a 10 fs
+pink beam, its photons' energies in no order through the pulse; 183, 163's selenium in a 10 fs
 pulse, whose fluorescence carries its energy away; 184, 162's salt
 surrounding; 185, 151's crystal still at 60 degrees and offset 1 um, which
-RADDOSE-3D's own XFEL left at 0; and 186, a 0.4 fs pulse, which had no
-length when it was rounded to whole femtoseconds.
+RADDOSE-3D's own XFEL left at 0; 186, a 0.4 fs pulse, which had no
+length when it was rounded to whole femtoseconds; and 187, a Gaussian pulse
+of 2 fs FWHM, its photons within two FWHMs about its peak.
 
 ## Regenerating
 

@@ -45,6 +45,8 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#58](https://github.com/GarmanGroup/RADDOSE-3D/pull/58) | `jd_xfel_leftovers`, onto #57 | *XFEL*: the pulse as long as given, lifetimes drawn, the elastic photons simulated | open |
 | [#59](https://github.com/GarmanGroup/RADDOSE-3D/pull/59) | `jd_mc_polarisation`, onto #58 | *Monte Carlo*: every K-shell photoelectron follows the polarisation | open |
 | [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60) | `jd_gos_heavy_atoms`, onto #59 | *GOS and MicroED*: heavy atoms' subshells; binding energies from xenon on | open |
+| [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) | `jd_xfel_unchirped`, onto #60 | *XFEL*: a pink pulse's photons come in no order of energy | open |
+| [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) | `jd_xfel_gaussian_pulse`, onto #61 | *XFEL*: a Gaussian pulse, as an option | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -60,10 +62,12 @@ Java nine hours on a loaded machine. #52, stacked on it, fixes the GOS and XFEL 
 were merged on 2026-10-15.
 
 #54 to #60 fix the rest of what porting GOS and XFEL found, and are open as a stack on `master`
-at `18b213c` for the group's sign-off. The corpus's 27 Monte Carlo, GOS and XFEL cases follow its
-top: the 20 that #60 leaves unchanged are generated from #59 (`c1566d2`), and the seven it changes
-or adds, with MicroED's cases 121 and 134, from #60 (`cff0a59`). A crystal with no element from
-arsenic on gives byte-identical files on the two.
+at `18b213c` for the group's sign-off. #61 and #62, on them, change XFEL's pulse. The corpus's 28
+Monte Carlo, GOS and XFEL cases follow the stack's top: the 19 that neither #60 nor #61 changes
+are generated from #59 (`c1566d2`); the seven #60 changes or adds, with MicroED's cases 121 and
+134, from #60 (`cff0a59`); 182, a pink pulse, from #61 (`29347d6`); and 187, a Gaussian pulse,
+from #62 (`e0529dc`). A crystal with no element from arsenic on gives byte-identical files on #59
+and #60, and a top-hat pulse on #60, #61 and #62, a monochromatic one also across #61.
 
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
@@ -791,6 +795,20 @@ for: largest |t| 2.9, on an ungated DWD column, against thresholds of about 5.
 | #60 | From bromine on, every electron was GOS valence, bound by the K edge: below it no collision, and the Sternheimer factor dragged down for the whole crystal (1 M iodide: 1.65 to 1.2). As and Se had Z + 2 electrons. Xe and heavier but Gd had no L1 or M1 binding energy: a platinum L1 photoelectron stopped any Monte Carlo run with a `NullPointerException`. Br to Hf and six heavier elements had zero M2–M5 edges | `getNumValenceElectronsSubshells`; `MuCalcConstants.txt` | K to M5 inner, the rest valence, bound by the occupancy-weighted geometric mean of Carlson's binding energies past M5 (a new column); occupancies 4 and 6 for M4 and M5; the blanks from the X-ray Data Booklet | MicroED, 1 M iodide (case 134): inelastic mean free path 198.4 to 252.7 nm, optimum 1020 kV and 135 nm to 970 kV and 160 nm; selenium (121) +0.24%. GOS, 164, 1 M iodide: +2.0% ± 0.8%, ionisations −4.5% ± 0.7%. 154, platinum, runs. MX byte-identical with every element these touch |
 
 No defect found porting GOS and XFEL is left open.
+
+### XFEL's pulse: [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) and [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62)
+
+Asked for on 17 October 2026, and stacked on #60.
+
+| PR | change | where | effect |
+|---|---|---|---|
+| #61 | A pink beam's energies are sampled in ascending order, and photon *i* took energy *i*; in XFEL a photon's place in the run is its time in the pulse, so the softest came first, a chirp no input asked for. Now each XFEL run's are shuffled; the Monte Carlo keeps the order, which ties energy to the rotation instead | `MC.photonEnergies`, `MC.shuffle` | 182, a pink 5 fs pulse: XFEL dose −2.2% ± 1.3%, within noise. Monochromatic pulses byte-identical |
+| #62 | The pulse was a top-hat in time. `PulseShape Gaussian` makes it Gaussian: `ExposureTime` its FWHM, every photon within `PulseWindow` FWHMs about its peak (2 by default), at the Gaussian's quantiles in order, at their bins' starts | `MC.setUpPulse`, `MC.slotTime`, `SubprogramInputs.pulseWindow`, the grammar | a 2 fs FWHM Gaussian against a 2 fs top-hat of the same energy: XFEL dose +24.0% ± 2.5%, diffraction efficiency −18.7% ± 5.8%, absorbed energy the same. New case 187. Top-hat pulses byte-identical |
+
+A loop over time rather than over photons was discussed and left: the current physics has no
+event affect another, so it would give the same results, no faster. It becomes worth it with
+physics in which the sample's state during the pulse feeds back, such as ionised atoms absorbing
+less.
 
 Refuted: **the stopping power does not turn negative above 50 eV**. The Joy–Luo correction is
 applied twice, which keeps it positive.

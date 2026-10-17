@@ -280,7 +280,9 @@ first:
    Monte Carlo's code, XFEL's pulse, lifetimes and elastic count, the polarisation, and heavy
    atoms' subshells. The largest effects: a selenium crystal's GOS dose falls 37% (#54), and
    1 M iodide lengthens MicroED's inelastic mean free path by 27% (#60). Nothing found porting
-   them is left open.)
+   them is left open. On them, [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) sends
+   a pink XFEL pulse's photons in no order of energy, and
+   [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) adds a Gaussian pulse.)
 
 No gradients: a randomly drawn track has none, as with escape.
 
@@ -338,14 +340,15 @@ and #43 to #49, the Monte Carlo and XFEL's, on 2026-10-14 (`UPSTREAM_FIXES.md` h
 measurements). #41 adds MicroED's beam requirements and output files to the user guide. #51,
 which makes the GOS model twelve times faster, and #52, which stops GOS and XFEL losing every
 electron that collides with phosphorus's or selenium's valence electrons, were merged on
-2026-10-15. The corpus follows `master` at `85a6813`, but for its 27 Monte Carlo, GOS and XFEL
-cases and MicroED's 121 and 134, which follow the top of #54 to #60, open as a stack: #59
-(`c1566d2`) for the 20 that #60 leaves unchanged, #60 (`cff0a59`) for the rest.
+2026-10-15. The corpus follows `master` at `85a6813`, but for its 28 Monte Carlo, GOS and XFEL
+cases and MicroED's 121 and 134, which follow the top of #54 to #62, open as a stack: #59
+(`c1566d2`) for the 19 that the rest leave unchanged, #60 (`cff0a59`), #61 (`29347d6`) and #62
+(`e0529dc`) for the cases each changes or adds.
 
 **Still open in the Java**, each with the milestone that takes it up:
 
-- GOS and XFEL's physics defects, fixed by #54 to #60, open for the group's sign-off
-  (Milestone 7).
+- GOS and XFEL's physics defects, fixed by #54 to #60, and XFEL's pulse, #61 and #62, open for
+  the group's sign-off (Milestone 7).
 - A third `Dimensions` value making a cylinder a cuboid, and lexer errors not being refused
   (Milestone 6).
 - Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's

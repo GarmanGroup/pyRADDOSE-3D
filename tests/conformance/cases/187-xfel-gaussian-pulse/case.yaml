@@ -1,0 +1,23 @@
+case_id: 187-xfel-gaussian-pulse
+tier: B
+exercises: 'XFEL: a Gaussian pulse of 2 fs FWHM, its photons within the default window
+  of two FWHMs about its peak; case 181''s pulse energy'
+seed: 20260917
+reference_version: 5.0.1106
+reference_commit: e0529dc
+gated:
+  outputXFEL.CSV/XFEL-ADWC:
+    mean: 0.587141
+    cv: 0.0293
+  outputXFEL.CSV/XFEL-ADER:
+    mean: 0.587141
+    cv: 0.0293
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 6.39248
+    cv: 0.0276
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 1570360000.0
+    cv: 0.113
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00143135
+    cv: 0.0297

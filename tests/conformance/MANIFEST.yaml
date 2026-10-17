@@ -1,8 +1,8 @@
-reference_version: 5.0.1105
-reference_commit: cff0a59
+reference_version: 5.0.1106
+reference_commit: e0529dc
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
-case_count: 101
+case_count: 102
 tolerances:
   tier_A_relative: 0.0001
   tier_A_quantised_quantities_relative: 0.005
@@ -64,7 +64,7 @@ array_tolerance_rationale: 'Set by the same rule as the summary tolerances: the 
 tier_b:
   family_alpha: 0.001
   power: 0.8
-  comparisons: 135
+  comparisons: 140
   gated:
     montecarlo:
     - outputMC.CSV/MC-ADWC
@@ -86,101 +86,101 @@ tier_b:
     - outputXFEL.CSV/ions per atom
   detectable_bias:
     140-montecarlo-baseline:
-      outputMC.CSV/MC-ADWC: 0.0535
-      outputMC.CSV/MC-ADER: 0.0535
-      outputMC.CSV/RD3D-ADWC: 0.0519
-      outputMC.CSV/numEl: 0.202
-      outputXFEL.CSV/ions per atom: 0.0483
+      outputMC.CSV/MC-ADWC: 0.0536
+      outputMC.CSV/MC-ADER: 0.0536
+      outputMC.CSV/RD3D-ADWC: 0.052
+      outputMC.CSV/numEl: 0.203
+      outputXFEL.CSV/ions per atom: 0.0484
     141-montecarlo-escape:
-      outputMC.CSV/MC-ADWC: 0.0458
-      outputMC.CSV/MC-ADER: 0.0458
+      outputMC.CSV/MC-ADWC: 0.0459
+      outputMC.CSV/MC-ADER: 0.0459
       outputMC.CSV/RD3D-ADWC: 0.0386
       outputMC.CSV/numEl: 0.159
-      outputXFEL.CSV/ions per atom: 0.0382
+      outputXFEL.CSV/ions per atom: 0.0383
     142-montecarlo-selenium-25-kev:
-      outputMC.CSV/MC-ADWC: 0.0712
-      outputMC.CSV/MC-ADER: 0.0712
-      outputMC.CSV/RD3D-ADWC: 0.0502
-      outputMC.CSV/numEl: 0.29
-      outputXFEL.CSV/ions per atom: 0.0514
+      outputMC.CSV/MC-ADWC: 0.0714
+      outputMC.CSV/MC-ADER: 0.0714
+      outputMC.CSV/RD3D-ADWC: 0.0503
+      outputMC.CSV/numEl: 0.291
+      outputXFEL.CSV/ions per atom: 0.0515
     143-montecarlo-iodine-sodium:
-      outputMC.CSV/MC-ADWC: 0.0399
-      outputMC.CSV/MC-ADER: 0.0399
-      outputMC.CSV/RD3D-ADWC: 0.0361
+      outputMC.CSV/MC-ADWC: 0.04
+      outputMC.CSV/MC-ADER: 0.04
+      outputMC.CSV/RD3D-ADWC: 0.0362
       outputMC.CSV/numEl: 0.137
-      outputXFEL.CSV/ions per atom: 0.0361
+      outputXFEL.CSV/ions per atom: 0.0362
     144-montecarlo-circular-tophat:
-      outputMC.CSV/MC-ADWC: 0.0485
-      outputMC.CSV/MC-ADER: 0.0494
-      outputMC.CSV/RD3D-ADWC: 0.0426
+      outputMC.CSV/MC-ADWC: 0.0486
+      outputMC.CSV/MC-ADER: 0.0495
+      outputMC.CSV/RD3D-ADWC: 0.0427
       outputMC.CSV/numEl: 0.195
       outputXFEL.CSV/ions per atom: 0.043
     145-montecarlo-rotation:
-      outputMC.CSV/MC-ADWC: 0.0729
-      outputMC.CSV/MC-ADER: 0.0729
-      outputMC.CSV/RD3D-ADWC: 0.0544
+      outputMC.CSV/MC-ADWC: 0.0731
+      outputMC.CSV/MC-ADER: 0.0731
+      outputMC.CSV/RD3D-ADWC: 0.0545
       outputMC.CSV/numEl: 0.302
-      outputXFEL.CSV/ions per atom: 0.0521
+      outputXFEL.CSV/ions per atom: 0.0522
     146-montecarlo-cylinder:
-      outputMC.CSV/MC-ADWC: 0.0458
-      outputMC.CSV/MC-ADER: 0.0458
-      outputMC.CSV/RD3D-ADWC: 0.0336
+      outputMC.CSV/MC-ADWC: 0.0459
+      outputMC.CSV/MC-ADER: 0.0459
+      outputMC.CSV/RD3D-ADWC: 0.0337
       outputMC.CSV/numEl: 0.19
       outputXFEL.CSV/ions per atom: 0.0365
     147-montecarlo-pink:
-      outputMC.CSV/MC-ADWC: 0.0441
-      outputMC.CSV/MC-ADER: 0.0441
-      outputMC.CSV/RD3D-ADWC: 0.0338
+      outputMC.CSV/MC-ADWC: 0.0442
+      outputMC.CSV/MC-ADER: 0.0442
+      outputMC.CSV/RD3D-ADWC: 0.0339
       outputMC.CSV/numEl: 0.216
-      outputXFEL.CSV/ions per atom: 0.0338
+      outputXFEL.CSV/ions per atom: 0.0339
     148-montecarlo-surrounding:
-      outputMC.CSV/MC-ADWC: 0.0552
-      outputMC.CSV/MC-ADER: 0.0552
-      outputMC.CSV/RD3D-ADWC: 0.0664
-      outputMC.CSV/numEl: 0.256
-      outputXFEL.CSV/ions per atom: 0.0739
-    149-montecarlo-polarisation:
-      outputMC.CSV/MC-ADWC: 0.0519
-      outputMC.CSV/MC-ADER: 0.0519
-      outputMC.CSV/RD3D-ADWC: 0.0431
-      outputMC.CSV/numEl: 0.166
-      outputXFEL.CSV/ions per atom: 0.0441
-    150-montecarlo-rotation-back:
-      outputMC.CSV/MC-ADWC: 0.0666
-      outputMC.CSV/MC-ADER: 0.0666
+      outputMC.CSV/MC-ADWC: 0.0553
+      outputMC.CSV/MC-ADER: 0.0553
       outputMC.CSV/RD3D-ADWC: 0.0666
-      outputMC.CSV/numEl: 0.269
-      outputXFEL.CSV/ions per atom: 0.0657
+      outputMC.CSV/numEl: 0.256
+      outputXFEL.CSV/ions per atom: 0.074
+    149-montecarlo-polarisation:
+      outputMC.CSV/MC-ADWC: 0.052
+      outputMC.CSV/MC-ADER: 0.052
+      outputMC.CSV/RD3D-ADWC: 0.0432
+      outputMC.CSV/numEl: 0.167
+      outputXFEL.CSV/ions per atom: 0.0442
+    150-montecarlo-rotation-back:
+      outputMC.CSV/MC-ADWC: 0.0668
+      outputMC.CSV/MC-ADER: 0.0668
+      outputMC.CSV/RD3D-ADWC: 0.0668
+      outputMC.CSV/numEl: 0.27
+      outputXFEL.CSV/ions per atom: 0.0658
     151-montecarlo-still-at-60:
-      outputMC.CSV/MC-ADWC: 0.0494
-      outputMC.CSV/MC-ADER: 0.0561
+      outputMC.CSV/MC-ADWC: 0.0495
+      outputMC.CSV/MC-ADER: 0.0562
       outputMC.CSV/RD3D-ADWC: 0.0407
-      outputMC.CSV/numEl: 0.149
+      outputMC.CSV/numEl: 0.15
       outputXFEL.CSV/ions per atom: 0.0407
     152-montecarlo-cylinder-surrounding:
-      outputMC.CSV/MC-ADWC: 0.0752
-      outputMC.CSV/MC-ADER: 0.0752
-      outputMC.CSV/RD3D-ADWC: 0.081
-      outputMC.CSV/numEl: 0.359
-      outputXFEL.CSV/ions per atom: 0.0817
+      outputMC.CSV/MC-ADWC: 0.0754
+      outputMC.CSV/MC-ADER: 0.0754
+      outputMC.CSV/RD3D-ADWC: 0.0811
+      outputMC.CSV/numEl: 0.36
+      outputXFEL.CSV/ions per atom: 0.0819
     153-montecarlo-pink-surrounding:
-      outputMC.CSV/MC-ADWC: 0.063
-      outputMC.CSV/MC-ADER: 0.063
-      outputMC.CSV/RD3D-ADWC: 0.0695
+      outputMC.CSV/MC-ADWC: 0.0631
+      outputMC.CSV/MC-ADER: 0.0631
+      outputMC.CSV/RD3D-ADWC: 0.0696
       outputMC.CSV/numEl: 0.3
-      outputXFEL.CSV/ions per atom: 0.0729
+      outputXFEL.CSV/ions per atom: 0.0731
     154-montecarlo-platinum:
-      outputMC.CSV/MC-ADWC: 0.059
-      outputMC.CSV/MC-ADER: 0.059
-      outputMC.CSV/RD3D-ADWC: 0.0554
+      outputMC.CSV/MC-ADWC: 0.0591
+      outputMC.CSV/MC-ADER: 0.0591
+      outputMC.CSV/RD3D-ADWC: 0.0555
       outputMC.CSV/numEl: 0.233
-      outputXFEL.CSV/ions per atom: 0.0548
+      outputXFEL.CSV/ions per atom: 0.0549
     160-gos-baseline:
-      outputXFEL.CSV/vResolvedNoCut: 0.206
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.206
+      outputXFEL.CSV/vResolvedNoCut: 0.207
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.207
       outputXFEL.CSV/RD3D-ADWC: 0.158
-      outputXFEL.CSV/Diffraction efficiency: 0.624
-      outputXFEL.CSV/ions per atom: 0.208
+      outputXFEL.CSV/Diffraction efficiency: 0.626
+      outputXFEL.CSV/ions per atom: 0.209
     161-gos-escape:
       outputXFEL.CSV/vResolvedNoCut: 0.0386
       stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0386
@@ -188,65 +188,71 @@ tier_b:
       outputXFEL.CSV/Diffraction efficiency: 0.188
       outputXFEL.CSV/ions per atom: 0.0388
     162-gos-surrounding:
-      outputXFEL.CSV/vResolvedNoCut: 0.0758
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0758
-      outputXFEL.CSV/RD3D-ADWC: 0.0831
-      outputXFEL.CSV/Diffraction efficiency: 0.284
-      outputXFEL.CSV/ions per atom: 0.0754
+      outputXFEL.CSV/vResolvedNoCut: 0.0759
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0759
+      outputXFEL.CSV/RD3D-ADWC: 0.0832
+      outputXFEL.CSV/Diffraction efficiency: 0.285
+      outputXFEL.CSV/ions per atom: 0.0756
     163-gos-selenium:
-      outputXFEL.CSV/vResolvedNoCut: 0.0475
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0475
-      outputXFEL.CSV/RD3D-ADWC: 0.0372
+      outputXFEL.CSV/vResolvedNoCut: 0.0476
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0476
+      outputXFEL.CSV/RD3D-ADWC: 0.0373
       outputXFEL.CSV/Diffraction efficiency: 0.279
-      outputXFEL.CSV/ions per atom: 0.0473
+      outputXFEL.CSV/ions per atom: 0.0474
     164-gos-iodine:
-      outputXFEL.CSV/vResolvedNoCut: 0.0439
-      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.0439
-      outputXFEL.CSV/RD3D-ADWC: 0.0382
-      outputXFEL.CSV/Diffraction efficiency: 0.167
-      outputXFEL.CSV/ions per atom: 0.0443
+      outputXFEL.CSV/vResolvedNoCut: 0.044
+      stdout/RADDOSE-GOS average dose exposed region (ADER): 0.044
+      outputXFEL.CSV/RD3D-ADWC: 0.0383
+      outputXFEL.CSV/Diffraction efficiency: 0.168
+      outputXFEL.CSV/ions per atom: 0.0444
     180-xfel-baseline:
       outputXFEL.CSV/XFEL-ADWC: 0.18
       outputXFEL.CSV/XFEL-ADER: 0.18
       outputXFEL.CSV/RD3D-ADWC: 0.16
-      outputXFEL.CSV/Diffraction efficiency: 0.886
+      outputXFEL.CSV/Diffraction efficiency: 0.888
       outputXFEL.CSV/ions per atom: 0.181
     181-xfel-one-femtosecond:
-      outputXFEL.CSV/XFEL-ADWC: 0.0523
-      outputXFEL.CSV/XFEL-ADER: 0.0523
-      outputXFEL.CSV/RD3D-ADWC: 0.0326
-      outputXFEL.CSV/Diffraction efficiency: 0.159
-      outputXFEL.CSV/ions per atom: 0.0512
+      outputXFEL.CSV/XFEL-ADWC: 0.0524
+      outputXFEL.CSV/XFEL-ADER: 0.0524
+      outputXFEL.CSV/RD3D-ADWC: 0.0327
+      outputXFEL.CSV/Diffraction efficiency: 0.16
+      outputXFEL.CSV/ions per atom: 0.0513
     182-xfel-pink:
-      outputXFEL.CSV/XFEL-ADWC: 0.0775
-      outputXFEL.CSV/XFEL-ADER: 0.0775
-      outputXFEL.CSV/RD3D-ADWC: 0.0512
-      outputXFEL.CSV/Diffraction efficiency: 0.258
-      outputXFEL.CSV/ions per atom: 0.0775
+      outputXFEL.CSV/XFEL-ADWC: 0.0813
+      outputXFEL.CSV/XFEL-ADER: 0.0813
+      outputXFEL.CSV/RD3D-ADWC: 0.0501
+      outputXFEL.CSV/Diffraction efficiency: 0.272
+      outputXFEL.CSV/ions per atom: 0.0815
     183-xfel-selenium:
-      outputXFEL.CSV/XFEL-ADWC: 0.046
-      outputXFEL.CSV/XFEL-ADER: 0.046
+      outputXFEL.CSV/XFEL-ADWC: 0.0461
+      outputXFEL.CSV/XFEL-ADER: 0.0461
       outputXFEL.CSV/RD3D-ADWC: 0.0407
       outputXFEL.CSV/Diffraction efficiency: 0.256
-      outputXFEL.CSV/ions per atom: 0.0458
+      outputXFEL.CSV/ions per atom: 0.0459
     184-xfel-surrounding:
       outputXFEL.CSV/XFEL-ADWC: 0.141
       outputXFEL.CSV/XFEL-ADER: 0.141
-      outputXFEL.CSV/RD3D-ADWC: 0.109
-      outputXFEL.CSV/Diffraction efficiency: 0.462
-      outputXFEL.CSV/ions per atom: 0.141
+      outputXFEL.CSV/RD3D-ADWC: 0.11
+      outputXFEL.CSV/Diffraction efficiency: 0.463
+      outputXFEL.CSV/ions per atom: 0.142
     185-xfel-rotated-still:
-      outputXFEL.CSV/XFEL-ADWC: 0.0798
-      outputXFEL.CSV/XFEL-ADER: 0.0869
-      outputXFEL.CSV/RD3D-ADWC: 0.0726
+      outputXFEL.CSV/XFEL-ADWC: 0.08
+      outputXFEL.CSV/XFEL-ADER: 0.087
+      outputXFEL.CSV/RD3D-ADWC: 0.0727
       outputXFEL.CSV/Diffraction efficiency: 0.342
-      outputXFEL.CSV/ions per atom: 0.08
+      outputXFEL.CSV/ions per atom: 0.0802
     186-xfel-sub-femtosecond:
-      outputXFEL.CSV/XFEL-ADWC: 0.0575
-      outputXFEL.CSV/XFEL-ADER: 0.0575
-      outputXFEL.CSV/RD3D-ADWC: 0.0431
+      outputXFEL.CSV/XFEL-ADWC: 0.0576
+      outputXFEL.CSV/XFEL-ADER: 0.0576
+      outputXFEL.CSV/RD3D-ADWC: 0.0432
       outputXFEL.CSV/Diffraction efficiency: 0.214
-      outputXFEL.CSV/ions per atom: 0.0565
+      outputXFEL.CSV/ions per atom: 0.0566
+    187-xfel-gaussian-pulse:
+      outputXFEL.CSV/XFEL-ADWC: 0.056
+      outputXFEL.CSV/XFEL-ADER: 0.056
+      outputXFEL.CSV/RD3D-ADWC: 0.0528
+      outputXFEL.CSV/Diffraction efficiency: 0.216
+      outputXFEL.CSV/ions per atom: 0.0568
 tier_b_rationale: 'The Monte Carlo and XFEL subprograms follow each electron with
   random numbers whose order depends on its history, so the port is compared with
   them statistically. Each case is run with Runs K on each side, and the means of
