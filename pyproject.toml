@@ -7,6 +7,11 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 source = "vcs"
 
+# The version is written into the package when it is built, so importing it
+# does not ask importlib.metadata, which took 55 ms, about 40% of the import.
+[tool.hatch.build.hooks.vcs]
+version-file = "src/pyraddose_3d/_version.py"
+
 # read more about configuring hatch at:
 # https://hatch.pypa.io/latest/config/build/
 [tool.hatch.build.targets.wheel]
@@ -17,7 +22,7 @@ sources = ["src"]
 [project]
 name = "pyRADDOSE-3D"
 dynamic = ["version"]
-description = "pyTorch port of RADDOSE-3D"
+description = "A Python port of RADDOSE-3D, differentiable with PyTorch where installed"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
@@ -46,8 +51,7 @@ dependencies = [
     "numpy",
     "pydantic",
     "pyyaml",
-    "scipy",  # erf only -- the one array-API divergence on the MX path
-    "types-PyYAML",
+    "scipy",  # erf, erfinv and the normal quantile; CCP4 ships it already
 ]
 
 # https://peps.python.org/pep-0621/#dependencies-optional-dependencies
@@ -88,6 +92,7 @@ dev = [
     { include-group = "test" },
     "ipython",
     "mypy",
+    "types-PyYAML",  # stubs, for mypy
     "pdbpp",  # https://github.com/pdbpp/pdbpp
     "pre-commit-uv",
     "rich",  # https://github.com/Textualize/rich
@@ -168,10 +173,11 @@ skip-magic-trailing-comma = false  # default is false
 # https://docs.pytest.org/
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = ["--color=yes", "-m", "not slow"]
+addopts = ["--color=yes", "-m", "not slow and not network"]
 testpaths = ["tests"]
 markers = [
     "slow: long-running test, deselected by default (run with -m slow)",
+    "network: downloads from the internet, deselected by default (run with -m network)",
     "conformance: compares against reference output from the Java implementation",
 ]
 # Warnings are errors. Add narrowly-scoped, commented exceptions here rather

@@ -1,10 +1,9 @@
-"""A differentiable PyTorch port of RADDOSE-3D."""
-
-from importlib.metadata import PackageNotFoundError, version
+"""A Python port of RADDOSE-3D, differentiable with PyTorch where installed."""
 
 try:
-    __version__ = version("pyRADDOSE-3D")
-except PackageNotFoundError:
+    # Written by hatch-vcs when the package is built or installed.
+    from pyraddose_3d._version import __version__
+except ImportError:  # a source tree that was never installed
     __version__ = "uninstalled"
 __author__ = "Josh Dickerson"
 __email__ = "jdickerson@berkeley.edu"
