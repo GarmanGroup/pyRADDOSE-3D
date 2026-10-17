@@ -1,10 +1,10 @@
 # pyRADDOSE-3D
 
-[![License](https://img.shields.io/pypi/l/pyRADDOSE-3D.svg?color=green)](https://github.com/jdickerson95/pyRADDOSE-3D/raw/main/LICENSE)
+[![License](https://img.shields.io/pypi/l/pyRADDOSE-3D.svg?color=green)](https://github.com/GarmanGroup/pyRADDOSE-3D/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/pyRADDOSE-3D.svg?color=green)](https://pypi.org/project/pyRADDOSE-3D)
 [![Python Version](https://img.shields.io/pypi/pyversions/pyRADDOSE-3D.svg?color=green)](https://python.org)
-[![CI](https://github.com/jdickerson95/pyRADDOSE-3D/actions/workflows/ci.yml/badge.svg)](https://github.com/jdickerson95/pyRADDOSE-3D/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/jdickerson95/pyRADDOSE-3D/branch/main/graph/badge.svg)](https://codecov.io/gh/jdickerson95/pyRADDOSE-3D)
+[![CI](https://github.com/GarmanGroup/pyRADDOSE-3D/actions/workflows/ci.yml/badge.svg)](https://github.com/GarmanGroup/pyRADDOSE-3D/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/GarmanGroup/pyRADDOSE-3D/branch/main/graph/badge.svg)](https://codecov.io/gh/GarmanGroup/pyRADDOSE-3D)
 
 A Python port of [RADDOSE-3D](https://github.com/GarmanGroup/RADDOSE-3D), which
 models radiation dose in macromolecular crystallography.
@@ -38,6 +38,29 @@ write_outputs(simulation)  # output-Summary.txt, output-DoseState.csv, ...
 
 The notebooks in [`docs/examples`](docs/examples) walk through crystals and
 beams, composition, decay models, gradients and choosing a beam energy.
+
+## Installing
+
+pyRADDOSE-3D is not on PyPI yet. Install it from GitHub:
+
+```sh
+pip install "pyRADDOSE-3D @ git+https://github.com/GarmanGroup/pyRADDOSE-3D"
+```
+
+Add `[torch]` after the name for gradients. The Monte Carlo, GOS and XFEL
+subprograms also read ELSEPA's electron angular tables, which come in two data
+packages in the same repository: up to 20 keV, 2.3 MB, and above it, 23 MB,
+needed only for beams above about 20 keV. Install them from their
+subdirectories:
+
+```sh
+pip install \
+  "pyraddose-3d-elsepa-low @ git+https://github.com/GarmanGroup/pyRADDOSE-3D#subdirectory=packages/elsepa-low" \
+  "pyraddose-3d-elsepa-high @ git+https://github.com/GarmanGroup/pyRADDOSE-3D#subdirectory=packages/elsepa-high"
+```
+
+Once the three packages are on PyPI, `pip install "pyRADDOSE-3D[montecarlo]"`
+will install all of it.
 
 ## Optimising a strategy
 
@@ -112,22 +135,18 @@ The easiest way to get started is to use the [github cli](https://cli.github.com
 and [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
-gh repo fork jdickerson95/pyRADDOSE-3D --clone
+gh repo fork GarmanGroup/pyRADDOSE-3D --clone
 # or just
-# gh repo clone jdickerson95/pyRADDOSE-3D
+# gh repo clone GarmanGroup/pyRADDOSE-3D
 cd pyRADDOSE-3D
 uv sync
 ```
 
 The Monte Carlo and XFEL subprograms read ELSEPA's electron angular tables,
-which come in two data packages beside the core, in `packages/`: the `montecarlo`
-extra installs them. The tables above 20 keV, 23 MB compressed, are not
-committed, and the tests that need them fail until they are built from a
-RADDOSE-3D checkout:
-
-```sh
-uv run python tests/backend/data/build_elsepa_packages.py ~/git/RADDOSE-3D high
-```
+which come in two data packages beside the core, in `packages/`, both committed:
+`uv sync` installs them. `tests/backend/data/build_elsepa_packages.py` rebuilds
+them from a RADDOSE-3D checkout, and the tests check them against each
+package's `MANIFEST.tsv`.
 
 Run tests:
 

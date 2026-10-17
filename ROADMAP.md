@@ -123,15 +123,16 @@ Every addition still to come has a cost in weight, so the rules are set before t
 | Downloading PDB entries by code, as the Java can | nothing | `gemmi.fetch` and the standard library. |
 | A command-line program, if CCP4 wants one | nothing | `argparse`. |
 | MicroED, done | 0.37 MB of data | `fullelsepa.csv`, 0.12 MB if gzipped. No dependency. |
-| Monte Carlo and XFEL, done | 2.3 MB of data in an optional package; 23 MB more for hard X-rays | See below. |
+| Monte Carlo and XFEL, done | 2.3 MB of data in an optional package; 23 MB more, in another, for hard X-rays | See below. |
 
 **Monte Carlo and XFEL were what could make the port heavy**, in two ways. Neither did:
 
 - **Data.** Both read ELSEPA's angular cross-sections, one table per element:
   `constants/below_20000/` for electrons under 20 keV and `constants/above_20000/` above it
   (95 MB), plus small Auger and fluorescence line tables, which are in the core. The two sets are
-  optional data packages: `packages/elsepa-low`, 2.3 MB, committed, and `packages/elsepa-high`,
-  23 MB with xz, built locally from a RADDOSE-3D checkout until publication settles how it ships.
+  optional data packages, both committed: `packages/elsepa-low`, 2.3 MB, and
+  `packages/elsepa-high`, 23 MB with xz. They are not on PyPI yet, so a pip install from GitHub
+  names their subdirectories (README, *Installing*).
   Photoelectrons from an X-ray beam under 20 keV never need the large set.
 - **Speed.** The port follows every electron of every run at once, and is compared with the Java
   statistically rather than draw for draw. On the simple Monte Carlo it is about ten times as
@@ -237,7 +238,8 @@ first:
      and written, and running one is refused until it is ported);
    - the Auger, fluorescence and overvoltage tables, about 160 KB, in the core (done);
    - ELSEPA's angular tables as optional data packages (done: `packages/elsepa-low`, 2.3 MB,
-     committed; `packages/elsepa-high`, 23 MB, built locally from a RADDOSE-3D checkout);
+     committed; `packages/elsepa-high`, 23 MB, built locally from a RADDOSE-3D checkout, and
+     committed on 2026-10-17 so that an install from the repository has it);
    - tier-B (statistical) conformance, calibrated: Java against Java and the port against
      itself must pass, and mutations of the claimed detectable size must fail. (Done: 22
      cases, 20 runs each, five quantities each compared by Welch's t, 110 comparisons sharing a

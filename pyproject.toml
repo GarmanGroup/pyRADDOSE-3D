@@ -63,8 +63,8 @@ torch = ["torch"]
 montecarlo = ["pyraddose-3d-elsepa-low", "pyraddose-3d-elsepa-high"]
 
 [project.urls]
-homepage = "https://github.com/jdickerson95/pyRADDOSE-3D"
-repository = "https://github.com/jdickerson95/pyRADDOSE-3D"
+homepage = "https://github.com/GarmanGroup/pyRADDOSE-3D"
+repository = "https://github.com/GarmanGroup/pyRADDOSE-3D"
 
 # Entry points
 # https://peps.python.org/pep-0621/#entry-points

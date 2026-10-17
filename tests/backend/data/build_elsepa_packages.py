@@ -8,8 +8,8 @@ are 100 MB, too much for pyRADDOSE-3D's core, so each directory becomes a
 package of its own, installed with the ``montecarlo`` extra:
 
 - ``packages/elsepa-low``, ``pyraddose-3d-elsepa-low``, 2.2 MB, committed;
-- ``packages/elsepa-high``, ``pyraddose-3d-elsepa-high``, 23 MB, built
-  locally and git-ignored until publication settles how it ships.
+- ``packages/elsepa-high``, ``pyraddose-3d-elsepa-high``, 23 MB, committed
+  too: anyone installing from the repository needs it.
 
 Each ``{Z}.csv`` is xz-compressed unchanged, so its SHA-256 can be checked
 against RADDOSE-3D's file. ``MANIFEST.tsv`` records the hashes, and is

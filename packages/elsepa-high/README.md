@@ -4,7 +4,7 @@ ELSEPA's differential cross-sections for the elastic scattering of electrons fro
 
 The tables are RADDOSE-3D's `constants/above_20000/{Z}.csv` (https://github.com/GarmanGroup/RADDOSE-3D), each compressed with xz and otherwise unchanged. They are computed with ELSEPA (F. Salvat, A. Jablonski and C. J. Powell, *Comput. Phys. Commun.* 165, 157–190 (2005)).
 
-At 23 MB compressed the tables are not committed. Build them from a RADDOSE-3D checkout:
+The tables are committed, 23 MB compressed. To rebuild them from a RADDOSE-3D checkout:
 
     python tests/backend/data/build_elsepa_packages.py ~/git/RADDOSE-3D high
 
