@@ -3,21 +3,21 @@ tier: B
 exercises: 'Monte Carlo: case 145''s crystal offset 0.5 um and turned back from 90
   degrees to 0'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 118.124
-    cv: 0.0338
+    mean: 119.699
+    cv: 0.0349
   outputMC.CSV/MC-ADER:
-    mean: 118.124
-    cv: 0.0338
+    mean: 119.699
+    cv: 0.0349
   outputMC.CSV/RD3D-ADWC:
-    mean: 183.042
-    cv: 0.0309
+    mean: 185.078
+    cv: 0.0349
   outputMC.CSV/numEl:
-    mean: 1324170000.0
-    cv: 0.125
+    mean: 1314170000.0
+    cv: 0.141
   outputXFEL.CSV/ions per atom:
-    mean: 0.00108085
-    cv: 0.0322
+    mean: 0.0010919
+    cv: 0.0344

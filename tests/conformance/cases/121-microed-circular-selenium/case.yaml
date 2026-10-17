@@ -3,4 +3,4 @@ tier: A
 exercises: 'MicroED: circular beam inside the crystal, 200 keV, selenium'
 seed: 20260917
 reference_version: 5.0.1105
-reference_commit: 0ccd6b0
+reference_commit: cff0a59

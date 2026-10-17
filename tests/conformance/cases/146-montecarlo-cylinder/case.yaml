@@ -2,21 +2,21 @@ case_id: 146-montecarlo-cylinder
 tier: B
 exercises: 'Monte Carlo: a cylinder 5 um across and high'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 268.542
-    cv: 0.034
+    mean: 270.811
+    cv: 0.024
   outputMC.CSV/MC-ADER:
-    mean: 268.542
-    cv: 0.034
+    mean: 270.811
+    cv: 0.024
   outputMC.CSV/RD3D-ADWC:
-    mean: 441.789
-    cv: 0.0299
+    mean: 440.489
+    cv: 0.0176
   outputMC.CSV/numEl:
-    mean: 1588330000.0
-    cv: 0.104
+    mean: 1550830000.0
+    cv: 0.0994
   outputXFEL.CSV/ions per atom:
-    mean: 0.00261275
-    cv: 0.029
+    mean: 0.0026029
+    cv: 0.0191

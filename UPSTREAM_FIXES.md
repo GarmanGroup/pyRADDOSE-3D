@@ -36,8 +36,15 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#47](https://github.com/GarmanGroup/RADDOSE-3D/pull/47) | `jd_mc_directions`, onto #46 | *Monte Carlo and XFEL*: directions | merged as `396af5a` |
 | [#48](https://github.com/GarmanGroup/RADDOSE-3D/pull/48) | `jd_mc_bookkeeping`, onto #47 | *Monte Carlo and XFEL*: fluorescence energies, phosphorus, the elastic chance, wedges, a face at z = 0 | merged as `d51e441` |
 | [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49) | `jd_mc_surrounding`, onto #48 | *Monte Carlo*: the surrounding | merged as `85a6813` |
-| [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) | `jd_gos_integral`, onto `master` | *GOS*: the distant collisions' integral finds its ends once; no result changes | open |
-| [#52](https://github.com/GarmanGroup/RADDOSE-3D/pull/52) | `jd_gos_valence_binding`, onto #51 | *GOS and XFEL*: a valence collision takes its subshell's binding energy | open |
+| [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) | `jd_gos_integral`, onto `master` | *GOS*: the distant collisions' integral finds its ends once; no result changes | merged as `b121430` |
+| [#52](https://github.com/GarmanGroup/RADDOSE-3D/pull/52) | `jd_gos_valence_binding`, onto #51 | *GOS and XFEL*: a valence collision takes its subshell's binding energy | merged as `18b213c` |
+| [#54](https://github.com/GarmanGroup/RADDOSE-3D/pull/54) | `jd_gos_cascade_energy`, onto `master` | *GOS and XFEL*: a vacancy's relaxation deposits its energy once | open |
+| [#55](https://github.com/GarmanGroup/RADDOSE-3D/pull/55) | `jd_gos_cross_sections`, onto #54 | *GOS and XFEL*: an electron's mean free paths where it is, at its energy now | open |
+| [#56](https://github.com/GarmanGroup/RADDOSE-3D/pull/56) | `jd_mc_outputs`, onto #55 | *Monte Carlo and XFEL*: the ions file by atomic number; simple mode's own doses in `outputXFEL.CSV` | open |
+| [#57](https://github.com/GarmanGroup/RADDOSE-3D/pull/57) | `jd_xfel_on_mc`, onto #56 | *XFEL*: the Monte Carlo's GOS model, timed; `XFEL.java` retired | open |
+| [#58](https://github.com/GarmanGroup/RADDOSE-3D/pull/58) | `jd_xfel_leftovers`, onto #57 | *XFEL*: the pulse as long as given, lifetimes drawn, the elastic photons simulated | open |
+| [#59](https://github.com/GarmanGroup/RADDOSE-3D/pull/59) | `jd_mc_polarisation`, onto #58 | *Monte Carlo*: every K-shell photoelectron follows the polarisation | open |
+| [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60) | `jd_gos_heavy_atoms`, onto #59 | *GOS and MicroED*: heavy atoms' subshells; binding energies from xenon on | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -49,8 +56,14 @@ moved.
 
 #51 makes the GOS model's cross-sections twelve times faster and changes no result: case 160,
 regenerated from it, is byte-identical to `master`'s. Before it, one run of case 161 took the
-Java nine hours on a loaded machine. #52, stacked on it, fixes the GOS and XFEL defect below, and
-the eight GOS and XFEL cases, 160 to 163 and 180 to 183, are generated from its tip, `3af3274`.
+Java nine hours on a loaded machine. #52, stacked on it, fixes the GOS and XFEL defect below. Both
+were merged on 2026-10-15.
+
+#54 to #60 fix the rest of what porting GOS and XFEL found, and are open as a stack on `master`
+at `18b213c` for the group's sign-off. The corpus's 27 Monte Carlo, GOS and XFEL cases follow its
+top: the 20 that #60 leaves unchanged are generated from #59 (`c1566d2`), and the seven it changes
+or adds, with MicroED's cases 121 and 134, from #60 (`cff0a59`). A crystal with no element from
+arsenic on gives byte-identical files on the two.
 
 The reordering changed no code: the top of #38 had the same source as `eec659b`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `167fb7a`, so its
@@ -676,7 +689,7 @@ and the corpus follows that commit.
 | A crystal thinner than 5 nm has no slices | `EMStoppingPowerWay` | a dose of 0/0, NaN (read) | one slice; case 133 |
 | The slice file's depth column assumes 5 nm slices | `MicroED.CalculateEM` | a thickness not a multiple of 5 nm is cut into wider slices than the depths say (read) | the depths step by the real width; cases 122 and 124 |
 | MicroED's class cannot load without Selenium, which only its commented-out NIST lookup uses | `MicroED.java:14–25` | Selenium and its dependencies, 9 MB of the 53 MB jar, are needed to run MicroED at all (run) | the lookup and the library are gone |
-| Elements from Z = 35 have no inner subshells in the GOS model | `getNumValenceElectronsSubshells` | every electron counted as valence (read) | open; the port reproduces it |
+| Elements from Z = 35 have no inner subshells in the GOS model | `getNumValenceElectronsSubshells` | every electron counted as valence (read) | fixed in both by #60, below |
 | A third `Dimensions` value makes a cylinder a cuboid | `Crystal:310–328` | MicroED takes 0.001 nm off a cylinder's thickness only when it has two dimensions (run) | open; the port always takes it off |
 
 An earlier version of this table said the CIF route counts its molecular weight twice. It does
@@ -758,54 +771,26 @@ way, agrees with #52 on all eight GOS and XFEL cases (largest |t| 1.8, threshold
 |---|---|---|---|---|
 | #52 | A collision with an element's valence subshell took its binding energy Uk from the photoelectric edges, while the GOS model built that subshell's cross-section, Wk and energy-loss range from `getShellBindingSubshell`. The edges have none for the valence subshells of Al, Si and P (M1), and As and Se (past M5): Uk was 0, so the recoil limit Qak and the recoil Q were 0, a longitudinal collision's deflection the arccosine of a number just over 1, NaN, and the electron, its direction undefined, was taken to have left the crystal with what energy it had; a secondary likewise | MC:2042, 3643; CoefCalcCompute:5181 | the subshell's binding energy, from the model's own table, which the vacancy then deposits; an inner shell keeps its edge. S, Cl, Ar and K, whose edges were up to 8 eV from their subshells', move slightly | every case has 0.425 M phosphate. 160, GOS: +23.9% ± 3.4%. 161 to 163: +24.6%, +26.2%, +32.1% ± 1.0 to 1.4% (163's selenium: ions per atom +61.8%). XFEL, whose pulse ends most tracks: 180, 30 fs, +10.1% ± 3.2%; 181 to 183: +1.7%, +3.5%, +4.7% ± 1.1%. RADDOSE-3D-style doses unchanged |
 
-### Still to fix
+### Physics, fixed in both: [#54](https://github.com/GarmanGroup/RADDOSE-3D/pull/54) to [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60)
 
-From porting the simple Monte Carlo, reproduced by the port:
+Found porting GOS and XFEL, and opened on 15 to 17 October 2026 as a stack on `master` at
+`18b213c`, for the group's sign-off. Each effect is RADDOSE-3D's, 20 runs on either side of the PR
+from the same seed; "paired" means both sides drew the same random numbers. At every stage the
+port, changed the same way, agreed with RADDOSE-3D on the cases that PR's references were made
+for: largest |t| 2.9, on an ungated DWD column, against thresholds of about 5.
 
-- **`outputIonsPerAtom.CSV` lists elements in hash-bucket order** (sulfur first), and elements
-  sharing a bucket in the order they were first ionised.
-- **In simple mode, `outputXFEL.CSV`'s doses hold only the binding energies of atoms that do not
-  relax** and the energy of electrons freed with under 0.05 keV (MC:1359–1394, 1631–1640), so
-  its diffraction efficiency is the elastic count over that.
+| PR | defect | where | fix | effect |
+|---|---|---|---|---|
+| #54 | An Auger transition left the vacancy's binding energy less the Auger electron's at the atom, and the two vacancies it left then deposited theirs again: a sulfur K vacancy counted 13% of its energy twice, a selenium one 21%. A GOS fluorescence transition left the whole binding energy, the photon's included | MC:1292, 1323; XFEL:1370 | `augerLeft` and `fluorescenceLeft`: only what the electron or photon and the vacancies left do not carry; the photon escapes in GOS mode as in simple mode and XFEL | paired, ionisations unchanged: GOS 160 to 162 −4.8% to −7.5%, 163's selenium −37.2%; XFEL 180 to 183 −7.4%, −24.2%, −16.6%, −40.6%. A selenium crystal's GOS dose had exceeded what it absorbed. Simple mode byte-identical |
+| #54 | An Auger electron freed with under 0.05 keV deposited nothing | MC:1629 | left where it was freed, as a primary's is | within the above |
+| #55 | The inner shells' mean free path was the one at the electron's starting energy, never updated, while the chance of an inner-shell collision was; where none was open at the start the outer subshells' inverse was taken for a length; an electron coming back in took its inner shells at its starting energy; out of the crystal its first step took inelastic mean free paths, the crystal's inner shells' among them; `getZlnI` weighed the surrounding by the crystal's molecular weight | MC:1576, 2160, 2187, 2297; CoefCalcCompute:3959 | `gosInelasticLambda` and `innerShellChance`, at the electron's energy now, wherever it is; none out of the crystal | within noise on all eight GOS and XFEL cases (\|t\| ≤ 1.9): inner shells take about 1% of collisions |
+| #56 | `outputIonsPerAtom.CSV` listed elements in hash-bucket order; in simple mode `outputXFEL.CSV`'s doses held only the binding energies of atoms that do not relax and electrons freed with under 0.05 keV, so its diffraction efficiency was divided by about nothing | MC:1359–1394, 1631–1640 | atomic-number order; simple mode's own doses | no simulated number changes |
+| #57 | `XFEL.java` was MC from before #44: its own surrounding, a box that ignored `SurroundingThickness`; a rotation of the voxels by whole radians, not of the crystal; an offset of the voxels alone; photons from the bounding box's front face; the bounding box's mass | XFEL:375–476, 446, 755, 2266–2490, 3901–3927 | XFEL runs MC with its time gates; `XFEL.java` deleted | 180 to 183 within noise. 185, a still at 60° offset 1 µm: RADDOSE-3D-style −43.7%, XFEL dose −25.5%, as XFEL had left it at 0°. 184, a cube in salt: within noise |
+| #58 | The pulse was rounded to whole femtoseconds; lifetimes were fixed delays; the elastic count was the share of the whole pulse the elastic coefficient scatters over the crystal's depth, at the last photon's energy | XFEL:973; `PULSE_LENGTH` | as given; drawn from the exponential; the elastic events simulated | diffraction efficiency −38% to −54%; XFEL dose +12.9% at 1 fs, +4.9% at 5 fs, within noise at 10 and 30 fs |
+| #59 | A quarter of K-shell photoelectrons left uniformly, not along the polarisation, in simple and GOS mode; XFEL sent every one so | `producePhotoElectron` | `photoelectronDirection`: every one | 149, a thin crystal on a vertical goniometer: −2.5% ± 0.8%; the other 21 cases within noise |
+| #60 | From bromine on, every electron was GOS valence, bound by the K edge: below it no collision, and the Sternheimer factor dragged down for the whole crystal (1 M iodide: 1.65 to 1.2). As and Se had Z + 2 electrons. Xe and heavier but Gd had no L1 or M1 binding energy: a platinum L1 photoelectron stopped any Monte Carlo run with a `NullPointerException`. Br to Hf and six heavier elements had zero M2–M5 edges | `getNumValenceElectronsSubshells`; `MuCalcConstants.txt` | K to M5 inner, the rest valence, bound by the occupancy-weighted geometric mean of Carlson's binding energies past M5 (a new column); occupancies 4 and 6 for M4 and M5; the blanks from the X-ray Data Booklet | MicroED, 1 M iodide (case 134): inelastic mean free path 198.4 to 252.7 nm, optimum 1020 kV and 135 nm to 970 kV and 160 nm; selenium (121) +0.24%. GOS, 164, 1 M iodide: +2.0% ± 0.8%, ionisations −4.5% ± 0.7%. 154, platinum, runs. MX byte-identical with every element these touch |
 
-For GOS, with its port:
-- **In the surrounding, GOS mode uses the crystal's numbers**: an electron that leaves the crystal
-  takes the crystal's shell probabilities (`getAllShellProbs(false)`, MC:2297) and keeps its
-  inner-shell λ, and `getZlnI`, behind the Sternheimer correction, weights the surrounding's
-  elements by the crystal's molecular weight (CoefCalcCompute:3959).
-- **Auger and fluorescence cascades double-count hole energy**: the Auger branch deposits
-  Eb − E_A and then recurses on both holes, which deposit their own binding energies (MC:1292,
-  1323; XFEL:1370); a fluorescing hole deposits its whole binding energy.
-- **Auger electrons below 50 eV deposit nothing** (MC:1629).
-- **GOS mean free paths are inconsistent**: `1/gosOuterLambda` against `gosOuterLambda`, and an
-  inner-shell λ never updated from its starting value (MC:1576, 2160, 2187).
-
-For XFEL, with its port. XFEL kept MC's code from before #44, and differs from it in more than
-time; the port reproduces these, but refuses the first three inputs:
-- **Its surrounding is a different, older model**: a box the size of a photoelectron's reach
-  around the crystal's bounding dimensions, which ignores `SurroundingThickness`, with electrons
-  turned by absolute angles there (XFEL:404–476, 2266–2490). The port refuses an XFEL
-  surrounding; MC's (#49) could replace it.
-- **Its rotation turns the voxels, not the crystal**: the angle is the wedge's whole radians,
-  truncated, times the photon's place in the run, ignoring the start (XFEL:375–385). It goes
-  only into `convertToPixelCoordinates`, which translates before rotating, the order #44 fixed in
-  MC (XFEL:3901–3927); whether a point is in the crystal is asked of the unrotated mesh. So a
-  wedge under a radian rotates nothing, and one of a radian or more tallies dose in voxels the
-  crystal is not in. Refused by the port.
-- **Its start offset likewise moves the voxels and not the crystal.** Refused by the port.
-- Photons start at the bounding box's front face (XFEL:446), so a curved crystal attenuates them
-  through the gap before its face.
-- Every K-shell photoelectron follows the polarisation (`polarised > 0`, XFEL:1253), where MC
-  sends three in four.
-- A fluorescing vacancy deposits its binding energy less the photon's (XFEL:1424), where GOS
-  mode deposits it all.
-- The crystal's volume and mass are its bounding box's (XFEL:755), not its mesh's.
-- The diffraction efficiency's elastic count is not the simulated one but the share of the real
-  photons that the elastic coefficient scatters in the crystal's depth (XFEL:973), at the last
-  photon's energy: for a pink beam, the hardest.
-- The pulse length is rounded to whole femtoseconds, so a pulse under 0.5 fs has no length.
-- Lifetimes are fixed delays, not sampled.
-- Two random numbers are drawn and not used in fluorescence.
+No defect found porting GOS and XFEL is left open.
 
 Refuted: **the stopping power does not turn negative above 50 eV**. The Joy–Luo correction is
 applied twice, which keeps it positive.

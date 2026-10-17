@@ -1,0 +1,23 @@
+case_id: 164-gos-iodine
+tier: B
+exercises: 'Monte Carlo GOS: 1 M iodide, whose 53 electrons the model bound by its
+  K edge, in case 161''s 5 um cube'
+seed: 20260917
+reference_version: 5.0.1105
+reference_commit: cff0a59
+gated:
+  outputXFEL.CSV/vResolvedNoCut:
+    mean: 1082.92
+    cv: 0.023
+  stdout/RADDOSE-GOS average dose exposed region (ADER):
+    mean: 1082.92
+    cv: 0.023
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 1436.49
+    cv: 0.02
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 3692170.0
+    cv: 0.0877
+  outputXFEL.CSV/ions per atom:
+    mean: 1.95369
+    cv: 0.0232

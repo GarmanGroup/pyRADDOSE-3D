@@ -3,21 +3,21 @@ tier: B
 exercises: 'Monte Carlo: a pink beam in a salt surrounding of no given thickness,
   which the most energetic photon''s photoelectron caps'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 139.786
-    cv: 0.0365
+    mean: 140.38
+    cv: 0.033
   outputMC.CSV/MC-ADER:
-    mean: 139.786
-    cv: 0.0365
+    mean: 140.38
+    cv: 0.033
   outputMC.CSV/RD3D-ADWC:
-    mean: 137.522
-    cv: 0.0355
+    mean: 138.302
+    cv: 0.0364
   outputMC.CSV/numEl:
-    mean: 634167000.0
-    cv: 0.168
+    mean: 629167000.0
+    cv: 0.157
   outputXFEL.CSV/ions per atom:
-    mean: 0.0008176
-    cv: 0.0358
+    mean: 0.0008207
+    cv: 0.0382

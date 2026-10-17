@@ -1,0 +1,23 @@
+case_id: 154-montecarlo-platinum
+tier: B
+exercises: 'Monte Carlo: platinum at 15 keV, above its L1 edge, whose missing binding
+  energy stopped RADDOSE-3D'
+seed: 20260917
+reference_version: 5.0.1105
+reference_commit: cff0a59
+gated:
+  outputMC.CSV/MC-ADWC:
+    mean: 896.701
+    cv: 0.0309
+  outputMC.CSV/MC-ADER:
+    mean: 896.701
+    cv: 0.0309
+  outputMC.CSV/RD3D-ADWC:
+    mean: 1150.05
+    cv: 0.029
+  outputMC.CSV/numEl:
+    mean: 2591670000.0
+    cv: 0.122
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00549145
+    cv: 0.0287

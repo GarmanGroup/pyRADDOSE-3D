@@ -1,0 +1,22 @@
+case_id: 184-xfel-surrounding
+tier: B
+exercises: 'XFEL: case 162''s salt surrounding, 2 um deep, in a 30 fs pulse'
+seed: 20260917
+reference_version: 5.0.1105
+reference_commit: cff0a59
+gated:
+  outputXFEL.CSV/XFEL-ADWC:
+    mean: 1.33543
+    cv: 0.0739
+  outputXFEL.CSV/XFEL-ADER:
+    mean: 1.33543
+    cv: 0.0739
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 5.31238
+    cv: 0.0573
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 18367200.0
+    cv: 0.242
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00323875
+    cv: 0.0741

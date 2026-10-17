@@ -3,21 +3,21 @@ tier: B
 exercises: 'XFEL: case 163''s selenium in a 10 fs pulse, whose fluorescence carries
   its energy away'
 seed: 20260917
-reference_version: 5.0.1098
-reference_commit: 3af3274
+reference_version: 5.0.1105
+reference_commit: cff0a59
 gated:
   outputXFEL.CSV/XFEL-ADWC:
-    mean: 0.330359
-    cv: 0.0323
+    mean: 0.200109
+    cv: 0.0241
   outputXFEL.CSV/XFEL-ADER:
-    mean: 0.330359
-    cv: 0.0323
+    mean: 0.200109
+    cv: 0.0241
   outputXFEL.CSV/RD3D-ADWC:
-    mean: 1.24776
-    cv: 0.0261
+    mean: 1.24801
+    cv: 0.0213
   outputXFEL.CSV/Diffraction efficiency:
-    mean: 529844000.0
-    cv: 0.0328
+    mean: 449311000.0
+    cv: 0.134
   outputXFEL.CSV/ions per atom:
-    mean: 0.0004772
-    cv: 0.0351
+    mean: 0.00049005
+    cv: 0.024

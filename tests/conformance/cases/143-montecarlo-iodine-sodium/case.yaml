@@ -3,21 +3,21 @@ tier: B
 exercises: 'Monte Carlo: iodine, below its K edge, and sodium, whose outer shells
   the model leaves out'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 1099.68
-    cv: 0.0203
+    mean: 1088.35
+    cv: 0.0209
   outputMC.CSV/MC-ADER:
-    mean: 1099.68
-    cv: 0.0203
+    mean: 1088.35
+    cv: 0.0209
   outputMC.CSV/RD3D-ADWC:
-    mean: 1458.64
-    cv: 0.02
+    mean: 1438.97
+    cv: 0.0189
   outputMC.CSV/numEl:
-    mean: 3916670000.0
-    cv: 0.0952
+    mean: 3786670000.0
+    cv: 0.0715
   outputXFEL.CSV/ions per atom:
-    mean: 0.0089509
-    cv: 0.0198
+    mean: 0.00883065
+    cv: 0.0189

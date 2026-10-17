@@ -45,9 +45,7 @@ its Monte Carlo and XFEL subprograms do, statistically.**
 - **Tested beyond one Mac.** The repository has never been pushed, so its CI has never run
   (Milestone 5).
 - **Able to run every RADDOSE-3D input.** It cannot download a PDB entry by its code, and still
-  reads three file formats by hand (Milestone 6). It refuses three XFEL inputs that RADDOSE-3D
-  runs inconsistently: a surrounding, and a rotation or offset, which move only the voxels the
-  dose is tallied in (Milestone 7).
+  reads three file formats by hand (Milestone 6).
 - **Optimising several settings at once**, which is the case that most needs gradients
   (Milestone 8).
 - **In CCP4.** That needs the relicensing, and answers from CCP4 (Milestone 9).
@@ -263,10 +261,9 @@ first:
    sections built once per run. So is XFEL, the same transport with a clock: photons arrive
    through the pulse, steps take their flight time and relaxations their lifetimes, nothing is
    followed past the last photon's exit, and each voxel keeps what arrives before its cutoff.
-   On case 180 the time cut keeps 62% of the dose on both sides. The port refuses three XFEL
-   inputs that RADDOSE-3D runs inconsistently: a surrounding, which XFEL models its own older
-   way, and a rotation or offset, which move only the voxels the dose is tallied in, not the
-   crystal.)
+   On case 180 the time cut keeps 62% of the dose on both sides. XFEL's surrounding, rotation
+   and offset, which RADDOSE-3D's own copy got wrong and the port refused, run as the Monte
+   Carlo's since #57, and cases 184 and 185 test them.)
 5. **Then fix the physics in both**, PR by PR with the group's sign-off, as for escape and
    MicroED. (Begun: [#44](https://github.com/GarmanGroup/RADDOSE-3D/pull/44) to
    [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49), merged, fix a rotated crystal's
@@ -274,8 +271,16 @@ first:
    photons take, MC's fluorescence energies with four smaller slips, and the surrounding. The
    port follows each in its own commit and agreed with RADDOSE-3D at each. The largest effect
    is #48's: at 25 keV a crystal with selenium loses 22% of its Monte Carlo dose. Cases 150 and
-   151 test the wedges, 152 and 153 the surrounding. What is left, GOS's and XFEL's now that
-   they are ported, is in `UPSTREAM_FIXES.md`, *Still to fix*.)
+   151 test the wedges, 152 and 153 the surrounding. GOS's and XFEL's followed:
+   [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) and
+   [#52](https://github.com/GarmanGroup/RADDOSE-3D/pull/52), merged, then
+   [#54](https://github.com/GarmanGroup/RADDOSE-3D/pull/54) to
+   [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60), open as a stack: cascades that
+   counted a vacancy's energy twice, the mean free paths, simple mode's outputs, XFEL on the
+   Monte Carlo's code, XFEL's pulse, lifetimes and elastic count, the polarisation, and heavy
+   atoms' subshells. The largest effects: a selenium crystal's GOS dose falls 37% (#54), and
+   1 M iodide lengthens MicroED's inelastic mean free path by 27% (#60). Nothing found porting
+   them is left open.)
 
 No gradients: a randomly drawn track has none, as with escape.
 
@@ -330,17 +335,17 @@ copyright holders, so relicensing is on the critical path for CCP4 alone.
 
 The port's fixes are merged into RADDOSE-3D as #36, #37, #38, #40 and #42, all on 2026-10-13,
 and #43 to #49, the Monte Carlo and XFEL's, on 2026-10-14 (`UPSTREAM_FIXES.md` has each, with
-measurements). #41 adds MicroED's beam requirements and output files to the user guide. The
-corpus follows `master` at `85a6813`, but for its eight GOS and XFEL cases, which follow #52
-(`3af3274`), open: stacked on #51, which makes the GOS model twelve times faster, it stops GOS and
-XFEL losing every electron that collides with the valence electrons of phosphorus or selenium,
-which raises the GOS dose of a crystal in phosphate by a quarter.
+measurements). #41 adds MicroED's beam requirements and output files to the user guide. #51,
+which makes the GOS model twelve times faster, and #52, which stops GOS and XFEL losing every
+electron that collides with phosphorus's or selenium's valence electrons, were merged on
+2026-10-15. The corpus follows `master` at `85a6813`, but for its 27 Monte Carlo, GOS and XFEL
+cases and MicroED's 121 and 134, which follow the top of #54 to #60, open as a stack: #59
+(`c1566d2`) for the 20 that #60 leaves unchanged, #60 (`cff0a59`) for the rest.
 
 **Still open in the Java**, each with the milestone that takes it up:
 
-- GOS and XFEL's physics defects, among them cascades that count a vacancy's energy more than
-  once, and XFEL's surrounding, rotation and offset; and the GOS model's missing inner subshells
-  from Z = 35 (Milestone 7).
+- GOS and XFEL's physics defects, fixed by #54 to #60, open for the group's sign-off
+  (Milestone 7).
 - A third `Dimensions` value making a cylinder a cuboid, and lexer errors not being refused
   (Milestone 6).
 - Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's

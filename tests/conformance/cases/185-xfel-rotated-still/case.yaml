@@ -1,0 +1,23 @@
+case_id: 185-xfel-rotated-still
+tier: B
+exercises: 'XFEL: case 151''s crystal still at 60 degrees, offset 1 um along x, in
+  a 10 fs pulse'
+seed: 20260917
+reference_version: 5.0.1105
+reference_commit: cff0a59
+gated:
+  outputXFEL.CSV/XFEL-ADWC:
+    mean: 1.30571
+    cv: 0.0418
+  outputXFEL.CSV/XFEL-ADER:
+    mean: 1.68387
+    cv: 0.0455
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 9.58119
+    cv: 0.038
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 39180400.0
+    cv: 0.179
+  outputXFEL.CSV/ions per atom:
+    mean: 0.0063588
+    cv: 0.0419

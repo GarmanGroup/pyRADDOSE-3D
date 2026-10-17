@@ -1395,6 +1395,22 @@ _CASES: list[Case] = [
         ),
     ),
     Case(
+        "154-montecarlo-platinum",
+        "B",
+        "Monte Carlo: platinum at 15 keV, above its L1 edge, whose missing "
+        "binding energy stopped RADDOSE-3D",
+        _escaping(
+            600_000,
+            energy=15.0,
+            crystal={
+                "composition": {
+                    **BASELINE_COMPOSITION,
+                    "protein_heavy_atoms": {"Zn": 0.333, "S": 6.0, "Pt": 2.0},
+                }
+            },
+        ),
+    ),
+    Case(
         "160-gos-baseline",
         "B",
         "Monte Carlo GOS: inelastic collisions, secondaries, Auger cascades",
@@ -1442,6 +1458,22 @@ _CASES: list[Case] = [
         _merge(_simulated("gos", 400_000, 13.0), _SELENIUM),
     ),
     Case(
+        "164-gos-iodine",
+        "B",
+        "Monte Carlo GOS: 1 M iodide, whose 53 electrons the model bound by its "
+        "K edge, in case 161's 5 um cube",
+        _escaping(
+            400_000,
+            subprogram="gos",
+            crystal={
+                "composition": {
+                    **BASELINE_COMPOSITION,
+                    "solvent_heavy_conc": {"P": 425.0, "I": 1000.0},
+                }
+            },
+        ),
+    ),
+    Case(
         "180-xfel-baseline",
         "B",
         "XFEL: the GOS simulation timed within a 30 fs pulse",
@@ -1466,6 +1498,57 @@ _CASES: list[Case] = [
         "XFEL: case 163's selenium in a 10 fs pulse, whose fluorescence "
         "carries its energy away",
         _merge(_xfel_pulse(400_000, 10.0, energy=13.0), _SELENIUM),
+    ),
+    # Inputs XFEL refused or mishandled before it ran the Monte Carlo's code:
+    # its own surrounding ignored the thickness, its rotation and offset moved
+    # the voxels and not the crystal, and a pulse was whole femtoseconds.
+    Case(
+        "184-xfel-surrounding",
+        "B",
+        "XFEL: case 162's salt surrounding, 2 um deep, in a 30 fs pulse",
+        _merge(
+            _xfel_pulse(600_000, 30.0),
+            {
+                "crystal": {
+                    "dimensions": [5.0, 5.0, 5.0],
+                    "pixels_per_micron": 2.0,
+                    "escape": {
+                        "surrounding": True,
+                        "surrounding_heavy_conc": {"Na": 500.0, "Cl": 500.0},
+                    },
+                    "simulation": {"surrounding_thickness": [2.0, 2.0, 2.0]},
+                },
+                "beam": {"collimation": {"shape": "rectangular", "x": 9.0, "y": 9.0}},
+            },
+        ),
+    ),
+    Case(
+        "185-xfel-rotated-still",
+        "B",
+        "XFEL: case 151's crystal still at 60 degrees, offset 1 um along x, "
+        "in a 10 fs pulse",
+        _merge(
+            _xfel_pulse(600_000, 10.0),
+            {
+                "crystal": {"dimensions": [4.0, 6.0, 8.0], "pixels_per_micron": 2.0},
+                "beam": {"collimation": {"shape": "rectangular", "x": 2.0, "y": 6.0}},
+                "wedges": [
+                    {
+                        "start": 60.0,
+                        "end": 60.0,
+                        "exposure_time": 10.0,
+                        "start_offset": [1.0, 0.0, 0.0],
+                    }
+                ],
+            },
+        ),
+    ),
+    Case(
+        "186-xfel-sub-femtosecond",
+        "B",
+        "XFEL: a 0.4 fs pulse, which had no length when rounded to whole "
+        "femtoseconds; case 181's pulse energy",
+        _xfel_pulse(1_000_000, 0.4, pulse_energy=14.0),
     ),
 ]
 

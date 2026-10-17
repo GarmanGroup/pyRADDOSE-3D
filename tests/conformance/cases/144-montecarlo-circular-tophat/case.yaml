@@ -2,21 +2,21 @@ case_id: 144-montecarlo-circular-tophat
 tier: B
 exercises: 'Monte Carlo: a circular top-hat, which fills a bow tie'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 297.249
-    cv: 0.0243
+    mean: 297.213
+    cv: 0.0254
   outputMC.CSV/MC-ADER:
-    mean: 343.723
-    cv: 0.0264
+    mean: 343.636
+    cv: 0.0259
   outputMC.CSV/RD3D-ADWC:
-    mean: 444.604
-    cv: 0.0214
+    mean: 445.561
+    cv: 0.0223
   outputMC.CSV/numEl:
-    mean: 2058330000.0
-    cv: 0.0906
+    mean: 2052500000.0
+    cv: 0.102
   outputXFEL.CSV/ions per atom:
-    mean: 0.00334765
-    cv: 0.0221
+    mean: 0.00335525
+    cv: 0.0225

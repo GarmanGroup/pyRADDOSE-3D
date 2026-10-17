@@ -1,0 +1,23 @@
+case_id: 186-xfel-sub-femtosecond
+tier: B
+exercises: 'XFEL: a 0.4 fs pulse, which had no length when rounded to whole femtoseconds;
+  case 181''s pulse energy'
+seed: 20260917
+reference_version: 5.0.1105
+reference_commit: cff0a59
+gated:
+  outputXFEL.CSV/XFEL-ADWC:
+    mean: 0.374755
+    cv: 0.0301
+  outputXFEL.CSV/XFEL-ADER:
+    mean: 0.374755
+    cv: 0.0301
+  outputXFEL.CSV/RD3D-ADWC:
+    mean: 6.33417
+    cv: 0.0226
+  outputXFEL.CSV/Diffraction efficiency:
+    mean: 2428120000.0
+    cv: 0.112
+  outputXFEL.CSV/ions per atom:
+    mean: 0.00093055
+    cv: 0.0296

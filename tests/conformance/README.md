@@ -56,7 +56,7 @@ in the Java's order -- one fluorescence draw, then the photoelectron draws, for
 each lit voxel in turn -- so with the case's seed it reproduces the Java's dose
 value by value rather than only its statistics.
 
-MicroED's fourteen cases (120-133) are tier A too, and simpler: the calculation
+MicroED's fifteen cases (120-134) are tier A too, and simpler: the calculation
 draws no random numbers. They compare RADDOSE-3D's two MicroED files and what
 it prints, which gives the mean free paths to full precision
 (`test_microed_files.py`, tolerances in `MANIFEST.yaml`).
@@ -83,8 +83,8 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   mostly fail once one half is shifted by the claimed detectable bias.
   `test_tier_b_statistics.py` checks the false-alarm rate and the power by
   simulation.
-- **Cost.** The port takes about 70 minutes over the 22 Monte Carlo, GOS
-  and XFEL cases, so those comparisons are marked `slow`, and run with
+- **Cost.** The port takes about an hour over the 27 Monte Carlo, GOS and
+  XFEL cases, so those comparisons are marked `slow`, and run with
   `uv run pytest -m slow tests/conformance/test_montecarlo_files.py`. Every
   case also runs briefly in the default suite, which checks that the port
   writes the files and printout RADDOSE-3D does. Regenerating the references
@@ -93,8 +93,10 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   RADDOSE-3D #48 and ten before it. A GOS or XFEL case takes ten to thirty
   minutes with #51, which stopped the Java recomputing the composition's
   sums at each of the thousand points of a cross-section integral; before
-  it, a GOS run of case 161 took nine hours on a loaded machine. The eight
-  GOS and XFEL cases are generated from #52, stacked on it, at `3af3274`.
+  it, a GOS run of case 161 took nine hours on a loaded machine. The Monte
+  Carlo, GOS and XFEL cases are generated from the top of RADDOSE-3D #54 to
+  #60, a stack of open PRs: from #59 at `c1566d2`, and the seven that #60
+  changes or adds from #60 at `cff0a59`.
 
 The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows
@@ -105,16 +107,21 @@ crystal: turned back from 90 degrees to 0, offset, which must match 145, and
 held still at 60 degrees in a beam narrower than the crystal, where it
 absorbs 42% less than at 0. 152 and 153 test the surrounding: a cylinder in a
 thin one, whose shell must be as thick all round, and a pink beam in one of
-no given thickness, which the most energetic photon caps.
+no given thickness, which the most energetic photon caps. 154 is platinum at
+15 keV, whose missing L1 binding energy stopped RADDOSE-3D's run.
 
-GOS mode has four cases: 160, case 140's crystal; 161, 141's 5 um cube,
+GOS mode has five cases: 160, case 140's crystal; 161, 141's 5 um cube,
 which photoelectrons and their secondaries escape; 162, 148's surrounding,
 where electrons are followed without the GOS model; and 163, selenium above
-its K edge, whose vacancies relax through its L and M shells. XFEL has four
-too, which test its clock: 180, a 30 fs pulse; 181, a 1 fs pulse, in
+its K edge, whose vacancies relax through its L and M shells; and 164, 1 M
+iodide, whose electrons the model had bound by iodine's K edge. XFEL has
+seven, which test its clock: 180, a 30 fs pulse; 181, a 1 fs pulse, in
 0.01 fs bins, before whose cutoff only a quarter of the dose arrives; 182, a
-pink beam, its softest photons first; and 183, 163's selenium in a 10 fs
-pulse, whose fluorescence carries its energy away.
+pink beam, its softest photons first; 183, 163's selenium in a 10 fs
+pulse, whose fluorescence carries its energy away; 184, 162's salt
+surrounding; 185, 151's crystal still at 60 degrees and offset 1 um, which
+RADDOSE-3D's own XFEL left at 0; and 186, a 0.4 fs pulse, which had no
+length when it was rounded to whole femtoseconds.
 
 ## Regenerating
 

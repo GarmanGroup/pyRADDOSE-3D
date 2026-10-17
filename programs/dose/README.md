@@ -52,7 +52,7 @@ A crystal with `subprogram: montecarlo`, `gos` or `xfel` (`Subprogram MonteCarlo
 | `outputXFEL.CSV` | a row per run: the doses -- for `xfel`, those before each voxel's cutoff in time -- the diffraction efficiency, ionisations per atom and diffraction-weighted doses |
 | `outputIonsPerAtom.CSV` | the last run's ionisations per atom of each element, in the exposed region |
 
-The runs are random, and compared with RADDOSE-3D's statistically: the same seed repeats the port's runs, not RADDOSE-3D's. They need the ELSEPA data packages (the `montecarlo` extra). Three XFEL inputs are refused: a surrounding, and a rotation or offset, which RADDOSE-3D's XFEL applies to the voxels it tallies but not to the crystal.
+The runs are random, and compared with RADDOSE-3D's statistically: the same seed repeats the port's runs, not RADDOSE-3D's. They need the ELSEPA data packages (the `montecarlo` extra). XFEL is the Monte Carlo's GOS model with a clock, as RADDOSE-3D's is with its #57, so a surrounding, a rotation and an offset work as in the other subprograms; a pulse lasts femtoseconds, so the crystal stands still at its wedge's start.
 
 ## Escape modelling and the seed
 
@@ -62,7 +62,6 @@ Photoelectron and fluorescence escape are Monte Carlo, so two runs give slightly
 
 Input that asks for something not ported is refused with a message saying what -- when the input is read, or at the latest when the calculation starts -- rather than ignored:
 
-- in the XFEL subprogram, a surrounding, a rotation of a radian or more, or an offset (see above)
 - `AbsCoefCalc RDV2` and `RDV3`, which run the original Fortran RADDOSE as an external program
 - `Type Experimental`, which RADDOSE-3D cannot build from an input file either; `Type ExperimentalPGM` works
 

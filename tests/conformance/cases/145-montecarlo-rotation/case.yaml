@@ -2,21 +2,21 @@ case_id: 145-montecarlo-rotation
 tier: B
 exercises: 'Monte Carlo: a 4 x 6 x 8 um crystal rotated through 90 degrees'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 118.562
-    cv: 0.0285
+    mean: 117.395
+    cv: 0.0382
   outputMC.CSV/MC-ADER:
-    mean: 118.562
-    cv: 0.0285
+    mean: 117.395
+    cv: 0.0382
   outputMC.CSV/RD3D-ADWC:
-    mean: 183.366
-    cv: 0.0253
+    mean: 180.842
+    cv: 0.0285
   outputMC.CSV/numEl:
-    mean: 1293330000.0
-    cv: 0.128
+    mean: 1256670000.0
+    cv: 0.158
   outputXFEL.CSV/ions per atom:
-    mean: 0.0010848
-    cv: 0.0254
+    mean: 0.00106955
+    cv: 0.0273

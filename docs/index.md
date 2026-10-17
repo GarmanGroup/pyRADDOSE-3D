@@ -65,10 +65,8 @@ crystal in an electron beam, and its Monte Carlo and XFEL subprograms
 (`Subprogram MonteCarlo`, `GOS` and `XFEL`), which follow every electron;
 those are random, and agree with RADDOSE-3D statistically. Not ported:
 `AbsCoefCalc RDV2`/`RDV3`, which run the original Fortran RADDOSE as an
-external program, and three XFEL inputs RADDOSE-3D runs inconsistently -- a
-surrounding, and a rotation or offset, which it applies to the voxels but
-not the crystal. Asking for any of them is an error, not a silently
-different answer.
+external program. Asking for them is an error, not a silently different
+answer.
 
 ## Licence
 

@@ -3,21 +3,21 @@ tier: B
 exercises: 'Monte Carlo: case 146''s cylinder in a salt surrounding 1 um thick, whose
   shell must be as thick all round'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 156.372
-    cv: 0.0218
+    mean: 157.298
+    cv: 0.0394
   outputMC.CSV/MC-ADER:
-    mean: 156.372
-    cv: 0.0218
+    mean: 157.298
+    cv: 0.0394
   outputMC.CSV/RD3D-ADWC:
-    mean: 174.507
-    cv: 0.0408
+    mean: 174.552
+    cv: 0.0424
   outputMC.CSV/numEl:
-    mean: 592500000.0
-    cv: 0.162
+    mean: 599167000.0
+    cv: 0.188
   outputXFEL.CSV/ions per atom:
-    mean: 0.00103005
-    cv: 0.041
+    mean: 0.0010303
+    cv: 0.0428

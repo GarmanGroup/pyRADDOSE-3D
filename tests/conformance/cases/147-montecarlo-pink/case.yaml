@@ -2,21 +2,21 @@ case_id: 147-montecarlo-pink
 tier: B
 exercises: 'Monte Carlo: a pink beam, 1 keV wide'
 seed: 20260917
-reference_version: 5.0.1096
-reference_commit: 85a6813
+reference_version: 5.0.1104
+reference_commit: c1566d2
 gated:
   outputMC.CSV/MC-ADWC:
-    mean: 275.139
-    cv: 0.0295
+    mean: 275.12
+    cv: 0.0231
   outputMC.CSV/MC-ADER:
-    mean: 275.139
-    cv: 0.0295
+    mean: 275.12
+    cv: 0.0231
   outputMC.CSV/RD3D-ADWC:
-    mean: 443.546
-    cv: 0.0268
+    mean: 443.002
+    cv: 0.0177
   outputMC.CSV/numEl:
-    mean: 1940000000.0
-    cv: 0.0893
+    mean: 2050000000.0
+    cv: 0.113
   outputXFEL.CSV/ions per atom:
-    mean: 0.0026323
-    cv: 0.0253
+    mean: 0.00262595
+    cv: 0.0177
