@@ -63,6 +63,14 @@ class _BeamBase(RD3DModel):
     pulse_energy : float | None
         ``PulseEnergy``: the energy of one X-ray free-electron laser pulse,
         in mJ, which only the XFEL subprogram reads.
+    pulse_shape : {"tophat", "gaussian"} | None
+        ``PulseShape``: the XFEL pulse's shape in time. A top-hat, the
+        default, spreads its photons evenly over the wedge's exposure time; a
+        Gaussian's FWHM is the exposure time, and its photons all arrive
+        within ``pulse_window``.
+    pulse_window : float | None
+        ``PulseWindow``: the width of the window a Gaussian pulse's photons
+        arrive in, centred on its peak, in FWHMs; 2 if not given.
     """
 
     flux: Annotated[float, Field(gt=0.0)] | None = None
@@ -70,6 +78,18 @@ class _BeamBase(RD3DModel):
     collimation: Collimation | None = None
     energy_fwhm: Annotated[float, Field(gt=0.0)] | None = None
     pulse_energy: Annotated[float, Field(gt=0.0)] | None = None
+    pulse_shape: Literal["tophat", "gaussian"] | None = None
+    pulse_window: Annotated[float, Field(gt=0.0)] | None = None
+
+    @model_validator(mode="after")
+    def _a_window_is_a_gaussians(self) -> Self:
+        """Only a Gaussian pulse has a window; a top-hat lasts the exposure."""
+        if self.pulse_window is not None and self.pulse_shape != "gaussian":
+            raise ValueError(
+                "pulse_window is the window a Gaussian pulse's photons arrive in, "
+                "in FWHMs; set pulse_shape to gaussian, or leave it out"
+            )
+        return self
 
     @model_validator(mode="after")
     def _needs_photons(self) -> Self:

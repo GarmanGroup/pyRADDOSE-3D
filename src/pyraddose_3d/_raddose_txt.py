@@ -347,6 +347,10 @@ def _beam_lines(
         lines.append(f"Flux {_number(beam.flux)}")
     if beam.pulse_energy is not None:
         lines.append(f"PulseEnergy {_number(beam.pulse_energy)}")
+    if beam.pulse_shape is not None:
+        lines.append(f"PulseShape {_PULSE_SHAPES[beam.pulse_shape]}")
+    if beam.pulse_window is not None:
+        lines.append(f"PulseWindow {_number(beam.pulse_window)}")
     lines.append(f"Energy {_number(beam.energy)}")
     if beam.energy_fwhm is not None:
         lines.append(f"EnergyFWHM {_number(beam.energy_fwhm)}")
@@ -690,8 +694,11 @@ _BEAM_KEYWORDS: dict[str, tuple[str, Reader]] = {
     "ENERGYFWHM": ("energy_fwhm", _read_number),
     "FILE": ("file", _read_word),
     "PIXELSIZE": ("pixel_size", lambda s, k: _read_numbers(s, k, 2, 2)),
-    # The XFEL subprogram's pulse, in mJ.
+    # The XFEL subprogram's pulse: its energy in mJ, its shape in time, and a
+    # Gaussian's window in FWHMs.
     "PULSEENERGY": ("pulse_energy", _read_number),
+    "PULSESHAPE": ("pulse_shape", _read_word),
+    "PULSEWINDOW": ("pulse_window", _read_number),
     # MicroED's: the fluence, and settings only its disabled Monte Carlo read.
     "EXPOSURE": ("exposure", _read_number),
     "SEMIANGLE": ("semi_angle", _read_number),
@@ -1299,6 +1306,7 @@ def _beam(
                 "Flux",
                 "the XFEL subprogram takes its photons from PulseEnergy",
             )
+        _xfel_pulse(stream, values, beam)
     else:
         beam["flux"] = _require(
             stream, values, "flux", "Flux", line, "RADDOSE-3D's beams require it"
@@ -1308,6 +1316,21 @@ def _beam(
                 values["pulse_energy"][1],
                 "PulseEnergy",
                 "only RADDOSE-3D's XFEL subprogram reads it",
+            )
+        for key, label in (
+            ("pulse_shape", "PulseShape"),
+            ("pulse_window", "PulseWindow"),
+        ):
+            if key not in values:
+                continue
+            if subprogram in SIMULATED:
+                raise stream.error(
+                    values[key][1],
+                    f"{label} describes an XFEL pulse, and RADDOSE-3D refuses it "
+                    f"for the {_ENGINE_NAMES[subprogram]} subprogram",
+                )
+            _ignored(
+                values[key][1], label, "only RADDOSE-3D's XFEL subprogram reads it"
             )
     if profile == "GAUSSIAN":
         beam["fwhm"] = tuple(
@@ -1324,6 +1347,41 @@ def _beam(
     if "energy_fwhm" in values:
         beam["energy_fwhm"] = values["energy_fwhm"][0]
     return beam
+
+
+#: ``PulseShape``'s values, as the model has them and as RADDOSE-3D writes them.
+_PULSE_SHAPES = {"tophat": "TopHat", "gaussian": "Gaussian"}
+
+
+def _xfel_pulse(
+    stream: _Stream, values: dict[str, tuple[Any, int]], beam: dict[str, Any]
+) -> None:
+    """``PulseShape`` and ``PulseWindow``, checked as RADDOSE-3D checks them."""
+    shape = None
+    if "pulse_shape" in values:
+        written, at = values["pulse_shape"]
+        shape = str(written).lower()
+        if shape not in _PULSE_SHAPES:
+            raise stream.error(
+                at,
+                f"PulseShape {written!r} is not a pulse shape; expected TopHat or "
+                f"Gaussian",
+            )
+        beam["pulse_shape"] = shape
+    if "pulse_window" in values:
+        window, at = values["pulse_window"]
+        if shape != "gaussian":
+            raise stream.error(
+                at,
+                "PulseWindow is the window a Gaussian pulse's photons arrive in, in "
+                "FWHMs; a top-hat pulse lasts the exposure time, and RADDOSE-3D "
+                "refuses a window for one",
+            )
+        if not window > 0:
+            raise stream.error(
+                at, f"PulseWindow must be more than 0 FWHMs, not {window}"
+            )
+        beam["pulse_window"] = window
 
 
 def _electron_beam(
@@ -1366,6 +1424,8 @@ def _electron_beam(
     for key, label, why in (
         ("flux", "Flux", "MicroED's fluence is its Exposure"),
         ("pulse_energy", "PulseEnergy", "only RADDOSE-3D's XFEL subprogram reads it"),
+        ("pulse_shape", "PulseShape", "only RADDOSE-3D's XFEL subprogram reads it"),
+        ("pulse_window", "PulseWindow", "only RADDOSE-3D's XFEL subprogram reads it"),
         ("energy_fwhm", "EnergyFWHM", "MicroED's beam is monochromatic"),
         ("fwhm", "FWHM", "a TopHat beam has no FWHM"),
         (

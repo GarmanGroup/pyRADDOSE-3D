@@ -1043,6 +1043,7 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
     """
     from pyraddose_3d.backend.montecarlo.photons import BeamShape
     from pyraddose_3d.backend.montecarlo.simple import SimpleSetup, Surrounding
+    from pyraddose_3d.backend.montecarlo.xfel import DEFAULT_PULSE_WINDOW
     from pyraddose_3d.models.beam import GaussianBeam as GaussianBeamModel
     from pyraddose_3d.models.beam import TophatBeam as TophatBeamModel
 
@@ -1110,6 +1111,11 @@ def monte_carlo_setup(experiment: Experiment) -> SimpleSetup:
         gos=crystal.subprogram in ("gos", "xfel"),
         xfel=xfel,
         pulse_energy=float(beam.pulse_energy or 0.0),
+        pulse_window=(
+            (beam.pulse_window or DEFAULT_PULSE_WINDOW)
+            if xfel and beam.pulse_shape == "gaussian"
+            else None
+        ),
     )
 
 

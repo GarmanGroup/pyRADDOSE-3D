@@ -109,8 +109,8 @@ class Clock:
     Attributes
     ----------
     last : float
-        ``lastTime``: the pulse's length, rounded to whole fs, and the time
-        light takes to cross the crystal. An electron whose step ends later
+        ``lastTime``: the pulse's length, its window for a Gaussian pulse,
+        and the time light takes to cross the crystal. An electron whose step ends later
         is dropped, with the energy it had; a vacancy that would relax later
         is left as it is.
     """

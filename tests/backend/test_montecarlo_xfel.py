@@ -18,7 +18,8 @@ from pyraddose_3d.backend.montecarlo.gos_transport import (
     _Born,
     gos_medium,
 )
-from pyraddose_3d.backend.montecarlo.simple import in_random_order
+from pyraddose_3d.backend.montecarlo.simple import _pulse, in_random_order
+from pyraddose_3d.backend.montecarlo.xfel import Pulse
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.solve import monte_carlo_setup
 
@@ -177,3 +178,35 @@ def test_an_xfel_pulses_pink_photons_come_in_no_order_of_energy() -> None:
         assert abs(np.corrcoef(ranks, np.arange(photons))[0, 1]) < 0.02
     assert not np.array_equal(drawn[0], drawn[1])
     assert set(orders) == {2}
+
+
+def test_a_gaussian_pulses_photons_follow_its_profile_within_its_window() -> None:
+    """As RADDOSE-3D's ``slotTime``: in order, within a window two FWHMs
+    wide, with a normal's profile truncated to it, at their bins' starts."""
+    fwhm, bin_ = 2.0, 0.1
+    sigma = fwhm / (2 * math.sqrt(2 * math.log(2)))
+    pulse = Pulse(2 * fwhm, bin_, 0.0, np.zeros(1), 0.0, sigma)
+    photons = 100_000
+    t = pulse.slots(np.arange(photons), photons)
+    assert (t >= 0).all() and (t < 2 * fwhm).all() and (np.diff(t) >= 0).all()
+    a = fwhm / sigma
+    kept = math.erf(a / math.sqrt(2))
+    density = math.exp(-a * a / 2) / math.sqrt(2 * math.pi)
+    sd = sigma * math.sqrt(1 - 2 * a * density / kept)
+    # Each time is its bin's start: on average half a bin early.
+    assert t.mean() == pytest.approx(fwhm - bin_ / 2, abs=0.005)
+    assert t.std() == pytest.approx(math.sqrt(sd**2 + bin_**2 / 12), rel=0.01)
+
+
+def test_a_top_hat_pulses_photons_arrive_as_they_did() -> None:
+    pulse = Pulse(5.0, 0.1, 0.0, np.zeros(1), 0.0)
+    photons = 10_000
+    divisions = photons / (5.0 / 0.1)
+    expected = np.trunc(np.arange(photons) / divisions) * 0.1
+    assert np.array_equal(pulse.slots(np.arange(photons), photons), expected)
+
+
+def test_a_gaussian_pulse_lasts_its_window_in_its_fwhms_bins() -> None:
+    assert _pulse(2.0) == (2.0, 0.1)
+    assert _pulse(2.0, 2.0) == (4.0, 0.1)
+    assert _pulse(0.5, 3.0) == (1.5, 0.01)

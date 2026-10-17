@@ -153,6 +153,9 @@ class SimpleSetup:
         pulse (:mod:`.xfel`).
     pulse_energy : float
         The XFEL pulse's energy, mJ.
+    pulse_window : float | None
+        A Gaussian XFEL pulse's window, in FWHMs of the pulse, whose FWHM is
+        then ``exposure``; ``None`` for a top-hat pulse.
     """
 
     mesh: Mesh
@@ -177,6 +180,7 @@ class SimpleSetup:
     gos: bool = False
     xfel: bool = False
     pulse_energy: float = 0.0
+    pulse_window: float | None = None
 
 
 @dataclass
@@ -1080,16 +1084,19 @@ def _sample_volume(mesh: Mesh) -> float:
     return float(np.sum(np.abs((np.asarray(offsets) * area) / 3)))
 
 
-def _pulse(exposure: float) -> tuple[float, float]:
-    """``PULSE_LENGTH`` (the exposure) and ``PULSE_BIN_LENGTH``.
+def _pulse(exposure: float, window: float | None = None) -> tuple[float, float]:
+    """``PULSE_LENGTH`` and ``PULSE_BIN_LENGTH``: ``setUpPulse``.
 
-    The exposure as given, as since RADDOSE-3D #58: it was rounded to whole
-    femtoseconds, so a pulse under 0.5 fs had none.
+    A top-hat pulse lasts the exposure, as given, as since RADDOSE-3D #58: it
+    was rounded to whole femtoseconds, so a pulse under 0.5 fs had none. A
+    Gaussian pulse's FWHM is the exposure, and it lasts its window. The bins
+    are a top-hat's as long as the exposure.
     """
-    length = float(exposure)
-    if length <= 1:
+    exposure = float(exposure)
+    length = exposure if window is None else window * exposure
+    if exposure <= 1:
         return length, 0.01
-    if length <= 50:
+    if exposure <= 50:
         return length, 0.1
     return length, 1.0
 

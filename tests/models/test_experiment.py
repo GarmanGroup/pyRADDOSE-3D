@@ -317,3 +317,15 @@ def test_xfel_reads_the_pulse_energy_and_only_xfel_does() -> None:
 def test_a_beam_needs_a_flux_or_a_pulse_energy() -> None:
     with pytest.raises(ValidationError, match="flux, or for the XFEL"):
         _beam(flux=None)
+
+
+def test_a_pulses_shape_and_window_are_xfels_and_a_window_a_gaussians() -> None:
+    xfel = _crystal(subprogram="xfel")
+    pulse = _beam(flux=None, pulse_energy=1.4, pulse_shape="gaussian", pulse_window=3.0)
+    assert _experiment(crystal=xfel, beam=pulse).beam.pulse_window == 3.0
+    with pytest.raises(ValidationError, match="describe an XFEL pulse"):
+        _experiment(beam=_beam(pulse_shape="gaussian"))
+    with pytest.raises(ValidationError, match="a Gaussian pulse's photons"):
+        _beam(flux=None, pulse_energy=1.4, pulse_window=3.0)
+    with pytest.raises(ValidationError, match="a Gaussian pulse's photons"):
+        _beam(flux=None, pulse_energy=1.4, pulse_shape="tophat", pulse_window=3.0)

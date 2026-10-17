@@ -2,9 +2,10 @@
 
 The Monte Carlo's GOS model (:mod:`.simple`, :mod:`.gos_transport`), followed
 in time through one pulse, as RADDOSE-3D has it since #57. The pulse's
-photons arrive evenly over its length, in the order they are simulated; each
-reaches its interaction when the pulse's front, a plane that meets the
-crystal's front at the photon's place in the pulse, does. Each electron's
+photons arrive in the order they are simulated: evenly over a top-hat pulse,
+or at a Gaussian's quantiles within its window. Each reaches its interaction
+when the pulse's front, a plane that meets the crystal's front at the
+photon's place in the pulse, does. Each electron's
 steps take their flight time, and each relaxation its lifetime. Nothing is
 followed after ``lastTime``, when the last photon has left the crystal, and
 the dose and ionisations the run reports are those each voxel holds a time
@@ -23,6 +24,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.special import ndtr, ndtri
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.montecarlo.geometry import Placement, voxel_indices
@@ -36,9 +38,19 @@ if TYPE_CHECKING:
         _Tallies,
     )
 
-__all__ = ["Pulse", "TimedSink", "light", "pulse_timing", "xfel_runs"]
+__all__ = [
+    "DEFAULT_PULSE_WINDOW",
+    "Pulse",
+    "TimedSink",
+    "light",
+    "pulse_timing",
+    "xfel_runs",
+]
 
 _SPEED_OF_LIGHT = 299792458.0
+#: ``SubprogramInputs.DEFAULT_PULSE_WINDOW``: a Gaussian pulse's window, in
+#: FWHMs, when none is given: one FWHM either side of its peak, 98% of it.
+DEFAULT_PULSE_WINDOW = 2.0
 
 
 def light(distance_nm: np.ndarray | float) -> np.ndarray:
@@ -62,6 +74,8 @@ class Pulse:
         happens before it.
     depth : float
         The crystal's depth, nm: its bounding box's along z.
+    sigma : float | None
+        A Gaussian pulse's standard deviation, fs; ``None`` for a top-hat.
     """
 
     length: float
@@ -69,13 +83,24 @@ class Pulse:
     last: float
     cutoff: np.ndarray
     depth: float
+    sigma: float | None = None
 
     def slots(self, in_run: np.ndarray, photons: int) -> np.ndarray:
-        """Each photon's place in the pulse, fs: evenly, in the order simulated."""
-        with np.errstate(divide="ignore"):
-            # Photons per time bin; infinite for a pulse of no length.
-            divisions = photons / np.float64(self.length / self.bin)
-        return np.asarray(np.trunc(in_run / divisions) * self.bin)
+        """``slotTime``: each photon's place in the pulse, fs, at its bin's start.
+
+        In the order simulated: evenly over a top-hat pulse; over a Gaussian
+        one at its quantile (i + 1/2) / N, truncated to the window and scaled
+        up to fill it, so that the whole pulse energy arrives within it.
+        """
+        if self.sigma is None:
+            with np.errstate(divide="ignore"):
+                # Photons per time bin; infinite for a pulse of no length.
+                divisions = photons / np.float64(self.length / self.bin)
+            return np.asarray(np.trunc(in_run / divisions) * self.bin)
+        tail = ndtr(-self.length / (2 * self.sigma))
+        u = (np.asarray(in_run) + 0.5) / photons
+        t = self.length / 2 + self.sigma * ndtri(tail + u * (1 - 2 * tail))
+        return np.asarray(np.trunc(t / self.bin) * self.bin)
 
     def arrival(self, slot: np.ndarray, z_nm: np.ndarray) -> np.ndarray:
         """When the pulse's front, at the crystal's front at ``slot``, reaches z."""
@@ -88,7 +113,7 @@ def pulse_timing(setup: SimpleSetup, layers: int) -> Pulse:
 
     vertices = np.asarray(setup.mesh.vertices)
     depth = 1000 * float(vertices[:, 2].max() - vertices[:, 2].min())
-    length, bin_ = _pulse(setup.exposure)
+    length, bin_ = _pulse(setup.exposure, setup.pulse_window)
     last = float(light(depth)) + length
     layer_time = np.array(
         [
@@ -96,7 +121,12 @@ def pulse_timing(setup: SimpleSetup, layers: int) -> Pulse:
             for k in range(layers)
         ]
     )
-    return Pulse(length, bin_, last, layer_time - (1 * bin_), depth)
+    sigma = (
+        None
+        if setup.pulse_window is None
+        else float(setup.exposure) / (2 * math.sqrt(2 * math.log(2)))
+    )
+    return Pulse(length, bin_, last, layer_time - (1 * bin_), depth, sigma)
 
 
 @dataclass

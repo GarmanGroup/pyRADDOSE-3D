@@ -910,3 +910,50 @@ def test_simulated_experiments_read_back_identically(subprogram: str) -> None:
     assert "SimPhotons 20000\n" in text
     assert "Runs 2\n" in text
     assert read(text) == experiment
+
+
+def test_xfel_reads_a_pulses_shape_and_window() -> None:
+    beam = read(
+        XFEL_CRYSTAL
+        + with_lines(XFEL_BEAM, "PulseShape Gaussian", "PulseWindow 3")
+        + WEDGE
+    ).beam
+    assert (beam.pulse_shape, beam.pulse_window) == ("gaussian", 3.0)
+    beam = read(XFEL_CRYSTAL + with_lines(XFEL_BEAM, "PulseShape TOPHAT") + WEDGE).beam
+    assert (beam.pulse_shape, beam.pulse_window) == ("tophat", None)
+
+
+@pytest.mark.parametrize(
+    ("lines", "message"),
+    [
+        (("PulseShape Lorentzian",), "not a pulse shape"),
+        (("PulseWindow 2",), "a top-hat pulse lasts the exposure time"),
+        (("PulseShape TopHat", "PulseWindow 2"), "a top-hat pulse lasts"),
+        (("PulseShape Gaussian", "PulseWindow 0"), "more than 0 FWHMs"),
+    ],
+)
+def test_a_pulses_shape_and_window_are_checked(
+    lines: tuple[str, ...], message: str
+) -> None:
+    with pytest.raises(RaddoseTxtError, match=message):
+        read(XFEL_CRYSTAL + with_lines(XFEL_BEAM, *lines) + WEDGE)
+
+
+def test_a_pulse_shape_is_refused_by_the_monte_carlo_and_ignored_by_mx() -> None:
+    """SubprogramInputs.check refuses it; MX never reads it."""
+    with pytest.raises(RaddoseTxtError, match="describes an XFEL pulse"):
+        read(MC_CRYSTAL + with_lines(BEAM, "PulseShape Gaussian") + WEDGE)
+    with pytest.warns(RaddoseTxtWarning, match="PulseShape is ignored"):
+        beam = read(CRYSTAL + with_lines(BEAM, "PulseShape Gaussian") + WEDGE).beam
+    assert beam.pulse_shape is None
+
+
+def test_a_gaussian_pulse_is_written_back() -> None:
+    experiment = read(
+        XFEL_CRYSTAL
+        + with_lines(XFEL_BEAM, "PulseShape Gaussian", "PulseWindow 3")
+        + WEDGE
+    )
+    text = experiment.to_raddose_txt()
+    assert "PulseShape Gaussian" in text and "PulseWindow 3" in text
+    assert read(text) == experiment

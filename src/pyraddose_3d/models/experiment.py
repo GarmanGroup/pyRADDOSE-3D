@@ -83,6 +83,13 @@ class Experiment(RD3DModel):
                 "pulse_energy is read only by the XFEL subprogram; set the "
                 "crystal's subprogram to xfel, or leave it out"
             )
+        if subprogram != "xfel" and (
+            beam.pulse_shape is not None or beam.pulse_window is not None
+        ):
+            raise ValueError(
+                "pulse_shape and pulse_window describe an XFEL pulse; set the "
+                "crystal's subprogram to xfel, or leave them out"
+            )
         return self
 
     @classmethod

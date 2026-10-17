@@ -1550,6 +1550,13 @@ _CASES: list[Case] = [
         "femtoseconds; case 181's pulse energy",
         _xfel_pulse(1_000_000, 0.4, pulse_energy=14.0),
     ),
+    Case(
+        "187-xfel-gaussian-pulse",
+        "B",
+        "XFEL: a Gaussian pulse of 2 fs FWHM, its photons within the default "
+        "window of two FWHMs about its peak; case 181's pulse energy",
+        _xfel_pulse(1_000_000, 2.0, pulse_energy=14.0, pulse_shape="gaussian"),
+    ),
 ]
 
 
