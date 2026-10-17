@@ -1,7 +1,7 @@
 """RADDOSE-3D's XFEL subprogram, ``Subprogram XFEL``: the Monte Carlo's time mode.
 
 The Monte Carlo's GOS model (:mod:`.simple`, :mod:`.gos_transport`), followed
-in time through one pulse, as RADDOSE-3D has it since #56. The pulse's
+in time through one pulse, as RADDOSE-3D has it since #57. The pulse's
 photons arrive evenly over its length, in the order they are simulated; each
 reaches its interaction when the pulse's front, a plane that meets the
 crystal's front at the photon's place in the pulse, does. Each electron's
@@ -266,7 +266,7 @@ def xfel_runs(
                 non_h_ions += exposed
                 non_h_atoms += atoms_of[e] * fraction
         with np.errstate(invalid="ignore", divide="ignore"):
-            # The elastic photons simulated, as since RADDOSE-3D #57: the
+            # The elastic photons simulated, as since RADDOSE-3D #58: the
             # share of the pulse's that the elastic coefficient, at the last
             # photon's energy, scatters in the crystal's depth was taken.
             diffraction = np.float64(total_elastic) / np.float64(xfel_ader)

@@ -163,7 +163,7 @@ def test_polarised_directions_are_uniform_around_the_axis() -> None:
 def test_photoelectron_angles_follow_the_dipole_distribution() -> None:
     """``cos^2`` per solid angle: the cosine's square averages 3/5.
 
-    Every K-shell photoelectron follows it, as since RADDOSE-3D #58; three
+    Every K-shell photoelectron follows it, as since RADDOSE-3D #59; three
     in four did, the rest isotropic.
     """
     assert photons._EMISSION[-1] == pytest.approx(1.0, abs=1e-12)
@@ -385,7 +385,7 @@ def test_an_electron_leaving_with_under_50_ev_leaves_it(setup) -> None:  # type:
 
 
 def test_the_ions_file_lists_elements_by_atomic_number() -> None:
-    """As since RADDOSE-3D #55; it listed them in a HashMap's bucket order."""
+    """As since RADDOSE-3D #56; it listed them in a HashMap's bucket order."""
     from pyraddose_3d.backend.montecarlo.simple import SimpleRun
     from pyraddose_3d.outputs import monte_carlo_ions_csv
 

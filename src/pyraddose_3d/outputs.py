@@ -939,7 +939,7 @@ def monte_carlo_ions_csv(run: SimpleRun) -> str:
     """``WriteElements``: ``outputIonsPerAtom.CSV``, for one run.
 
     RADDOSE-3D rewrites it every run, so its file holds the last run's.
-    The elements come in atomic-number order, as since RADDOSE-3D #55: they
+    The elements come in atomic-number order, as since RADDOSE-3D #56: they
     came in a ``HashMap``'s bucket order.
     """
     lines = ["Atomic number,ionisationsPerAtom\n"]

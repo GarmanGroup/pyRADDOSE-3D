@@ -427,7 +427,7 @@ def photoelectron_directions(
     ``rotated_polarisation`` is whether the goniometer and the polarisation
     are at right angles: the polarisation is along x if so, along y if not.
     As RADDOSE-3D has it since #47, and every K-shell photoelectron since
-    #58: three in four did, but in XFEL.
+    #59: three in four did, but in XFEL.
     """
     n = len(k_shell)
     polarised = np.asarray(k_shell, dtype=bool)

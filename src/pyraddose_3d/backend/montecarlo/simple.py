@@ -635,6 +635,43 @@ def _photoabsorb(
     )
 
 
+def in_random_order(
+    energies: np.ndarray,
+    run: np.ndarray,
+    in_run: np.ndarray,
+    orders: dict[int, np.ndarray],
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Each photon's energy, every run's in a random order of its own.
+
+    Parameters
+    ----------
+    energies : numpy.ndarray
+        One energy per photon of a run, keV, as sampled: ascending.
+    run, in_run : numpy.ndarray
+        Each photon's run, and its place in it.
+    orders : dict[int, numpy.ndarray]
+        Each run's order, drawn when a batch first reaches the run; runs
+        before it, which no later batch reaches, are dropped.
+    rng : numpy.random.Generator
+        The random numbers.
+
+    Returns
+    -------
+    numpy.ndarray
+        The photons' energies, keV.
+    """
+    out = np.empty(len(run))
+    for r in np.unique(run).tolist():
+        if r not in orders:
+            for done in [k for k in orders if k < r]:
+                del orders[done]
+            orders[r] = rng.permutation(len(energies))
+        mine = run == r
+        out[mine] = energies[orders[r][in_run[mine]]]
+    return out
+
+
 def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[SimpleRun]:
     """Run ``Runs`` simple Monte Carlo runs.
 
@@ -685,17 +722,26 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         )
 
     total = runs * photons
+    # An XFEL pulse's pink photons come in no order of energy: a photon's place
+    # in the run is its time in the pulse. Each run's are shuffled, as
+    # RADDOSE-3D shuffles each run's.
+    orders: dict[int, np.ndarray] | None = (
+        {} if setup.xfel and setup.energies is not None else None
+    )
     for first in range(0, total, _BATCH):
         index = np.arange(first, min(first + _BATCH, total))
         run = index // photons
         in_run = index % photons
         placement = _placements(setup, in_run)
         n = len(index)
-        energy = (
-            np.full(n, setup.photon_energy)
-            if setup.energies is None
-            else np.asarray(setup.energies)[in_run]
-        )
+        if setup.energies is None:
+            energy = np.full(n, setup.photon_energy)
+        elif orders is not None:
+            energy = in_random_order(
+                np.asarray(setup.energies), run, in_run, orders, rng
+            )
+        else:
+            energy = np.asarray(setup.energies)[in_run]
         crystal = photon_coefficients(setup.composition, energy)
         x, y = beam_positions(rng, setup.beam, n)
         front = entry_depth(setup.mesh, x, y, placement)
@@ -1037,7 +1083,7 @@ def _sample_volume(mesh: Mesh) -> float:
 def _pulse(exposure: float) -> tuple[float, float]:
     """``PULSE_LENGTH`` (the exposure) and ``PULSE_BIN_LENGTH``.
 
-    The exposure as given, as since RADDOSE-3D #57: it was rounded to whole
+    The exposure as given, as since RADDOSE-3D #58: it was rounded to whole
     femtoseconds, so a pulse under 0.5 fs had none.
     """
     length = float(exposure)
@@ -1096,7 +1142,7 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
             (tallies.raddose_compton[r] * to_joules) / mass
         ) / 1e6
         # In simple mode, outputXFEL.CSV's doses are the Monte Carlo's own, as
-        # since RADDOSE-3D #55: the GOS tally there held only the binding
+        # since RADDOSE-3D #56: the GOS tally there held only the binding
         # energies of atoms that do not relax and the slowest electrons.
         resolved = (resolved_all[r] if setup.gos else dose[r]) * to_joules
         cut = resolved * kept[None, None, :]

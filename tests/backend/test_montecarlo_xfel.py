@@ -18,6 +18,7 @@ from pyraddose_3d.backend.montecarlo.gos_transport import (
     _Born,
     gos_medium,
 )
+from pyraddose_3d.backend.montecarlo.simple import in_random_order
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.solve import monte_carlo_setup
 
@@ -87,7 +88,7 @@ def _relax(medium, row, clock, n=2000, time=0.0):  # type: ignore[no-untyped-def
 
 def test_an_xfel_cascade_conserves_a_vacancys_energy(selenium) -> None:  # type: ignore[no-untyped-def]
     """A selenium K vacancy fluoresces about half the time, with an 11 keV
-    photon, which escapes, as in GOS mode since RADDOSE-3D #53: what it
+    photon, which escapes, as in GOS mode since RADDOSE-3D #54: what it
     leaves, its Auger electrons and its photons come to its 12.658 keV."""
     medium, row = selenium
     sink = _Collect()
@@ -142,7 +143,7 @@ def test_what_a_transition_leaves_comes_its_lifetime_later(selenium) -> None:  #
 def test_an_xfel_pulse_is_a_still_at_the_wedges_start() -> None:
     """A pulse lasts femtoseconds, so the crystal stands still through it, at
     the wedge's start, however far the wedge turns: as RADDOSE-3D has it
-    since #56. XFEL turned the voxels, not the crystal, by whole radians."""
+    since #57. XFEL turned the voxels, not the crystal, by whole radians."""
     from pyraddose_3d.backend.montecarlo.simple import _placements
 
     experiment = Experiment.from_yaml(XFEL_CASE)
@@ -151,3 +152,28 @@ def test_an_xfel_pulse_is_a_still_at_the_wedges_start() -> None:
     setup = monte_carlo_setup(Experiment.model_validate(data))
     placement = _placements(setup, np.arange(0, setup.photons, 997))
     np.testing.assert_array_equal(placement.angle, math.radians(30.0))
+
+
+def test_an_xfel_pulses_pink_photons_come_in_no_order_of_energy() -> None:
+    """Each run's energies are the sampler's in a random order of its own: in
+    ascending order the softest photons came first in the pulse."""
+    energies = np.linspace(11.6, 12.6, 50_000)
+    photons = len(energies)
+    index = np.arange(3 * photons)
+    run, in_run = index // photons, index % photons
+    orders: dict[int, np.ndarray] = {}
+    rng = np.random.default_rng(5)
+    drawn = np.concatenate(
+        [
+            in_random_order(
+                energies, run[i : i + 30_000], in_run[i : i + 30_000], orders, rng
+            )
+            for i in range(0, len(index), 30_000)
+        ]
+    ).reshape(3, photons)
+    for r in range(3):
+        assert np.array_equal(np.sort(drawn[r]), energies)
+        ranks = np.argsort(np.argsort(drawn[r]))
+        assert abs(np.corrcoef(ranks, np.arange(photons))[0, 1]) < 0.02
+    assert not np.array_equal(drawn[0], drawn[1])
+    assert set(orders) == {2}

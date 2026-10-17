@@ -136,7 +136,7 @@ def test_a_cascade_conserves_a_vacancys_energy(material) -> None:  # type: ignor
     """A sulfur K vacancy: what it leaves, its Auger electrons and its
     fluorescence photons come to the 2.472 keV it holds, to rounding. Each
     vacancy a transition leaves deposited its own binding energy as well
-    until RADDOSE-3D #53."""
+    until RADDOSE-3D #54."""
     medium = gos_medium(material, 3.0)
     sink = _Collect()
     cascade = Cascade(np.random.default_rng(3), medium, sink)

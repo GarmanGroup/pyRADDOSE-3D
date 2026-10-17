@@ -24,7 +24,7 @@ Here every electron takes one step per pass, and the secondaries and Auger
 electrons each step frees join the next pass. Each carries the Java's
 per-electron state: its mean free paths and the chance an inelastic
 collision is with an inner shell, at its energy, brought up to date as it
-loses energy and when it comes back into the crystal. Until RADDOSE-3D #54
+loses energy and when it comes back into the crystal. Until RADDOSE-3D #55
 the inner shells' mean free path stayed at the starting energy's, an
 inverse length was taken for a length where none was open at the start,
 and the chance went stale (``UPSTREAM_FIXES.md``).
@@ -333,7 +333,7 @@ class Cascade:
     only what the electron or photon and the vacancies it leaves do not
     carry: a few eV where the tables disagree. Any other vacancy leaves its
     binding energy, to GOS mode's dose and to the Monte Carlo's. As
-    RADDOSE-3D has it since #53: the vacancies' energy was counted twice,
+    RADDOSE-3D has it since #54: the vacancies' energy was counted twice,
     and in GOS mode a fluorescence photon's left at the atom.
 
     With a :class:`Clock`, as the XFEL subprogram relaxes a vacancy
@@ -382,7 +382,7 @@ class Cascade:
         """How long each transition takes, fs; 0 without a clock.
 
         Drawn from the exponential its lifetime is the mean of, as since
-        RADDOSE-3D #57: it took the lifetime itself, every time.
+        RADDOSE-3D #58: it took the lifetime itself, every time.
         """
         if self.clock is None:
             return np.zeros(len(z))
@@ -908,7 +908,7 @@ def _setup(ctx: _Context, e: _Electrons, fresh: np.ndarray) -> np.ndarray:
             there = there[e.time[there] < ctx.clock.last]
         primary = there[e.primary[there]]
         ctx.sink.dose(e.position[primary], e.owner[primary], e.start[primary])
-        # An Auger electron's too, as RADDOSE-3D has it since #53: it was lost.
+        # An Auger electron's too, as RADDOSE-3D has it since #54: it was lost.
         ctx.sink.resolved(
             e.position[there], e.owner[there], e.start[there], e.time[there]
         )
@@ -1125,7 +1125,7 @@ def _leave(ctx: _Context, e: _Electrons, leaving: np.ndarray) -> np.ndarray:
     """Out of the crystal: lost, or on into the surrounding.
 
     Just past the face, scattering elastically, as it does from then on out
-    there: the GOS model is not used in the surrounding. Until RADDOSE-3D #54
+    there: the GOS model is not used in the surrounding. Until RADDOSE-3D #55
     the first step there took its inelastic mean free path too. Returns
     which have ended.
     """
