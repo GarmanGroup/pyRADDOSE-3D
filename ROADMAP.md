@@ -41,11 +41,10 @@ its Monte Carlo and XFEL subprograms do, statistically.**
 
 **What it is not yet**, and the milestone that changes it:
 
-- **Light.** Two-thirds of the install is scipy, used for one function (Milestone 5).
 - **Tested beyond one Mac.** The repository has never been pushed, so its CI has never run
   (Milestone 5).
-- **Able to run every RADDOSE-3D input.** It cannot download a PDB entry by its code, and still
-  reads three file formats by hand (Milestone 6).
+- **Reading every file as CCP4 asks.** PGM beam images, `.obj` meshes and the vendored tables
+  are still read by hand, and stay so for now (Milestone 6).
 - **Optimising several settings at once**, which is the case that most needs gradients
   (Milestone 8).
 - **In CCP4.** That needs the relicensing, and answers from CCP4 (Milestone 9).
@@ -55,11 +54,11 @@ its Monte Carlo and XFEL subprograms do, statistically.**
 Measured in a fresh environment holding only the runtime dependencies (Python 3.12, macOS on
 Apple silicon).
 
-**Install: 107 MB, two-thirds of it scipy.**
+**Install: 107 MB, two-thirds of it scipy, which stays: CCP4 ships it already.**
 
 | package | installed | used for |
 |---|---|---|
-| scipy | 72 MB | `erf` and `erfinv`, nothing else |
+| scipy | 72 MB | `erf`, `erfinv` and the normal distribution's quantile |
 | numpy | 22 MB | everything |
 | pydantic and pydantic-core | 6.5 MB | the input models |
 | gemmi | 6.1 MB | PDB, mmCIF, CIF and sequence files |
@@ -69,11 +68,11 @@ Apple silicon).
 
 RADDOSE-3D's release jar is 53 MB, and needs a JVM.
 
-**Start-up.** Importing the solver takes about 130 ms warm. 55 ms of that is
-`importlib.metadata`, looking up the package's version number. The first run that needs `erf`
-or `erfinv` imports scipy's special functions, about 200 ms more, and the input models add
-about 110 ms. On a fresh install, the first import of scipy compiled its bytecode and took 14
-seconds, once.
+**Start-up.** Importing the package takes 3 ms: its version is written when it is built, where
+looking it up in `importlib.metadata` took 55 ms. Importing the solver takes about 190 ms warm,
+on a busy machine: NumPy about 65 ms, and the input models about 125 ms. The first run that
+needs `erf` or `erfinv` imports scipy's special functions, about 200 ms more. On a fresh install,
+the first import of scipy compiled its bytecode and took 14 seconds, once.
 
 **Running.** The port against RADDOSE-3D on the same inputs. Java times are wall-clock and
 include starting the JVM; the port's are warm and exclude its start-up.
@@ -93,23 +92,25 @@ Every addition still to come has a cost in weight, so the rules are set before t
 1. **A runtime dependency has to earn its place.** It is either something nothing else can
    do, or a library CCP4 asks for, and it carries a reason in `pyproject.toml`. A test will pin
    the list, so adding one is a visible, reviewed change rather than a line slipped in.
+   `tests/test_weight.py` pins it.
 2. **Heavy or rarely needed libraries import lazily**, inside the function that needs them, as
-   torch and scipy do now. `import pyraddose_3d.solve` must not import torch, scipy or
-   pydantic; a test will check it in a fresh interpreter.
-3. **The core package's data stays under 1 MB**, also pinned by a test. Bulk data goes in a
-   separate, optional package.
+   torch and scipy do. `import pyraddose_3d.solve` must not import torch or scipy, which
+   `tests/test_weight.py` checks in a fresh interpreter. It does import pydantic: whoever calls
+   it has built the input models already.
+3. **The core package's data stays under 1 MB**, pinned by the same tests: it is 828 KB. Bulk
+   data goes in a separate, optional package.
 4. **Optional capabilities are extras**: torch for gradients now, and any subprogram's data
    later.
 
-### Milestone 5's changes: about 70% off the install, 40% off start-up
+### Milestone 5's changes
 
-| change | saves | notes |
+| change | saves | state |
 |---|---|---|
-| Replace scipy with the standard library | 72 MB, 67% of the install, and ~200 ms | `math.erf` agrees with `scipy.special.erf` to 3e-16, and `statistics.NormalDist().inv_cdf` with `sqrt(2) * erfinv(2p - 1)` to 8e-16, on the pink-beam grid. Torch keeps `torch.erf` for gradients. The corpus must stay unchanged. |
-| Write the version at build time | 55 ms, about 40% of the import | `hatch-vcs` can write `_version.py`, so `__init__` stops calling `importlib.metadata`. |
-| Move `types-PyYAML` to the dev group | a stub package | It is for mypy, not for running. |
-| Fix the description | — | `pyproject.toml` still says "pyTorch port"; torch is optional. |
-| The guard tests above | — | The dependency list, lazy imports and the data budget. |
+| Replace scipy with the standard library | 72 MB, 67% of the install, and ~200 ms | **not done**, by decision: CCP4 ships scipy already |
+| Write the version at build time | 55 ms, about 40% of the import | done: `hatch-vcs` writes `_version.py` |
+| Move `types-PyYAML` to the dev group | a stub package | done: it is for mypy, not for running |
+| Fix the description | — | done: torch is optional |
+| The guard tests above | — | done: `tests/test_weight.py`, for the dependency list, the lazy imports of torch and scipy, the metadata lookup, and the data budget |
 
 ### What the work still to come would add
 
@@ -147,8 +148,8 @@ Milestones 0 to 4, and MicroED, are done (`HISTORY.md`). Restated on 2026-10-13,
 
 | milestone | in short | done when | waits on |
 |---|---|---|---|
-| 5. Light, and tested beyond one Mac | the weight changes; CI on three platforms | the install is about 35 MB without torch, and 73 of 73 cases pass in CI on Linux, macOS and Windows | a remote for the repository |
-| 6. Every RADDOSE-3D input, read as CCP4 asks | PDB codes; the last hand-written readers; two known divergences | every input RADDOSE-3D accepts runs with its answer, or is refused for good, and nothing but perhaps `.txt` is read by hand | CCP4, on `.txt` |
+| 5. Light, and tested beyond one Mac | the small weight changes (done); CI on three platforms | the corpus passes in CI on Linux, macOS and Windows | a remote for the repository |
+| 6. Every RADDOSE-3D input, read as CCP4 asks | PDB codes and two known divergences (done); the last hand-written readers (left for now) | every input RADDOSE-3D accepts runs with its answer, or is refused for good, and nothing but perhaps `.txt` is read by hand | CCP4, on `.txt`; the decision to change the readers |
 | 7. Monte Carlo and XFEL | made reproducible in RADDOSE-3D (#42), ported as they are, then fixed in both | their tier-B cases pass, and their data sits in optional packages | the group, on the physics fixes |
 | 8. Several settings at once | the rest of Milestone 3 | a worked example beats a parameter scan, against a published result | nobody |
 | 9. Publication and CCP4 | the paper; the Working Group 2 submission | submitted | the relicensing |
@@ -160,10 +161,9 @@ alongside 5 and 6. Milestone 8 can be taken up at any point, and Milestone 9 wai
 
 ### Milestone 5 — Light, and tested beyond one Mac
 
-- **The weight changes** in *Keeping it light*: scipy replaced by the standard library, the
-  version written at build time, `types-PyYAML` moved to the dev group, the description fixed,
-  and the guard tests for the dependency list, lazy imports and the data budget. Each keeps the
-  corpus unchanged.
+- **The weight changes** in *Keeping it light* (done, on 2026-10-17): the version written at
+  build time, `types-PyYAML` moved to the dev group, the description fixed, and the guard tests.
+  Scipy stays, by decision: CCP4 ships it already.
 - **A remote**, even a private one, so that CI runs: Linux, macOS and Windows, and the notebooks.
 - **Escape off macOS.** The escape code takes `cos` and `sin` from the platform's C library, which
   match the Java on macOS but may differ in the last bit elsewhere, and a last-bit difference can
@@ -174,27 +174,33 @@ alongside 5 and 6. Milestone 8 can be taken up at any point, and Milestone 9 wai
   tolerance is set by the antimony case and catches the cylinder's mirrored dose field with only
   a factor of two to spare, so it wants setting per case.
 
-**Done when** the install is about 35 MB without torch, the import about 75 ms, both pinned by
-tests, and 73 of 73 cases pass in CI on all three platforms.
+**Done when** the corpus passes in CI on all three platforms.
 
 ### Milestone 6 — Every RADDOSE-3D input, read as CCP4 asks
 
 For the MX calculation and MicroED: any input file that works in RADDOSE-3D works here, with
 RADDOSE-3D's answer.
 
-- **PDB entries by code.** RADDOSE-3D downloads `PDB 3I40` from RCSB; the port looks for a file
-  called `3I40` and fails. Download with the standard library and read with Gemmi, as now. A test
-  that downloads is not reproducible, so the corpus keeps using local files.
-- **The last hand-written readers**, from CCP4's request: PGM beam images to `netpbmfile`
+- **PDB entries by code** (done): `PDB 3I40` is downloaded from RCSB's address for it, as
+  RADDOSE-3D downloads it, once per process, with the standard library, and read with Gemmi as a
+  local file is. Only a four-character code is downloaded; any other name is a path, so a local
+  mmCIF file still works. Tests serve the entry locally; one marked `network`, deselected by
+  default, downloads it.
+- **The last hand-written readers**, from CCP4's request, left as they are for now by decision: PGM beam images to `netpbmfile`
   (Pillow will not do: it rescales any maxval but 255 and 65535, and rounds), `.obj` meshes to
   `trimesh`, and the vendored tables to `csv` or NumPy. Each is checked against the reader it
   replaces, on the corpus and beyond, as Gemmi was. RADDOSE-3D's `.txt` input waits on CCP4: if
   it counts as a bespoke parser, it becomes a Lark grammar mirroring the Java's `Inputfile.g`.
-- **Two known divergences**, fixed in RADDOSE-3D first as before, then matched:
-  - a third `Dimensions` value on a cylinder makes RADDOSE-3D treat it as a cuboid in MicroED,
-    which the port does not;
-  - RADDOSE-3D skips a character its grammar does not know, with a message, and carries on.
-    The port warns. `input-b3x14.txt`, which RADDOSE-3D ships, has a stray `ß`.
+- **Two known divergences**, fixed in RADDOSE-3D first as before, then matched (done):
+  - a third `Dimensions` value on a cylinder made RADDOSE-3D treat it as a cuboid in MicroED,
+    which the port did not. [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) takes a
+    cylinder's shape from its `Type`, and the port now warns of the third value, as RADDOSE-3D
+    does;
+  - RADDOSE-3D skipped a character its grammar does not know, with a message, and carried on,
+    and the port warned. [#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65) refuses it, and
+    so does the port, every one in one message; both read a byte-order mark and a final comment
+    with no newline. `input-b3x14.txt`, an example input in the author's RADDOSE-3D directory
+    but not in its repository, has a stray `ß`, and both now refuse it.
 
 **Done when** every input RADDOSE-3D accepts runs here with its answer, or is one of the two
 refused for good (`AbsCoefCalc RDV2`/`RDV3`, `Type Experimental`), and no file but perhaps
@@ -340,17 +346,19 @@ and #43 to #49, the Monte Carlo and XFEL's, on 2026-10-14 (`UPSTREAM_FIXES.md` h
 measurements). #41 adds MicroED's beam requirements and output files to the user guide. #51,
 which makes the GOS model twelve times faster, and #52, which stops GOS and XFEL losing every
 electron that collides with phosphorus's or selenium's valence electrons, were merged on
-2026-10-15. The corpus follows `master` at `85a6813`, but for its 28 Monte Carlo, GOS and XFEL
-cases and MicroED's 121 and 134, which follow the top of #54 to #62, open as a stack: #59
-(`c1566d2`) for the 19 that the rest leave unchanged, #60 (`cff0a59`), #61 (`29347d6`) and #62
-(`e0529dc`) for the cases each changes or adds.
+2026-10-15. #54 to #62, GOS's and XFEL's remaining fixes and XFEL's pulse, were merged on
+2026-10-17, and `master` at `a79eb45` has the same source as the stack's top. The corpus follows
+`master` at `85a6813`, but for its 28 Monte Carlo, GOS and XFEL cases and MicroED's 121 and 134,
+which were generated from the stack's branches: #59 (`c1566d2`) for the 19 that the rest leave
+unchanged, #60 (`cff0a59`), #61 (`29347d6`) and #62 (`e0529dc`) for the cases each changes or
+adds. [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) and
+[#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65), Milestone 6's two divergences, are
+open; neither moves a corpus number.
 
 **Still open in the Java**, each with the milestone that takes it up:
 
-- GOS and XFEL's physics defects, fixed by #54 to #60, and XFEL's pulse, #61 and #62, open for
-  the group's sign-off (Milestone 7).
-- A third `Dimensions` value making a cylinder a cuboid, and lexer errors not being refused
-  (Milestone 6).
+- A third `Dimensions` value making a cylinder a cuboid, and lexer errors not being refused,
+  fixed by #64 and #65, open (Milestone 6).
 - Container runs fetch NIST's tables over the network on every run, and NIST refuses Java 8's
   requests, which then fail with a `NullPointerException`. The port vendors the tables; the Java
   should too.

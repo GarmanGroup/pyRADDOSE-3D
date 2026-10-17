@@ -35,5 +35,6 @@ Comput = "Comput"
 Commun = "Commun"
 
 [default]
-# Notebook cell ids are random hex, which reads as misspellings ("daa", "ded").
-extend-ignore-re = ['"id": "[0-9a-f]{8}"']
+# Notebook cell ids and commit hashes are random hex, which reads as
+# misspellings ("daa", "ded", "ba").
+extend-ignore-re = ['"id": "[0-9a-f]{8}"', '`[0-9a-f]{7,40}`']

@@ -38,15 +38,17 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#49](https://github.com/GarmanGroup/RADDOSE-3D/pull/49) | `jd_mc_surrounding`, onto #48 | *Monte Carlo*: the surrounding | merged as `85a6813` |
 | [#51](https://github.com/GarmanGroup/RADDOSE-3D/pull/51) | `jd_gos_integral`, onto `master` | *GOS*: the distant collisions' integral finds its ends once; no result changes | merged as `b121430` |
 | [#52](https://github.com/GarmanGroup/RADDOSE-3D/pull/52) | `jd_gos_valence_binding`, onto #51 | *GOS and XFEL*: a valence collision takes its subshell's binding energy | merged as `18b213c` |
-| [#54](https://github.com/GarmanGroup/RADDOSE-3D/pull/54) | `jd_gos_cascade_energy`, onto `master` | *GOS and XFEL*: a vacancy's relaxation deposits its energy once | open |
-| [#55](https://github.com/GarmanGroup/RADDOSE-3D/pull/55) | `jd_gos_cross_sections`, onto #54 | *GOS and XFEL*: an electron's mean free paths where it is, at its energy now | open |
-| [#56](https://github.com/GarmanGroup/RADDOSE-3D/pull/56) | `jd_mc_outputs`, onto #55 | *Monte Carlo and XFEL*: the ions file by atomic number; simple mode's own doses in `outputXFEL.CSV` | open |
-| [#57](https://github.com/GarmanGroup/RADDOSE-3D/pull/57) | `jd_xfel_on_mc`, onto #56 | *XFEL*: the Monte Carlo's GOS model, timed; `XFEL.java` retired | open |
-| [#58](https://github.com/GarmanGroup/RADDOSE-3D/pull/58) | `jd_xfel_leftovers`, onto #57 | *XFEL*: the pulse as long as given, lifetimes drawn, the elastic photons simulated | open |
-| [#59](https://github.com/GarmanGroup/RADDOSE-3D/pull/59) | `jd_mc_polarisation`, onto #58 | *Monte Carlo*: every K-shell photoelectron follows the polarisation | open |
-| [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60) | `jd_gos_heavy_atoms`, onto #59 | *GOS and MicroED*: heavy atoms' subshells; binding energies from xenon on | open |
-| [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) | `jd_xfel_unchirped`, onto #60 | *XFEL*: a pink pulse's photons come in no order of energy | open |
-| [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) | `jd_xfel_gaussian_pulse`, onto #61 | *XFEL*: a Gaussian pulse, as an option | open |
+| [#54](https://github.com/GarmanGroup/RADDOSE-3D/pull/54) | `jd_gos_cascade_energy`, onto `master` | *GOS and XFEL*: a vacancy's relaxation deposits its energy once | merged as `24157df` |
+| [#55](https://github.com/GarmanGroup/RADDOSE-3D/pull/55) | `jd_gos_cross_sections`, onto #54 | *GOS and XFEL*: an electron's mean free paths where it is, at its energy now | merged as `d3fe142` |
+| [#56](https://github.com/GarmanGroup/RADDOSE-3D/pull/56) | `jd_mc_outputs`, onto #55 | *Monte Carlo and XFEL*: the ions file by atomic number; simple mode's own doses in `outputXFEL.CSV` | merged as `1fd9bc9` |
+| [#57](https://github.com/GarmanGroup/RADDOSE-3D/pull/57) | `jd_xfel_on_mc`, onto #56 | *XFEL*: the Monte Carlo's GOS model, timed; `XFEL.java` retired | merged as `2682f29` |
+| [#58](https://github.com/GarmanGroup/RADDOSE-3D/pull/58) | `jd_xfel_leftovers`, onto #57 | *XFEL*: the pulse as long as given, lifetimes drawn, the elastic photons simulated | merged as `d63a231` |
+| [#59](https://github.com/GarmanGroup/RADDOSE-3D/pull/59) | `jd_mc_polarisation`, onto #58 | *Monte Carlo*: every K-shell photoelectron follows the polarisation | merged as `1e1d774` |
+| [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60) | `jd_gos_heavy_atoms`, onto #59 | *GOS and MicroED*: heavy atoms' subshells; binding energies from xenon on | merged as `e5ba30f` |
+| [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) | `jd_xfel_unchirped`, onto #60 | *XFEL*: a pink pulse's photons come in no order of energy | merged as `b118b0e` |
+| [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) | `jd_xfel_gaussian_pulse`, onto #61 | *XFEL*: a Gaussian pulse, as an option | merged as `a79eb45` |
+| [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) | `jd_crystal_type_from_type`, onto `master` | *MicroED*: a cylinder is a cylinder whatever `Dimensions` holds | open |
+| [#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65) | `jd_input_unknown_characters`, onto `master` | *Input*: a character the grammar cannot read is refused | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -61,8 +63,9 @@ regenerated from it, is byte-identical to `master`'s. Before it, one run of case
 Java nine hours on a loaded machine. #52, stacked on it, fixes the GOS and XFEL defect below. Both
 were merged on 2026-10-15.
 
-#54 to #60 fix the rest of what porting GOS and XFEL found, and are open as a stack on `master`
-at `18b213c` for the group's sign-off. #61 and #62, on them, change XFEL's pulse. The corpus's 28
+#54 to #60 fix the rest of what porting GOS and XFEL found, and #61 and #62, on them, change
+XFEL's pulse. The stack was squash-merged in order on 2026-10-17, and `master` at `a79eb45` has
+the same source as its top, so the references generated from its branches stand. The corpus's 28
 Monte Carlo, GOS and XFEL cases follow the stack's top: the 19 that neither #60 nor #61 changes
 are generated from #59 (`c1566d2`); the seven #60 changes or adds, with MicroED's cases 121 and
 134, from #60 (`cff0a59`); 182, a pink pulse, from #61 (`29347d6`); and 187, a Gaussian pulse,
@@ -660,15 +663,16 @@ misdescriptions were corrected when this document was written.
 
 ## Older upstream items
 
-These were found before Milestone 4. The first three are now fixed: the first two in
-`jd_upstream_input_fixes`, the third in `jd_upstream_wedge_count`. The last two remain open.
+These were found before Milestone 4. The first three are fixed: the first two in
+`jd_upstream_input_fixes`, the third in `jd_upstream_wedge_count`. The fourth is fixed by #65; the
+last remains open.
 
 | item | where | fix |
 |---|---|---|
 | `-o voxelfluences:…` never matches: `"voxeldose"` is tested twice | `OutputFactory.java:59–62` | **fixed** |
 | the help text advertises `Summary`, `SummaryCSV:…` and `DoseStateCSV`, which are not modules | `RD3D.java:399–401` | **fixed** |
 | a 0–30° wedge at 2° per image takes 15 images, not 16: the count is computed in radians and truncated | `Crystal.java:891–893` | **fixed**, with the reversed wedge's count and step; only case 066 moved, plus new case 067 |
-| characters the lexer does not know are skipped with a message, not refused | the generated parser | refuse, as #34 did for parser errors. The port warns today. |
+| characters the lexer does not know are skipped with a message, not refused | the generated parser | **fixed in both** by #65: refused, as #34 refused parser errors. A byte-order mark and a final comment with no newline, which were lexer errors too, are read |
 | `MicroED.getSolventFraction()`, and the `getBeamArea()`/`getExposure()` stubs | MicroED, `BeamGaussian.java:298–306` | MicroED now refuses any beam but TopHat, so the stubs are never read: see *MicroED* below. `getSolventFraction` is read only by MicroED's disabled charge model. |
 
 ---
@@ -694,7 +698,7 @@ and the corpus follows that commit.
 | The slice file's depth column assumes 5 nm slices | `MicroED.CalculateEM` | a thickness not a multiple of 5 nm is cut into wider slices than the depths say (read) | the depths step by the real width; cases 122 and 124 |
 | MicroED's class cannot load without Selenium, which only its commented-out NIST lookup uses | `MicroED.java:14–25` | Selenium and its dependencies, 9 MB of the 53 MB jar, are needed to run MicroED at all (run) | the lookup and the library are gone |
 | Elements from Z = 35 have no inner subshells in the GOS model | `getNumValenceElectronsSubshells` | every electron counted as valence (read) | fixed in both by #60, below |
-| A third `Dimensions` value makes a cylinder a cuboid | `Crystal:310–328` | MicroED takes 0.001 nm off a cylinder's thickness only when it has two dimensions (run) | open; the port always takes it off |
+| A third `Dimensions` value makes a cylinder a cuboid | `Crystal:310–328` | MicroED takes 0.001 nm off a cylinder's thickness only when it has two dimensions (run) | fixed by #64: a cylinder or sphere takes its shape from its `Type`. The port always took it off, and now warns that the third value is ignored, as the Java does |
 
 An earlier version of this table said the CIF route counts its molecular weight twice. It does
 not: `CoefCalcFromCIF` calls `calculateDensity` once.
@@ -777,8 +781,8 @@ way, agrees with #52 on all eight GOS and XFEL cases (largest |t| 1.8, threshold
 
 ### Physics, fixed in both: [#54](https://github.com/GarmanGroup/RADDOSE-3D/pull/54) to [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60)
 
-Found porting GOS and XFEL, and opened on 15 to 17 October 2026 as a stack on `master` at
-`18b213c`, for the group's sign-off. Each effect is RADDOSE-3D's, 20 runs on either side of the PR
+Found porting GOS and XFEL, opened on 15 to 17 October 2026 as a stack on `master` at
+`18b213c`, and merged on 17 October. Each effect is RADDOSE-3D's, 20 runs on either side of the PR
 from the same seed; "paired" means both sides drew the same random numbers. At every stage the
 port, changed the same way, agreed with RADDOSE-3D on the cases that PR's references were made
 for: largest |t| 2.9, on an ungated DWD column, against thresholds of about 5.
@@ -798,7 +802,7 @@ No defect found porting GOS and XFEL is left open.
 
 ### XFEL's pulse: [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) and [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62)
 
-Asked for on 17 October 2026, and stacked on #60.
+Asked for on 17 October 2026, stacked on #60, and merged with the stack.
 
 | PR | change | where | effect |
 |---|---|---|---|
