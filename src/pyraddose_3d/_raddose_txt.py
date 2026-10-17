@@ -446,31 +446,24 @@ def _tokenise(text: str, source: str) -> list[_Token]:
     wherever they appear. ``/`` can be, so ``//`` starts a comment only at
     the beginning of a word -- a path containing ``//`` is still one word.
 
-    A character no token can contain is skipped with a warning, which is
-    what ANTLR's lexer does: it reports "no viable alternative at character"
-    and carries on, and RADDOSE-3D runs. One of the example inputs that ships
-    with it, ``input-b3x14.txt``, has ``AngularResolution 0.5`` followed by a
-    stray ``ß``, and runs at 0.5.
+    A character no token can contain is refused, every one of them in one
+    error, as RADDOSE-3D refuses it since #65: ANTLR's lexer skipped it and
+    carried on, so ``AngularResolution 0.5ß`` ran at 0.5. A byte-order mark
+    is whitespace, as there.
     """
     tokens = []
+    unreadable = []
     for number, line in enumerate(text.splitlines(), start=1):
         position, length = 0, len(line)
         while position < length:
             character = line[position]
-            if character in " \t\r":
+            if character in " \t\r\ufeff":
                 position += 1
                 continue
             if character in "#!" or line.startswith("//", position):
                 break
             if character not in _WORD_CHARACTERS:
-                warnings.warn(
-                    RaddoseTxtWarning(
-                        f"{source}, line {number}: skipped {character!r}, which "
-                        f"is not part of any keyword or value; RADDOSE-3D "
-                        f"skips it too"
-                    ),
-                    stacklevel=4,
-                )
+                unreadable.append(f"line {number}: {character!r}")
                 position += 1
                 continue
             end = position
@@ -478,6 +471,12 @@ def _tokenise(text: str, source: str) -> list[_Token]:
                 end += 1
             tokens.append(_Token(line[position:end], number))
             position = end
+    if unreadable:
+        raise RaddoseTxtError(
+            f"{source}: no keyword or value can contain "
+            + ", ".join(unreadable)
+            + "; RADDOSE-3D refuses the input too"
+        )
     return tokens
 
 
@@ -1139,8 +1138,20 @@ def _crystal(
         elif shape == "SPHERICAL":
             crystal["diameter"] = dims[0]
         else:
-            # The third value is ignored, with a warning in the Java.
             crystal["diameter"], crystal["height"] = dims[0], dims[1]
+            if len(dims) > 2 and dims[2] != dims[1]:
+                # CrystalCylinder's warning. The crystal is a cylinder all the
+                # same, as in RADDOSE-3D since #64: a third value made it a
+                # cuboid to MicroED there.
+                warnings.warn(
+                    RaddoseTxtWarning(
+                        f"{stream.source}, line {values['dimensions'][1]}: a "
+                        f"cylinder is described by two dimensions, so the third "
+                        f"value of Dimensions ({dims[2]:g} um) is ignored; it is "
+                        f"{dims[0]:g} um across and {dims[1]:g} um long"
+                    ),
+                    stacklevel=3,
+                )
 
     for key, field_name in (
         ("ppm", "pixels_per_micron"),

@@ -80,7 +80,8 @@ def test_every_conformance_case_reads_back_identically(case: str) -> None:
 
 # --- the files RADDOSE-3D ships ----------------------------------------------
 
-#: Every example input in the RADDOSE-3D repository, and what happens to it.
+#: Example inputs from a RADDOSE-3D directory, and what happens to each. Its
+#: repository tracks only the two SMXray inputs and the ``input.txt`` template.
 SHIPPED = {
     "MyInput.txt": None,
     "MyInput_circular.txt": None,
@@ -88,7 +89,8 @@ SHIPPED = {
     "SMXray_example_input.txt": None,
     "SMXray2_example_input.txt": None,
     "input-b3x11.txt": None,
-    "input-b3x14.txt": None,
+    # A stray "ß" after a number, which RADDOSE-3D refuses too.
+    "input-b3x14.txt": "line 24: 'ß'",
     "input_MC.txt": None,
     # MicroED: a small molecule, and a protein from its unit cell.
     "ED_input.txt": None,
@@ -97,8 +99,9 @@ SHIPPED = {
     "MyInput_hole.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
     # The same, in a Monte Carlo run.
     "MyInput_hole_MC.txt": "SURROUNDINGELEMENTS needs element and amount pairs",
-    # A template for RADDOSE-3D's GUI, with placeholders where values go.
-    "input.txt": "Dimensions needs 1 to 3 numbers, found 0",
+    # A template for RADDOSE-3D's GUI, with placeholders where values go: "?"
+    # and "@" are characters no keyword or value can contain.
+    "input.txt": r"line 9: '\?', line 47: '@'",
 }
 
 
@@ -108,11 +111,7 @@ def test_every_shipped_example_is_accounted_for() -> None:
 
 @pytest.mark.parametrize("name", sorted(SHIPPED))
 def test_shipped_examples(name: str) -> None:
-    """Read where the port can run them; refused, with the reason, where not.
-
-    ``input-b3x14.txt`` has a stray ``ß`` after a number. RADDOSE-3D reports
-    it, skips it and runs, and so does this -- with a warning.
-    """
+    """Read where the port can run them; refused, with the reason, where not."""
     refusal = SHIPPED[name]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RaddoseTxtWarning)
@@ -149,10 +148,20 @@ def test_raddose_3ds_own_example_reads_as_written() -> None:
     ]
 
 
-def test_a_stray_character_is_skipped_with_a_warning() -> None:
-    with pytest.warns(RaddoseTxtWarning, match="line 24: skipped 'ß'"):
-        experiment = Experiment.from_raddose_txt(DATA / "input-b3x14.txt")
-    assert experiment.wedges[0].angular_resolution == 0.5
+def test_a_stray_character_is_refused() -> None:
+    """RADDOSE-3D's lexer skipped it, so ``AngularResolution 0.5ß`` ran at 0.5;
+    both refuse it now, naming every one."""
+    with pytest.raises(RaddoseTxtError, match="line 24: 'ß'"):
+        Experiment.from_raddose_txt(DATA / "input-b3x14.txt")
+    with pytest.raises(RaddoseTxtError, match="line 1: '@', line 2: ','"):
+        parse_raddose_txt("Crystal @\nType Cuboid,\n")
+
+
+def test_a_byte_order_mark_and_a_final_comment_are_read() -> None:
+    """Neither is an error, in RADDOSE-3D or here."""
+    text = (DATA / "MyInput.txt").read_text(encoding="utf-8", errors="replace")
+    plain = parse_raddose_txt(text)
+    assert parse_raddose_txt("\ufeff" + text + "\n# no newline after this") == plain
 
 
 # --- grammar quirks -----------------------------------------------------------
@@ -957,3 +966,17 @@ def test_a_gaussian_pulse_is_written_back() -> None:
     text = experiment.to_raddose_txt()
     assert "PulseShape Gaussian" in text and "PulseWindow 3" in text
     assert read(text) == experiment
+
+
+def test_a_cylinders_third_dimension_is_ignored_with_a_warning() -> None:
+    """As CrystalCylinder reads it: the first two values, the diameter and the
+    length. The crystal is a cylinder all the same."""
+    text = CRYSTAL.replace("Type Cuboid", "Type Cylinder").replace(
+        "Dimensions 20 16 12", "Dimensions 40 20 7"
+    )
+    with pytest.warns(RaddoseTxtWarning, match=r"third value of Dimensions \(7 um\)"):
+        crystal = read(text + BEAM + WEDGE).crystal
+    assert (crystal.type, crystal.diameter, crystal.height) == ("cylinder", 40.0, 20.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RaddoseTxtWarning)
+        read(text.replace("Dimensions 40 20 7", "Dimensions 40 20 20") + BEAM + WEDGE)
