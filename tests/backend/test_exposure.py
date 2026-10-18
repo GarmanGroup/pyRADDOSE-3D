@@ -8,10 +8,11 @@ On the tolerances
 -----------------
 Interior voxels agree to machine precision. Voxels lying **exactly on a
 crystal face** do not, and cannot: they sit on the knife edge of the
-inside/outside test, and Java's ``Math.cos`` and NumPy's differ in the last
-bit or two. Neither is wrong -- only ``StrictMath`` is required to be
-reproducible, which is why RADDOSE-3D already varies against itself across
-JVMs.
+inside/outside test, and at some angles Java's ``Math.cos`` differs in the
+last bit from the port's, which is correctly rounded. Java's may -- only
+``StrictMath`` is required to be reproducible, which is why RADDOSE-3D
+already varies against itself across JVMs. ``test_summary.py`` puts the
+Java's values back, and the two then agree to 1e-11.
 
 :func:`test_on_face_voxels_are_intrinsically_unstable` measures how much
 that matters rather than asserting it: nudging the crystal by a single ulp
@@ -196,8 +197,8 @@ def test_grid_and_occupancy_match_java(case_id: str) -> None:
 def test_summary_dose_matches_java(case_id: str) -> None:
     """Average and maximum dose over the whole crystal, to 1e-4.
 
-    The measured worst case is 1.6e-5 on the average, and that residual is
-    entirely on-face voxels -- see the module docstring.
+    The measured worst case is 7.5e-6 on the average (``offset``), and that
+    residual is entirely on-face voxels -- see the module docstring.
     """
     case, _, _, _, result = _run(case_id)
     _, average, peak = case["summary"]

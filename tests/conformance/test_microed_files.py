@@ -34,6 +34,20 @@ MICROED_PARAMS = [
 
 TOLERANCES = manifest()["microed_tolerances"]
 
+#: What the inelastic model feeds, in ``outputMicroED.CSV`` and printed:
+#: held to ``inelastic_relative``, which the manifest explains.
+INELASTIC = frozenset(
+    {
+        "Inelastic",
+        "Productive",
+        "Info_coef",
+        "GOS Inelastic Lambda",
+        "Number Inelastic events",
+        "Number productive events",
+        "Information Coefficient (productive/MGy)",
+    }
+)
+
 
 @functools.cache
 def run(case_dir: Path) -> MicroEDResult:
@@ -67,7 +81,9 @@ def test_results_match_java(case_dir: Path) -> None:
         relative = (
             0.0
             if name in ("Beam_en", "Best_en", "Best_t")
-            else (TOLERANCES["counts_relative"])
+            else TOLERANCES["inelastic_relative"]
+            if name in INELASTIC
+            else TOLERANCES["counts_relative"]
         )
         assert _close(expected, got, relative), f"{name}: {expected} -> {got}"
 
@@ -95,8 +111,7 @@ def test_report_matches_java(case_dir: Path) -> None:
     assert len(port) == len(java)
     relative = {
         "Elastic Lambda": TOLERANCES["elastic_mean_free_path_relative"],
-        "GOS Inelastic Lambda": TOLERANCES["inelastic_mean_free_path_relative"],
-    }
+    } | dict.fromkeys(INELASTIC, TOLERANCES["inelastic_relative"])
     for expected_line, got_line in zip(java, port, strict=True):
         if ": " not in expected_line or expected_line.startswith("Warning: "):
             assert got_line == expected_line

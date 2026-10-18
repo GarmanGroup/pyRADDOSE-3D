@@ -128,11 +128,15 @@ def test_summary_text_matches_java(case_dir: Path) -> None:
 
 @pytest.mark.parametrize("case_id", ["064-wedge-still", "065-wedge-still-decaying"])
 def test_summary_text_is_identical_for_stills(case_id: str) -> None:
-    """With no rotation there is no knife edge, and nothing to round apart.
+    """A still at 45 degrees: on a knife edge, but nothing rounds apart.
 
-    The stills agree with the Java to about 1e-15, so every printed digit
-    should be the same: a byte-for-byte check on the formatting of every
-    line, the histogram included.
+    The port and the Java both round the sine and cosine of 45 degrees
+    correctly, so the voxels on a face fall the same way. With sin(45
+    degrees) an ulp off, as Windows' maths library gives it, the
+    diffraction-weighted dose moves in its fourth figure. The stills agree
+    with the Java to about 1e-15, so every printed digit should be the
+    same: a byte-for-byte check on the formatting of every line, the
+    histogram included.
     """
     case_dir = next(d for d in CASE_DIRS if d.name == case_id)
     expected = (case_dir / "expected" / "Summary.txt").read_text("utf-8")

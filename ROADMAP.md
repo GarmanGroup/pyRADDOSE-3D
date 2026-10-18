@@ -41,7 +41,8 @@ its Monte Carlo and XFEL subprograms do, statistically.**
 
 **What it is not yet**, and the milestone that changes it:
 
-- **Tested beyond one Mac.** The repository has never been pushed, so its CI has never run
+- **Tested beyond one Mac.** CI has run once, on GarmanGroup/pyRADDOSE-3D: macOS passed, and
+  Linux and Windows failed on voxels lying on a crystal face. The fix awaits a second run
   (Milestone 5).
 - **Reading every file as CCP4 asks.** PGM beam images, `.obj` meshes and the vendored tables
   are still read by hand, and stay so for now (Milestone 6).
@@ -149,7 +150,7 @@ Milestones 0 to 4, and MicroED, are done (`HISTORY.md`). Restated on 2026-10-13,
 
 | milestone | in short | done when | waits on |
 |---|---|---|---|
-| 5. Light, and tested beyond one Mac | the small weight changes (done); CI on three platforms | the corpus passes in CI on Linux, macOS and Windows | a remote for the repository |
+| 5. Light, and tested beyond one Mac | the small weight changes (done); CI on three platforms (first run, and its fixes, done) | the corpus passes in CI on Linux, macOS and Windows | a second CI run |
 | 6. Every RADDOSE-3D input, read as CCP4 asks | PDB codes and two known divergences (done); the last hand-written readers (left for now) | every input RADDOSE-3D accepts runs with its answer, or is refused for good, and nothing but perhaps `.txt` is read by hand | CCP4, on `.txt`; the decision to change the readers |
 | 7. Monte Carlo and XFEL | made reproducible in RADDOSE-3D (#42), ported as they are, then fixed in both | their tier-B cases pass, and their data sits in optional packages | the group, on the physics fixes |
 | 8. Several settings at once | the rest of Milestone 3 | a worked example beats a parameter scan, against a published result | nobody |
@@ -165,15 +166,27 @@ alongside 5 and 6. Milestone 8 can be taken up at any point, and Milestone 9 wai
 - **The weight changes** in *Keeping it light* (done, on 2026-10-17): the version written at
   build time, `types-PyYAML` moved to the dev group, the description fixed, and the guard tests.
   Scipy stays, by decision: CCP4 ships it already.
-- **A remote**, even a private one, so that CI runs: Linux, macOS and Windows, and the notebooks.
-- **Escape off macOS.** The escape code takes `cos` and `sin` from the platform's C library, which
-  match the Java on macOS but may differ in the last bit elsewhere, and a last-bit difference can
-  move a track into the next voxel (`UPSTREAM_FIXES.md`, *Found while fixing*). Linux CI shows
-  whether it does.
-- **Re-measure the tolerances.** The escape tolerances predate #38, which redrew the Monte Carlo
-  realisations; every case still passes, but the margins are unmeasured. The dose-centroid
-  tolerance is set by the antimony case and catches the cylinder's mirrored dose field with only
-  a factor of two to spare, so it wants setting per case.
+- **A remote** (done, on 2026-10-17): GarmanGroup/pyRADDOSE-3D, private. Its first CI run
+  passed on macOS and failed on Linux and Windows, all for one reason: a voxel whose centre lies
+  on a crystal face is inside or outside by the last bit of the rotated coordinates, and the
+  platforms' `sin` and `cos` differ in that bit. macOS on ARM rounds 4 of `test_exposure`'s 55
+  angles away from the nearest double, Linux on x86 none, and Windows sin(45 degrees); Windows'
+  reports moved by up to 4e-4. Every rotation now takes its cosine and sine correctly rounded
+  (`geometry.cos_sin`), so the port gives the same numbers on every platform: macOS now gives
+  Linux's, bit for bit. Against the Java, which rounds 23 of the corpus's 171 angles differently,
+  the worst summary field moved from 6.5e-5 to 7.1e-5, inside the 1e-4; given the Java's own
+  values, `test_summary.py` holds all five of its cases to 1e-11. MicroED's inelastic outputs got
+  a measured tolerance of their own (`MANIFEST.yaml`), and check-manifest ignores the version
+  file written at build time.
+- **Escape off macOS.** The escape code takes the cosines and sines of its track directions from
+  the platform's C library, which may differ from the Java's in the last bit, and a last-bit
+  difference can move a track into the next voxel (`UPSTREAM_FIXES.md`, *Found while fixing*).
+  Linux and Windows CI passed every escape case at the current tolerances; the rotation of the
+  tracks now uses `cos_sin`.
+- **Re-measure the tolerances.** The summary, array and MicroED tolerances were re-measured on
+  2026-10-17 against correctly rounded rotations (`MANIFEST.yaml`). The dose-centroid tolerance is
+  set by the antimony case and catches the cylinder's mirrored dose field with only a factor of
+  two to spare, so it wants setting per case.
 
 **Done when** the corpus passes in CI on all three platforms.
 
@@ -333,7 +346,6 @@ None of these is code.
 | decision | who | blocks |
 |---|---|---|
 | Relicensing: put the question to RADDOSE-3D's copyright holders -- Gerstel, Brooks-Bartlett, Ginn, Bury, Walsh, Zeldin and others. There is no CLA, so it needs all of them. Measured in months. | the group | Milestone 9 |
-| A remote for the repository, even a private one | the author | Milestone 5's CI |
 | Does the `.txt` input count as a bespoke parser? Which of `netpbmfile` and `trimesh` does CCP4 already ship, or accept? Does it want a command-line program? | CCP4 | Milestone 6's last item; a CLI |
 | Sign-off on fixing Monte Carlo and XFEL's physics defects in RADDOSE-3D | the group | Milestone 7 |
 

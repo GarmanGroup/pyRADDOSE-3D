@@ -56,7 +56,7 @@ from pyraddose_3d.backend.escape import (
     surrounding_escape,
 )
 from pyraddose_3d.backend.exposure import ExposureResult, expose, exposure_angles
-from pyraddose_3d.backend.geometry import Mesh
+from pyraddose_3d.backend.geometry import Mesh, cos_sin
 from pyraddose_3d.backend.java_random import JavaRandom
 from pyraddose_3d.backend.microed import MicroEDResult, electron_material
 from pyraddose_3d.backend.microed import microed as run_microed
@@ -240,16 +240,16 @@ def _apply_crystal_angles(vertices: Any, angle_p: float, angle_l: float) -> Any:
 
     Both are in degrees, matching the input file.
     """
-    turn_p = math.radians(angle_p)
-    turn_l = math.radians(angle_l)
+    cos_p, sin_p = cos_sin(math.radians(angle_p))
+    cos_l, sin_l = cos_sin(math.radians(angle_l))
     x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
-    turned_x = x * math.cos(turn_p) + y * math.sin(turn_p)
-    turned_y = -x * math.sin(turn_p) + y * math.cos(turn_p)
+    turned_x = x * cos_p + y * sin_p
+    turned_y = -x * sin_p + y * cos_p
     return np.stack(
         [
             turned_x,
-            turned_y * math.cos(turn_l) + z * math.sin(turn_l),
-            -turned_y * math.sin(turn_l) + z * math.cos(turn_l),
+            turned_y * cos_l + z * sin_l,
+            -turned_y * sin_l + z * cos_l,
         ],
         axis=-1,
     )

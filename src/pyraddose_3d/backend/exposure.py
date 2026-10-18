@@ -49,7 +49,7 @@ from pyraddose_3d.backend._array import (
     to_namespace,
 )
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
-from pyraddose_3d.backend.geometry import Mesh, find_depth
+from pyraddose_3d.backend.geometry import Mesh, cos_sin, find_depth
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.coefficients import MaterialCoefficients
@@ -628,7 +628,6 @@ def _place(coordinates: Array, shift: Array, angle: Array) -> Array:
     """
     xp, (coordinates, shift, angle) = promote(coordinates, shift, angle)
     moved = coordinates + shift
-    cos = xp.cos(angle)
-    sin = xp.sin(angle)
+    cos, sin = cos_sin(angle)
     x, y, z = moved[:, 0], moved[:, 1], moved[:, 2]
     return xp.stack([x * cos + z * sin, y, -x * sin + z * cos], axis=-1)

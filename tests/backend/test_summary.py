@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 from test_exposure import CASE_IDS, _run
 
+from pyraddose_3d.backend import geometry
 from pyraddose_3d.backend.summary import (
     DEFAULT_ABSORBED_ENERGY_THRESHOLD,
     summarise,
@@ -69,13 +70,29 @@ def test_reference_reports_every_case() -> None:
         assert set(report) == set(FIELDS)
 
 
+#: ``Math.cos`` and ``Math.sin`` where the JVM that wrote ``exposure.tsv``
+#: rounds them differently from the port, which rounds correctly: five of the
+#: angles these cases turn through, each a unit in the last place away.
+JAVA_COS_SIN = {
+    math.radians(degrees): (float.fromhex(cos), float.fromhex(sin))
+    for degrees, cos, sin in [
+        (46, "0x1.63aa430e0731p-1", "0x1.704d4e6a54d39p-1"),
+        (55, "0x1.25abcf87c4978p-1", "0x1.a367e59158747p-1"),
+        (58, "0x1.0f5193eacdd2ap-1", "0x1.b2335c2cda946p-1"),
+        (66, "0x1.a07f921061adp-2", "0x1.d3bc3aeff7f95p-1"),
+        (88, "0x1.1de58c9f7dc37p-5", "0x1.ffb0278bf0566p-1"),
+    ]
+}
+
+
 @pytest.mark.conformance
 @pytest.mark.parametrize("case_id", CASE_IDS)
 def test_summary_matches_java(case_id: str) -> None:
     """All sixteen fields, at 1e-4.
 
-    Four of the five cases come out at 1e-13 or better. ``rotation-gauss``
-    reaches 1.8e-5, which is the same on-face voxel instability measured in
+    ``still-tophat`` and ``rotated-crystal`` come out at 2e-12 or better.
+    ``collimated``, ``rotation-gauss`` and ``offset`` reach 3.4e-6, 6.8e-6
+    and 7.7e-6, which is the on-face voxel instability measured in
     ``test_exposure.py`` -- not a different formula, the same doses being
     summarised.
     """
@@ -88,13 +105,24 @@ def test_summary_matches_java(case_id: str) -> None:
 
 
 @pytest.mark.conformance
-@pytest.mark.parametrize("case_id", ["still-tophat", "collimated", "offset"])
-def test_well_conditioned_cases_match_closely(case_id: str) -> None:
-    """The cases without the on-face problem are held to 1e-11.
+@pytest.mark.parametrize("case_id", CASE_IDS)
+def test_summary_matches_java_closely_given_its_cosines(
+    case_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Given the Java's sines and cosines, all five are held to 1e-11.
 
-    A single loose tolerance across all five would let a real error in the
-    threshold or weighting hide behind the one ill-conditioned case.
+    A single loose tolerance would let a real error in the threshold or
+    weighting hide behind the voxels on a face. Which side of the face those
+    are found on is decided by the last bit of the rotation, so the Java's
+    values are put back where they differ from the port's; the worst field
+    then agrees to 1.7e-12.
     """
+    correctly_rounded = geometry._cos_sin
+    monkeypatch.setattr(
+        geometry,
+        "_cos_sin",
+        lambda angle: JAVA_COS_SIN.get(angle) or correctly_rounded(angle),
+    )
     summary, _, _ = _summarise(case_id)
     got = summary.as_dict()
     want = REPORTS[case_id]

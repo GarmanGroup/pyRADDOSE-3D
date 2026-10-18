@@ -48,6 +48,7 @@ import numpy as np
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.elements import Element, element_database, read_table
+from pyraddose_3d.backend.geometry import cos_sin
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -528,8 +529,9 @@ def _rotated_offsets(
     turns = int(angle / (2 * math.pi))
     this_angle = 2 * math.pi - (angle - (turns * 2 * math.pi))
     x, y, z = tracks.directions.T
-    x_rot = x * math.cos(this_angle) + z * math.sin(this_angle)
-    z_rot = -1 * x * math.sin(this_angle) + z * math.cos(this_angle)
+    cos, sin = cos_sin(this_angle)
+    x_rot = x * cos + z * sin
+    z_rot = -1 * x * sin + z * cos
     r = distances[:, None] * pixels_per_micron
     return np.stack([r * x_rot, r * y, r * z_rot], axis=-1)
 

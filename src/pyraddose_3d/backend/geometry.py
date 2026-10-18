@@ -42,21 +42,105 @@ coordinates. It is piecewise: a voxel's depth jumps as a ray crosses a
 silhouette edge, and as the parity of the crossing count flips. Those are
 genuine discontinuities in the model, not artefacts, and the gradient either
 side of them is correct.
+
+The same on every platform
+--------------------------
+A voxel's centre can lie exactly on a crystal face, and many do: a cuboid
+a whole number of voxels across puts a layer of them in each face. Which
+side of the face such a voxel is found on, and so whether its depth is zero
+or the whole crystal, is decided by the last bit of the rotated coordinates.
+The platforms' ``sin`` and ``cos`` differ in that bit: macOS on ARM rounds 4
+of the 55 angles ``test_exposure`` turns through away from the nearest
+double, Linux on x86 none of them, and Windows puts sin(45 degrees) an ulp
+from it. Windows' reports differed from the others' by up to 4e-4, and an
+image's highest dose by 1e-3. Every rotation therefore takes its cosine and
+sine from :func:`cos_sin`, which rounds correctly everywhere. RADDOSE-3D's
+``Math.cos`` does not always, so for these voxels the port and the Java can
+still part; ``tests/conformance/MANIFEST.yaml`` records by how much.
 """
 
 from __future__ import annotations
 
+import decimal
+import functools
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
-from pyraddose_3d.backend._array import array_namespace, astype, promote, sort
+from pyraddose_3d.backend._array import (
+    array_namespace,
+    astype,
+    is_torch,
+    promote,
+    sort,
+)
 
-__all__ = ["Mesh", "find_depth", "find_path_in_front", "triangle_planes"]
+__all__ = ["Mesh", "cos_sin", "find_depth", "find_path_in_front", "triangle_planes"]
 
 Array = Any
 """A NumPy array, a torch tensor, or a scalar of either."""
+
+#: Pi to 100 digits, enough to reduce any angle a wedge reaches.
+_PI = decimal.Decimal(
+    "3.14159265358979323846264338327950288419716939937510"
+    "58209749445923078164062862089986280348253421170679"
+)
+#: Digits carried in the series. A double's sine or cosine can lie within
+#: about 1e-36 of halfway between two doubles, so 60 round correctly.
+_TRIG_DIGITS = 60
+
+
+def cos_sin(angle: Array) -> tuple[Array, Array]:
+    """The cosine and sine of a rotation, correctly rounded.
+
+    Parameters
+    ----------
+    angle : Array
+        Radians: a float, a NumPy scalar or a 0-d torch tensor.
+
+    Returns
+    -------
+    tuple[Array, Array]
+        Floats, or for a tensor, tensors whose values are the correctly
+        rounded ones and whose gradients are torch's.
+
+    Notes
+    -----
+    The module docstring says why the last bit matters.
+    """
+    if is_torch(angle):
+        cos_value, sin_value = _cos_sin(float(angle.detach()))
+        cos, sin = angle.cos(), angle.sin()
+        # The two differ by at most a unit in the last place, so the
+        # difference, and the sum, are exact.
+        return cos + (cos_value - cos.detach()), sin + (sin_value - sin.detach())
+    return _cos_sin(float(angle))
+
+
+@functools.lru_cache(maxsize=4096)
+def _cos_sin(angle: float) -> tuple[float, float]:
+    """Taylor series in decimal arithmetic, rounded once to doubles."""
+    if angle == 0.0:
+        # Keeps the sign of a negative zero, as sin(-0.0) does.
+        return 1.0, angle
+    with decimal.localcontext() as context:
+        context.prec = _TRIG_DIGITS + 10
+        x = decimal.Decimal(angle)
+        turn = 2 * _PI
+        x -= turn * (x / turn).to_integral_value()
+        square = x * x
+        cos_term, sin_term = decimal.Decimal(1), x
+        cos, sin = cos_term, sin_term
+        smallest = decimal.Decimal(10) ** -(context.prec + 2)
+        n = 1
+        while abs(cos_term) > smallest or abs(sin_term) > smallest:
+            cos_term = -cos_term * square / ((2 * n - 1) * (2 * n))
+            sin_term = -sin_term * square / ((2 * n) * (2 * n + 1))
+            cos += cos_term
+            sin += sin_term
+            n += 1
+        return float(cos), float(sin)
 
 
 @dataclass(frozen=True)
@@ -120,8 +204,7 @@ class Mesh:
             xp, (vertices, angle, shift) = promote(self.vertices, angle, translation)
             vertices = vertices + shift
 
-        cos = xp.cos(angle)
-        sin = xp.sin(angle)
+        cos, sin = cos_sin(angle)
         x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
         return Mesh(
             vertices=xp.stack([x * cos + z * sin, y, -x * sin + z * cos], axis=-1),
