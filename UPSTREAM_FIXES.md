@@ -49,7 +49,7 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) | `jd_xfel_gaussian_pulse`, onto #61 | *XFEL*: a Gaussian pulse, as an option | merged as `a79eb45` |
 | [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) | `jd_crystal_type_from_type`, onto `master` | *MicroED*: a cylinder is a cylinder whatever `Dimensions` holds | merged as `882803b` |
 | [#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65) | `jd_input_unknown_characters`, onto `master` | *Input*: a character the grammar cannot read is refused | merged as `8f1aef0` |
-| [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66) | `jd_mc_exposed_region_placed`, onto `master` | *Monte Carlo and XFEL*: the exposed region where the beam crosses the crystal; issue #17 | open |
+| [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66) | `jd_mc_exposed_region_placed`, onto `master` | *Monte Carlo and XFEL*: the exposed region where the beam crosses the crystal; issue #17 | merged as `3be37f6` |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -822,7 +822,8 @@ applied twice, which keeps it positive.
 
 Asked for on 18 October 2026: issue
 [#17](https://github.com/GarmanGroup/RADDOSE-3D/issues/17), "Monte Carlo doesn't work with
-StartOffSet", open since 2023.
+StartOffSet", open since 2023. Merged the same day as `3be37f6`, the same source as the tip the
+corpus was generated from, `28b90f4`, and #17 closed.
 
 | change | where | effect |
 |---|---|---|

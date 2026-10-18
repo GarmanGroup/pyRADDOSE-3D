@@ -98,7 +98,7 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   #62, a stack of PRs since merged: from #59 at `c1566d2`; the seven that #60
   changes or adds from #60 at `cff0a59`; 182 from #61 at `29347d6`; 187
   from #62 at `e0529dc`; and 151 and 185, whose exposed region #66
-  moves, from #66 at `28b90f4`.
+  moves, from #66 at `28b90f4`, merged as `3be37f6` with the same source.
 
 The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows

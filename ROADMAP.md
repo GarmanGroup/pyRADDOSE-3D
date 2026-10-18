@@ -304,7 +304,7 @@ first:
    them is left open. On them, [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) sends
    a pink XFEL pulse's photons in no order of energy, and
    [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) adds a Gaussian pulse.
-   [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66), open, fixes issue #17: the
+   [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66), merged as `3be37f6`, fixes issue #17: the
    exposed region, and its volume, now follow an offset or a rotation, which moves case 151's
    exposed-region dose by +83% and 185's by +148%.)
 
@@ -371,7 +371,8 @@ unchanged, #60 (`cff0a59`), #61 (`29347d6`) and #62 (`e0529dc`) for the cases ea
 adds. [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) and
 [#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65), Milestone 6's two divergences, were
 merged on 2026-10-17 as `882803b` and `8f1aef0`; neither moves a corpus number. Cases 151 and
-185 come from [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66) at `28b90f4`, open.
+185 come from [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66) at `28b90f4`, merged as
+`3be37f6` with the same source.
 
 **Still open in the Java**, each with the milestone that takes it up:
 
