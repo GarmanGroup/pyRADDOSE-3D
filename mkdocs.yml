@@ -14,6 +14,7 @@ nav:
       - Decay models: examples/04_decay_models.ipynb
       - Gradients: examples/05_gradients.ipynb
       - Choosing the energy: examples/06_optimising_energy.ipynb
+      - Dose contours: examples/07_dose_contours.ipynb
   - Programs:
       - Dose: programs/dose.md
       - Energy optimisation: programs/optimise.md
@@ -22,6 +23,7 @@ nav:
       - Experiments: api/models.md
       - Running: api/solve.md
       - Output files: api/outputs.md
+      - Dose contours: api/plotting.md
       - Optimisation: api/optimise.md
 
 theme:

@@ -5,6 +5,7 @@ This directory contains the script for calculating the dose a crystal absorbs du
 ## Files
 
 - `run_dose.py` - The Python script for running a dose calculation. Give it an input on the command line, or edit the parameters at the top: the path to your input, where to write the outputs, and whether to write the per-image files.
+- `plot_dose_contours.py` - Draws the dose `run_dose.py` wrote, as RADDOSE-3D's `DoseState.R` does, with matplotlib.
 
 In `docs/examples/inputs`:
 
@@ -43,6 +44,17 @@ The summary is printed, as RADDOSE-3D prints it, and the output files are writte
 | `output-VoxelFluences.csv` | every voxel's fluence in every image of the last wedge |
 
 The last four are written only with `PER_IMAGE_FILES = True`.
+
+## Dose contours
+
+`output-DoseState.R` draws the final dose in R, as RADDOSE-3D's does. `plot_dose_contours.py` draws the same with matplotlib (`pip install "pyRADDOSE-3D[plot]"`, or `--extra plot` with uv): a surface where the dose crosses 0.1, 20 and 30 MGy, in light blue, dark blue and red, in a box marking the crystal. Give it the `DoseState.csv` a run wrote:
+
+```bash
+python run_dose.py MyInput.txt
+python plot_dose_contours.py output-DoseState.csv
+```
+
+It saves the R script's five views, as `output-DoseContours_<theta>_<phi>.png`, and opens a window in which the contours can be turned with the mouse. The levels, colours, opacities and views are at the top of the script: the R script's levels suit a crystal that reaches about 30 MGy, so give one that gets much less or more its own. `docs/examples/07_dose_contours.ipynb` draws them from Python.
 
 ## MicroED
 

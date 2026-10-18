@@ -33,7 +33,7 @@ pyRADDOSE-3D is not on PyPI yet. Clone it, and install it with
 ```bash
 git clone https://github.com/GarmanGroup/pyRADDOSE-3D.git
 cd pyRADDOSE-3D
-uv sync --no-dev --extra montecarlo    # add --extra torch for gradients
+uv sync --no-dev --extra montecarlo    # add --extra plot --extra torch
 source .venv/bin/activate              # .venv\Scripts\activate on Windows
 ```
 
@@ -45,7 +45,9 @@ conda activate pyraddose-3d
 ```
 
 `--extra montecarlo`, and the conda environment, include ELSEPA's electron
-tables, which only the Monte Carlo, GOS and XFEL subprograms read.
+tables, which only the Monte Carlo, GOS and XFEL subprograms read; `--extra
+plot`, and the conda environment, matplotlib, to draw the dose; and `--extra
+torch` PyTorch, for gradients.
 
 ## A first run
 

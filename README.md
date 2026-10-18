@@ -39,7 +39,8 @@ uv sync --no-dev --extra montecarlo
 
 `--extra montecarlo` adds ELSEPA's electron tables, which the Monte Carlo, GOS
 and XFEL subprograms read: two data packages in `packages/`, 2.3 MB up to
-20 keV and 23 MB above it. Add `--extra torch` for gradients. Plain `uv sync`
+20 keV and 23 MB above it. Add `--extra plot` to draw the dose in 3D, and
+`--extra torch` for gradients. Plain `uv sync`
 installs the development tools as well (see [Development](#development)).
 
 Then activate it, and run:
@@ -61,7 +62,7 @@ uv run --no-dev --group notebooks --with jupyterlab jupyter lab docs/examples
 [`environment.yml`](environment.yml) makes a conda environment,
 `pyraddose-3d`, with the dependencies from conda-forge, the package installed
 from the clone (editable, so a `git pull` updates it), the ELSEPA tables, and
-JupyterLab and Matplotlib for the example notebooks:
+JupyterLab and Matplotlib for the example notebooks and the dose contours:
 
 ```sh
 conda env create -f environment.yml
@@ -98,11 +99,21 @@ print(summary_text(simulation))
 write_outputs(simulation)  # output-Summary.txt, output-DoseState.csv, ...
 ```
 
+To draw the dose as RADDOSE-3D's `DoseState.R` does, as surfaces where it
+crosses 0.1, 20 and 30 MGy, but with matplotlib rather than R:
+
+```sh
+python programs/dose/plot_dose_contours.py output-DoseState.csv
+```
+
+It saves five views as PNG files and opens a window in which the contours can
+be turned with the mouse; `pyraddose_3d.plotting` draws them from Python.
+
 [`docs/examples/inputs`](docs/examples/inputs) holds example inputs, ready to
 run: RADDOSE-3D's insulin and MicroED examples, each as a RADDOSE-3D input file
 and as a YAML configuration. The notebooks beside them start by running one,
-then walk through crystals and beams, composition, decay models, gradients
-and choosing a beam energy.
+then walk through crystals and beams, composition, decay models, gradients,
+choosing a beam energy and drawing the dose.
 
 ## Optimising a strategy
 

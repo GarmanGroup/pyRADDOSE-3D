@@ -90,6 +90,35 @@ def test_run_dose_runs_the_example_unless_given_another() -> None:
     assert script["CONFIG_PATH"].is_file()
 
 
+def test_plot_dose_contours_draws_what_run_dose_wrote(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """run_dose.py, then plot_dose_contours.py on its DoseState.csv."""
+    pytest.importorskip("matplotlib")
+    script = runpy.run_path(str(DOSE / "run_dose.py"))
+    script["main"].__globals__.update(
+        CONFIG_PATH=str(INPUTS / "insulin.txt"),
+        OUTPUT_PREFIX=str(tmp_path / "output-"),
+        PER_IMAGE_FILES=False,
+    )
+    script["main"]()
+
+    plot = runpy.run_path(str(DOSE / "plot_dose_contours.py"))
+    plot["main"].__globals__.update(
+        DOSE_STATE_PATH=str(tmp_path / "output-DoseState.csv"),
+        OUTPUT_PREFIX=str(tmp_path / "output-"),
+        SHOW_WINDOW=False,
+    )
+    plot["main"]()
+
+    pictures = sorted(path.name for path in tmp_path.glob("*.png"))
+    assert pictures == sorted(
+        f"output-DoseContours_{theta}_{phi}.png"
+        for theta, phi in ((0, 0), (0, 45), (45, 45), (90, 45), (90, 90))
+    )
+    assert "highest dose 44.97 MGy" in capsys.readouterr().out
+
+
 OPTIMISE = Path(__file__).parent.parent / "programs" / "optimise"
 
 

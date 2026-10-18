@@ -36,7 +36,7 @@ its Monte Carlo and XFEL subprograms do, statistically.**
   files RADDOSE-3D writes.
 - `solve()` is differentiable end to end, apart from escape, which is Monte Carlo. Ten tunable
   settings carry gradients. `programs/optimise` chooses a beam energy by gradient.
-- Two run scripts, `programs/dose` and `programs/optimise`, and seven notebooks, each run as a
+- Two run scripts, `programs/dose` and `programs/optimise`, and eight notebooks, each run as a
   test.
 
 **What it is not yet**, and the milestone that changes it:

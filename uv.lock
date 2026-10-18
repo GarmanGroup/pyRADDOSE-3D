@@ -2762,6 +2762,9 @@ montecarlo = [
     { name = "pyraddose-3d-elsepa-high" },
     { name = "pyraddose-3d-elsepa-low" },
 ]
+plot = [
+    { name = "matplotlib" },
+]
 torch = [
     { name = "torch" },
 ]
@@ -2769,6 +2772,7 @@ torch = [
 [package.dev-dependencies]
 dev = [
     { name = "ipython" },
+    { name = "matplotlib" },
     { name = "mypy" },
     { name = "pdbpp" },
     { name = "pre-commit-uv" },
@@ -2808,6 +2812,7 @@ notebooks = [
     { name = "torch" },
 ]
 test = [
+    { name = "matplotlib" },
     { name = "pyraddose-3d-elsepa-high" },
     { name = "pyraddose-3d-elsepa-low" },
     { name = "pytest" },
@@ -2818,6 +2823,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "gemmi" },
+    { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.7" },
     { name = "numpy" },
     { name = "pydantic" },
     { name = "pyraddose-3d-elsepa-high", marker = "extra == 'montecarlo'", editable = "packages/elsepa-high" },
@@ -2826,11 +2832,12 @@ requires-dist = [
     { name = "scipy" },
     { name = "torch", marker = "extra == 'torch'" },
 ]
-provides-extras = ["montecarlo", "torch"]
+provides-extras = ["montecarlo", "plot", "torch"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "ipython" },
+    { name = "matplotlib", specifier = ">=3.7" },
     { name = "mypy" },
     { name = "pdbpp" },
     { name = "pre-commit-uv" },
@@ -2846,6 +2853,7 @@ dev = [
 docs = [
     { name = "ipykernel", specifier = ">=7.4.0" },
     { name = "jupytext", specifier = ">=1.19.6" },
+    { name = "matplotlib", specifier = ">=3.7" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-jupyter", specifier = ">=0.26.3" },
@@ -2861,6 +2869,7 @@ docs = [
 notebooks = [
     { name = "ipykernel", specifier = ">=7.4.0" },
     { name = "jupytext", specifier = ">=1.19.6" },
+    { name = "matplotlib", specifier = ">=3.7" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "nbmake", specifier = ">=1.5.5" },
     { name = "pyraddose-3d-elsepa-high", editable = "packages/elsepa-high" },
@@ -2870,6 +2879,7 @@ notebooks = [
     { name = "torch" },
 ]
 test = [
+    { name = "matplotlib", specifier = ">=3.7" },
     { name = "pyraddose-3d-elsepa-high", editable = "packages/elsepa-high" },
     { name = "pyraddose-3d-elsepa-low", editable = "packages/elsepa-low" },
     { name = "pytest" },

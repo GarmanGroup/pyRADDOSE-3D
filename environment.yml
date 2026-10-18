@@ -19,7 +19,7 @@ dependencies:
   - pydantic
   - pyyaml
   - scipy
-  # For the example notebooks.
+  # For the example notebooks, and to draw the dose.
   - jupyterlab
   - matplotlib
   - pip
