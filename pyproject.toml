@@ -17,6 +17,13 @@ version-file = "src/pyraddose_3d/_version.py"
 [tool.hatch.build.targets.wheel]
 only-include = ["src"]
 sources = ["src"]
+# Metadata 2.4, not hatchling's 2.5: twine 6.2, which CI's
+# build-and-inspect-python-package checks with, rejects 2.5, and nothing here
+# needs it.
+core-metadata-version = "2.4"
+
+[tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
 
 # https://peps.python.org/pep-0621/
 [project]
