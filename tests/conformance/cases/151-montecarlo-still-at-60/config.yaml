@@ -54,6 +54,8 @@ beam:
     y: 6.0
   energy_fwhm: null
   pulse_energy: null
+  pulse_shape: null
+  pulse_window: null
   type: tophat
 wedges:
 - start: 60.0

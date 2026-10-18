@@ -95,9 +95,10 @@ scattering and the ionisations per atom -- are compared with Welch's t-test
   sums at each of the thousand points of a cross-section integral; before
   it, a GOS run of case 161 took nine hours on a loaded machine. The Monte
   Carlo, GOS and XFEL cases are generated from the top of RADDOSE-3D #54 to
-  #62, a stack of open PRs: from #59 at `c1566d2`; the seven that #60
-  changes or adds from #60 at `cff0a59`; 182 from #61 at `29347d6`; and 187
-  from #62 at `e0529dc`.
+  #62, a stack of PRs since merged: from #59 at `c1566d2`; the seven that #60
+  changes or adds from #60 at `cff0a59`; 182 from #61 at `29347d6`; 187
+  from #62 at `e0529dc`; and 151 and 185, whose exposed region #66
+  moves, from #66 at `28b90f4`.
 
 The Monte Carlo cases are case 140, a 20 um crystal, and 141 to 153, of 3 to
 8 um, which photoelectrons escape from, so that how they are followed shows
@@ -106,7 +107,8 @@ and sodium, a circular top-hat, a rotation, a cylinder, a pink beam, a
 surrounding, and the polarisation. 150 and 151 test the wedge, on 145's
 crystal: turned back from 90 degrees to 0, offset, which must match 145, and
 held still at 60 degrees in a beam narrower than the crystal, where it
-absorbs 42% less than at 0. 152 and 153 test the surrounding: a cylinder in a
+absorbs 42% less than at 0, and the exposed region is the slab the beam
+crosses rather than the column it would at 0. 152 and 153 test the surrounding: a cylinder in a
 thin one, whose shell must be as thick all round, and a pink beam in one of
 no given thickness, which the most energetic photon caps. 154 is platinum at
 15 keV, whose missing L1 binding energy stopped RADDOSE-3D's run.

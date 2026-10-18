@@ -1101,6 +1101,92 @@ def _pulse(exposure: float, window: float | None = None) -> tuple[float, float]:
     return length, 1.0
 
 
+#: Each voxel is measured at the midpoints of this many slices along each
+#: axis, for the exposed volume: midpoints never fall on an aperture's edge
+#: aligned with the voxels, which the voxels' centres do.
+EXPOSED_SLICES = 4
+
+
+def _exposed_region(setup: SimpleSetup, grid: _Grid) -> tuple[np.ndarray, float]:
+    """``exposedRegion``: the voxels in the beam, and the volume's scale.
+
+    A voxel is in the exposed region if its centre is within the aperture
+    with the crystal where the wedge puts it -- offset, translated and
+    turned, as ``setUpRotatedVertices`` puts it: at the wedge's start for a
+    still or a pulse, or at any of a rotation's angles, a step of its
+    angular resolution apart. Until RADDOSE-3D #66 the voxel's own position
+    in the crystal was tested, as though the crystal stood centred and
+    unturned, so an offset or a rotation moved the beam but not the region
+    (issue #17).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(nx, ny, nz)``: whether each voxel is in the exposed region.
+    float
+        The share of the crystal's extent in the aperture so placed, over
+        its share centred and unturned, each measured at the midpoints of
+        :data:`EXPOSED_SLICES` slices of every voxel. The exposed volume,
+        the aperture's area by the crystal's depth, is scaled by it, so a
+        beam hanging off an offset crystal's edge, or crossing a turned
+        crystal's slant, is allowed for. Exactly one for a crystal centred
+        and unturned.
+    """
+    ppm = setup.pixels_per_micron
+    vertices = np.asarray(setup.mesh.vertices, dtype=float)
+    low, high = vertices.min(axis=0), vertices.max(axis=0)
+    centres, midpoints = [], []
+    for axis, n in enumerate(grid.size):
+        index = np.arange(n)
+        centres.append((index / ppm) + grid.minimum[axis])
+        fractions = ((np.arange(EXPOSED_SLICES) + 0.5) / EXPOSED_SLICES) - 0.5
+        along = (low[axis] + ((index[:, None] + fractions[None, :]) / ppm)).ravel()
+        midpoints.append(along[(along >= low[axis]) & (along <= high[axis])])
+
+    start, end = setup.start_angle, setup.end_angle
+    if setup.xfel or abs(start - end) < setup.angular_resolution:
+        angles = [start]
+    else:
+        steps = math.ceil(abs(end - start) / setup.angular_resolution)
+        angles = [start + ((j / steps) * (end - start)) for j in range(steps + 1)]
+
+    def placed(axes: list[np.ndarray]) -> np.ndarray:
+        """Within the aperture at any of the angles."""
+        x, y, z = np.meshgrid(*axes, indexing="ij")
+        inside = np.zeros(x.shape, dtype=bool)
+        for angle in angles:
+            # As each photon's: "convert to 0-2pi", then translate, then turn.
+            angle = angle - (math.trunc(angle / (2 * math.pi)) * 2 * math.pi)
+            offset = [
+                setup.start_offset[axis]
+                + (setup.translation_per_radian[axis] * (angle - start))
+                for axis in range(3)
+            ]
+            cos, sin = math.cos(angle), math.sin(angle)
+            lab_x = ((x + offset[0]) * cos) + ((z + offset[2]) * sin)
+            lab_y = y + offset[1]
+            inside |= setup.beam.exposes(lab_x * 1000, lab_y * 1000)
+        return inside
+
+    x, y = np.meshgrid(midpoints[0], midpoints[1], indexing="ij")
+    centred = int(setup.beam.exposes(x * 1000, y * 1000).sum()) * len(midpoints[2])
+    share = int(placed(midpoints).sum())
+    return placed(centres), (share / centred) if centred else 1.0
+
+
+def _exposed_volume(
+    setup: SimpleSetup, depth_nm: float, volume_cm3: float, scale: float
+) -> float:
+    """The exposed region's volume, cm^3.
+
+    The aperture's area by the crystal's depth, no more than the crystal, as
+    for a crystal centred and unturned; then scaled as :func:`_exposed_region`
+    says, and still no more than the crystal.
+    """
+    centred = min(setup.beam.exposed_area_nm2() * depth_nm * 1e-21, volume_cm3)
+    return min(centred * scale, volume_cm3)
+
+
 def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleRun]:
     """``processDose``: each run's rows of ``outputMC.CSV`` and ``outputXFEL.CSV``."""
     nx, ny, nz = grid.size
@@ -1119,7 +1205,8 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
     cell_volume = float(setup.composition.cell_volume)
     atoms_of = counts * (volume * 1e24) / cell_volume
     total_atoms = float(np.sum(counts)) * (volume * 1e24) / cell_volume
-    exposed_volume = min(setup.beam.exposed_area_nm2() * z_dimension * 1e-21, volume)
+    exposed_voxels, exposed_scale = _exposed_region(setup, grid)
+    exposed_volume = _exposed_volume(setup, z_dimension, volume, exposed_scale)
     exposed_mass = (setup.density * exposed_volume) / 1000
     fraction = exposed_volume / volume
     z_of = [e.atomic_number for e in setup.composition.elements]
@@ -1134,10 +1221,6 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
         ]
     )
     kept = (0 * bin_) < last - (1 * bin_)
-    x = ((np.arange(nx) / setup.pixels_per_micron) + grid.minimum[0]) * 1000
-    y = ((np.arange(ny) / setup.pixels_per_micron) + grid.minimum[1]) * 1000
-    exposed_xy = setup.beam.exposes(np.repeat(x, ny), np.tile(y, nx)).reshape(nx, ny)
-
     dose = tallies.dose.reshape(setup.runs, nx, ny, nz)
     resolved_all = tallies.resolved.reshape(setup.runs, nx, ny, nz)
     elastic_all = tallies.voxel_elastic.reshape(setup.runs, nx, ny, nz)
@@ -1169,7 +1252,7 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
                     )
                 )
             )
-        xfel_ader = (float(cut[exposed_xy].sum()) / exposed_mass) / 1e6
+        xfel_ader = (float(cut[exposed_voxels].sum()) / exposed_mass) / 1e6
 
         ions = math.floor(tallies.ionisations[r] * scale + 0.5)
         per_element: dict[int, float] = {}
@@ -1190,7 +1273,7 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
                 rd3d_adwc=rd3d,
                 rd3d_ader=(rd3d * mass) / exposed_mass,
                 mc_adwc=(float(joules.sum()) / mass) / 1e6,
-                mc_ader=(float(joules[exposed_xy].sum()) / exposed_mass) / 1e6,
+                mc_ader=(float(joules[exposed_voxels].sum()) / exposed_mass) / 1e6,
                 elastic=total_elastic,
                 xfel_adwc=(float(cut.sum()) / mass) / 1e6,
                 xfel_ader=xfel_ader,
@@ -1199,7 +1282,7 @@ def _process(setup: SimpleSetup, tallies: _Tallies, grid: _Grid) -> list[SimpleR
                 ions_per_non_h_atom=float(per_non_h),
                 resolved_no_cut=(float(resolved.sum()) / mass) / 1e6,
                 resolved_no_cut_exposed=(
-                    float(resolved[exposed_xy].sum()) / exposed_mass
+                    float(resolved[exposed_voxels].sum()) / exposed_mass
                 )
                 / 1e6,
                 gos=setup.gos,

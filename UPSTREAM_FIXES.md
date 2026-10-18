@@ -47,8 +47,9 @@ MicroED's defects followed, found porting it (*MicroED*, below):
 | [#60](https://github.com/GarmanGroup/RADDOSE-3D/pull/60) | `jd_gos_heavy_atoms`, onto #59 | *GOS and MicroED*: heavy atoms' subshells; binding energies from xenon on | merged as `e5ba30f` |
 | [#61](https://github.com/GarmanGroup/RADDOSE-3D/pull/61) | `jd_xfel_unchirped`, onto #60 | *XFEL*: a pink pulse's photons come in no order of energy | merged as `b118b0e` |
 | [#62](https://github.com/GarmanGroup/RADDOSE-3D/pull/62) | `jd_xfel_gaussian_pulse`, onto #61 | *XFEL*: a Gaussian pulse, as an option | merged as `a79eb45` |
-| [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) | `jd_crystal_type_from_type`, onto `master` | *MicroED*: a cylinder is a cylinder whatever `Dimensions` holds | open |
-| [#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65) | `jd_input_unknown_characters`, onto `master` | *Input*: a character the grammar cannot read is refused | open |
+| [#64](https://github.com/GarmanGroup/RADDOSE-3D/pull/64) | `jd_crystal_type_from_type`, onto `master` | *MicroED*: a cylinder is a cylinder whatever `Dimensions` holds | merged as `882803b` |
+| [#65](https://github.com/GarmanGroup/RADDOSE-3D/pull/65) | `jd_input_unknown_characters`, onto `master` | *Input*: a character the grammar cannot read is refused | merged as `8f1aef0` |
+| [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66) | `jd_mc_exposed_region_placed`, onto `master` | *Monte Carlo and XFEL*: the exposed region where the beam crosses the crystal; issue #17 | open |
 
 #40 and #42 were squash-merged with the same source as `ca553bc` and `3c9afaf`, which the corpus
 had been generated from. The corpus is now regenerated from `master` at `82ac582`, and no number
@@ -816,6 +817,24 @@ less.
 
 Refuted: **the stopping power does not turn negative above 50 eV**. The Joy–Luo correction is
 applied twice, which keeps it positive.
+
+### The exposed region: [#66](https://github.com/GarmanGroup/RADDOSE-3D/pull/66), issue #17
+
+Asked for on 18 October 2026: issue
+[#17](https://github.com/GarmanGroup/RADDOSE-3D/issues/17), "Monte Carlo doesn't work with
+StartOffSet", open since 2023.
+
+| change | where | effect |
+|---|---|---|
+| `processDose` chose the exposed region by testing each voxel's position in the crystal's own frame against the aperture, as though the crystal stood centred in the beam and unturned; a StartOffset, a translation or a rotation moved the beam, and the photons, but not the region. A voxel is now in it if its centre is within the aperture with the crystal where the wedge puts it: at the start for a still or a pulse, or at any of a rotation's angles a step of its angular resolution apart | `MC.exposedVoxels`, `MC.inExposedRegion` | the exposed-region doses, diffraction efficiency and ionisations per atom average over the voxels the beam crosses |
+| The exposed volume, the aperture's area by the crystal's depth, ignored where the crystal stood. It is scaled by the share of the crystal's extent within the aperture so placed over its share centred, measured at the midpoints of four slices of every voxel along each axis, which never fall on an aperture's edge aligned with the voxels, as the voxels' centres do | `MC.exposedShare` | 151, a still at 60 degrees in a 2 um beam: the volume × 0.576 against the geometry's 0.577; RADDOSE-3D-style ADER +73.6% ± 1.0%, Monte Carlo ADER +82.5% ± 1.4%, diffraction efficiency −45.2% ± 2.2%. 185, the same offset 1 um, in XFEL: XFEL ADER +147.7% ± 2.7%, diffraction efficiency −59.7% ± 4.3% |
+
+A crystal centred and unturned is unchanged: its region is the same voxels and the scale
+exactly one, and 141 and 150, which the beam covers, regenerate byte-identical. The
+ionisations counted in the exposed region were already tested where they happened, in the
+lab. Left as they were: the exposed volume of a centred crystal whose beam overhangs it in
+one direction only, still the aperture's area by the depth, and `RD3Dcheck`, the estimate
+behind "Consider simulating more photons", which also stands the crystal centred.
 
 ## Order of work
 

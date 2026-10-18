@@ -232,7 +232,11 @@ def xfel_runs(
     As the Monte Carlo's, with the doses, diffraction-weighted doses and
     ionisations those made before each voxel's cutoff, and XFEL's printout.
     """
-    from pyraddose_3d.backend.montecarlo.simple import SimpleRun
+    from pyraddose_3d.backend.montecarlo.simple import (
+        SimpleRun,
+        _exposed_region,
+        _exposed_volume,
+    )
 
     nx, ny, nz = grid.size
     real_photons = (setup.pulse_energy / 1e3) / (setup.photon_energy * KEV_TO_JOULES)
@@ -246,14 +250,11 @@ def xfel_runs(
     cell_volume = float(setup.composition.cell_volume)
     atoms_of = counts * (volume_cm3 * 1e24) / cell_volume
     total_atoms = float(np.sum(counts)) * (volume_cm3 * 1e24) / cell_volume
-    exposed_volume = min(setup.beam.exposed_area_nm2() * depth_nm * 1e-21, volume_cm3)
+    exposed_voxels, exposed_scale = _exposed_region(setup, grid)
+    exposed_volume = _exposed_volume(setup, depth_nm, volume_cm3, exposed_scale)
     exposed_mass = (setup.density * exposed_volume) / 1000
     fraction = exposed_volume / volume_cm3
     z_of = [e.atomic_number for e in setup.composition.elements]
-
-    x = ((np.arange(nx) / setup.pixels_per_micron) + grid.minimum[0]) * 1000
-    y = ((np.arange(ny) / setup.pixels_per_micron) + grid.minimum[1]) * 1000
-    exposed_xy = setup.beam.exposes(np.repeat(x, ny), np.tile(y, nx)).reshape(nx, ny)
 
     resolved_all = tallies.resolved.reshape(setup.runs, nx, ny, nz)
     cut_all = tallies.resolved_cut.reshape(setup.runs, nx, ny, nz)
@@ -282,7 +283,7 @@ def xfel_runs(
                     )
                 )
             )
-        xfel_ader = (float(cut[exposed_xy].sum()) / exposed_mass) / 1e6
+        xfel_ader = (float(cut[exposed_voxels].sum()) / exposed_mass) / 1e6
 
         ions = math.floor(tallies.ionisations[r] * scale + 0.5)
         per_element: dict[int, float] = {}

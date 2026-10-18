@@ -3,15 +3,15 @@ tier: B
 exercises: 'Monte Carlo: case 145''s crystal held still at 60 degrees in a beam 2
   um wide, which crosses 4.6 um of it rather than 8'
 seed: 20260917
-reference_version: 5.0.1104
-reference_commit: c1566d2
+reference_version: 5.0.1109
+reference_commit: 28b90f4
 gated:
   outputMC.CSV/MC-ADWC:
     mean: 186.286
     cv: 0.0259
   outputMC.CSV/MC-ADER:
-    mean: 257.658
-    cv: 0.0294
+    mean: 470.351
+    cv: 0.0301
   outputMC.CSV/RD3D-ADWC:
     mean: 265.545
     cv: 0.0213
@@ -19,5 +19,5 @@ gated:
     mean: 1886670000.0
     cv: 0.0783
   outputXFEL.CSV/ions per atom:
-    mean: 0.0031408
+    mean: 0.00545085
     cv: 0.0213

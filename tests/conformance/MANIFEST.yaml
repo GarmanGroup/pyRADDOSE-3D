@@ -1,5 +1,5 @@
-reference_version: 5.0.1106
-reference_commit: e0529dc
+reference_version: 5.0.1109
+reference_commit: 28b90f4
 jvm: openjdk version "25" 2025-09-16
 seed: 20260917
 case_count: 102
@@ -162,7 +162,7 @@ tier_b:
       outputXFEL.CSV/ions per atom: 0.0658
     151-montecarlo-still-at-60:
       outputMC.CSV/MC-ADWC: 0.0495
-      outputMC.CSV/MC-ADER: 0.0562
+      outputMC.CSV/MC-ADER: 0.0576
       outputMC.CSV/RD3D-ADWC: 0.0407
       outputMC.CSV/numEl: 0.15
       outputXFEL.CSV/ions per atom: 0.0407
@@ -246,9 +246,9 @@ tier_b:
       outputXFEL.CSV/ions per atom: 0.142
     185-xfel-rotated-still:
       outputXFEL.CSV/XFEL-ADWC: 0.08
-      outputXFEL.CSV/XFEL-ADER: 0.087
+      outputXFEL.CSV/XFEL-ADER: 0.0868
       outputXFEL.CSV/RD3D-ADWC: 0.0727
-      outputXFEL.CSV/Diffraction efficiency: 0.342
+      outputXFEL.CSV/Diffraction efficiency: 0.308
       outputXFEL.CSV/ions per atom: 0.0802
     186-xfel-sub-femtosecond:
       outputXFEL.CSV/XFEL-ADWC: 0.0576

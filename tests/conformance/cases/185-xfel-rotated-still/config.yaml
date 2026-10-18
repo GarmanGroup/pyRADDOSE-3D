@@ -54,6 +54,8 @@ beam:
     y: 6.0
   energy_fwhm: null
   pulse_energy: 1.4
+  pulse_shape: null
+  pulse_window: null
   type: gaussian
   fwhm:
   - 20.0
