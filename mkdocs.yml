@@ -7,6 +7,7 @@ strict: true
 nav:
   - Home: index.md
   - Examples:
+      - Running an input file: examples/00_running_an_input.ipynb
       - Getting started: examples/01_getting_started.ipynb
       - Crystals and beams: examples/02_crystals_and_beams.ipynb
       - Composition: examples/03_composition.ipynb

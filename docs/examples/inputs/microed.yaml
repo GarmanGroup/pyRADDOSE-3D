@@ -2,9 +2,9 @@
 ### MicroED dose calculation example          ###
 #################################################
 # A protein microcrystal in a 300 keV electron beam, from RADDOSE-3D's own
-# example input ED_input_cell.txt -- microed_example_input.txt here is that
-# file, and describes the same experiment. Load with
-# `Experiment.from_file(path)`, which reads either.
+# example input ED_input_cell.txt -- microed.txt here is that file, and
+# describes the same experiment. Load with `Experiment.from_file(path)`,
+# which reads either.
 #
 # MicroED is a separate engine: `subprogram: microed` in the crystal, and an
 # electron beam. It reports the dose by stopping power, how many electrons

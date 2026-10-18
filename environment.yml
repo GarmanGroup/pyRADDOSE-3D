@@ -1,0 +1,29 @@
+# A conda environment for pyRADDOSE-3D, from a clone of the repository:
+#
+#   conda env create -f environment.yml
+#   conda activate pyraddose-3d
+#
+# The dependencies come from conda-forge, and pip then installs the package
+# itself from this checkout, editable, with ELSEPA's electron tables for the
+# Monte Carlo, GOS and XFEL subprograms. For gradients, add PyTorch:
+#
+#   conda install -n pyraddose-3d -c conda-forge pytorch
+name: pyraddose-3d
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - gemmi
+  - numpy
+  - pydantic
+  - pyyaml
+  - scipy
+  # For the example notebooks.
+  - jupyterlab
+  - matplotlib
+  - pip
+  - pip:
+      - --editable .
+      - ./packages/elsepa-low
+      - ./packages/elsepa-high

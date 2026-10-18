@@ -1,20 +1,33 @@
 # Dose program example script and configs
 
-This directory contains an example script for calculating the dose a crystal absorbs during data collection, and two example inputs describing the same experiment.
+This directory contains the script for calculating the dose a crystal absorbs during data collection. Its example inputs are in `docs/examples/inputs`.
 
 ## Files
 
-- `run_dose.py` - The Python script for running a dose calculation. Edit the parameters at the top: the path to your input, where to write the outputs, and whether to write the per-image files.
-- `dose_example_config.yaml` - An example YAML configuration, commented with each setting's units and its RADDOSE-3D keyword.
-- `dose_example_input.txt` - The same experiment as a RADDOSE-3D input file. This is `MyInput.txt` from RADDOSE-3D, unmodified: existing input files are read as they are.
-- `microed_example_config.yaml` - A MicroED experiment: a protein microcrystal in a 300 keV electron beam.
-- `microed_example_input.txt` - The same, as RADDOSE-3D's own `ED_input_cell.txt`, unmodified.
+- `run_dose.py` - The Python script for running a dose calculation. Give it an input on the command line, or edit the parameters at the top: the path to your input, where to write the outputs, and whether to write the per-image files.
+
+In `docs/examples/inputs`:
+
+- `insulin.txt` - An insulin crystal, as a RADDOSE-3D input file. This is `MyInput.txt` from RADDOSE-3D, unmodified: existing input files are read as they are.
+- `insulin.yaml` - The same experiment as a YAML configuration, commented with each setting's units and its RADDOSE-3D keyword.
+- `microed.txt` - A MicroED experiment, a protein microcrystal in a 300 keV electron beam: RADDOSE-3D's own `ED_input_cell.txt`, unmodified.
+- `microed.yaml` - The same, as YAML.
 
 ## Running
 
+Give it an input file, as you would give one to RADDOSE-3D:
+
 ```bash
-python run_dose.py
+python run_dose.py MyInput.txt
 ```
+
+With no input named it runs `insulin.txt`, so from the top of the repository
+
+```bash
+python programs/dose/run_dose.py
+```
+
+runs the example. A path ending in `.yaml` or `.yml` is read as a YAML configuration, and anything else as a RADDOSE-3D input file.
 
 The summary is printed, as RADDOSE-3D prints it, and the output files are written with the names and formats RADDOSE-3D uses, so scripts that read RADDOSE-3D's outputs read these unchanged:
 

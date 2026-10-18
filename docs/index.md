@@ -27,26 +27,51 @@ strategy can be optimised by gradient descent rather than by scanning.
 
 ## Installing
 
+pyRADDOSE-3D is not on PyPI yet. Clone it, and install it with
+[uv](https://docs.astral.sh/uv/getting-started/installation/):
+
 ```bash
-pip install pyRADDOSE-3D          # NumPy only
-pip install pyRADDOSE-3D[torch]   # with gradients
+git clone https://github.com/GarmanGroup/pyRADDOSE-3D.git
+cd pyRADDOSE-3D
+uv sync --no-dev --extra montecarlo    # add --extra torch for gradients
+source .venv/bin/activate              # .venv\Scripts\activate on Windows
 ```
 
+or with conda, from the clone's `environment.yml`:
+
+```bash
+conda env create -f environment.yml
+conda activate pyraddose-3d
+```
+
+`--extra montecarlo`, and the conda environment, include ELSEPA's electron
+tables, which only the Monte Carlo, GOS and XFEL subprograms read.
+
 ## A first run
+
+Give [`programs/dose/run_dose.py`](programs/dose.md) an input file, as you
+would give one to RADDOSE-3D:
+
+```bash
+python programs/dose/run_dose.py docs/examples/inputs/insulin.txt
+```
+
+It prints the summary RADDOSE-3D prints and writes its files to the current
+directory. Or, from Python:
 
 ```python
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.outputs import summary_text, write_outputs
 from pyraddose_3d.solve import simulate
 
-experiment = Experiment.from_file("input.txt")  # or a .yaml configuration
+experiment = Experiment.from_file("MyInput.txt")  # or a .yaml configuration
 simulation = simulate(experiment, record_images=True)
 print(summary_text(simulation))
 write_outputs(simulation)  # output-Summary.txt, output-DoseState.csv, ...
 ```
 
-Or edit and run [`programs/dose/run_dose.py`](programs/dose.md). The
-[examples](examples/01_getting_started.ipynb) walk through the rest.
+[Running an input file](examples/00_running_an_input.ipynb) shows the example
+inputs and runs them; the other examples walk through the rest.
 
 ## Agreement with RADDOSE-3D
 

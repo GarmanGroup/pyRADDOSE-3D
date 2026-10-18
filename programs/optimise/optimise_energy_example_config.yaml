@@ -3,9 +3,9 @@
 ####################################################
 # A native protein crystal: insulin, whose zinc puts an absorption edge at
 # 9.659 keV. The format is the dose program's -- see
-# ../dose/dose_example_config.yaml for every setting -- and a RADDOSE-3D
-# .txt input works as well. The search keeps everything but the energy; the
-# energy given here is only where the experiment starts.
+# ../../docs/examples/inputs/insulin.yaml for every setting -- and a
+# RADDOSE-3D .txt input works as well. The search keeps everything but the
+# energy; the energy given here is only where the experiment starts.
 crystal:
   type: cuboid
   dimensions: [40.0, 30.0, 20.0]  # micrometres

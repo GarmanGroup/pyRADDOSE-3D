@@ -2,8 +2,8 @@
 ### Dose calculation configuration example ###
 ##############################################
 # The insulin crystal from RADDOSE-3D's own example input, MyInput.txt --
-# dose_example_input.txt here is that file, and describes the same
-# experiment. Load with `Experiment.from_file(path)`, which reads either.
+# insulin.txt here is that file, and describes the same experiment. Load
+# with `Experiment.from_file(path)`, which reads either.
 #
 # A setting left out takes RADDOSE-3D's default, so leaving it out of this
 # file means what leaving it out of a .txt input means. The .txt keyword for

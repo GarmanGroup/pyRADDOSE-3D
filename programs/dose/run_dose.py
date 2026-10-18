@@ -1,5 +1,6 @@
 """Program for calculating the dose a crystal absorbs during data collection."""
 
+import sys
 import time
 from pathlib import Path
 
@@ -18,13 +19,16 @@ from pyraddose_3d.solve import microed, monte_carlo, simulate
 ### Editable parameters for program ###
 #######################################
 
-# The experiment: a YAML configuration like dose_example_config.yaml, or a
-# RADDOSE-3D input file like dose_example_input.txt, which is read unchanged.
-# Anything not ending in .yaml or .yml is read as a RADDOSE-3D input file.
-# A MicroED experiment, like microed_example_config.yaml, runs that engine,
-# and one with subprogram montecarlo, gos or xfel (Subprogram MONTECARLO, GOS
-# or XFEL) the Monte Carlo.
-CONFIG_PATH = "/path/to/dose_example_config.yaml"
+# The experiment: a RADDOSE-3D input file, read unchanged, or a YAML
+# configuration. Anything not ending in .yaml or .yml is read as a RADDOSE-3D
+# input file. A MicroED experiment runs that engine, and one with subprogram
+# montecarlo, gos or xfel (Subprogram MONTECARLO, GOS or XFEL) the Monte
+# Carlo. The examples in docs/examples/inputs are one of each format for an
+# insulin crystal, and for MicroED. An input named on the command line,
+#     python run_dose.py MyInput.txt
+# is run instead of this one.
+EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples" / "inputs"
+CONFIG_PATH = EXAMPLES / "insulin.txt"
 
 # Prepended to every output file name, as RADDOSE-3D's --prefix does, so the
 # default writes output-Summary.txt and so on to the current directory. It
@@ -93,4 +97,8 @@ def run_monte_carlo(experiment: Experiment, start_time: float) -> None:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        raise SystemExit(f"usage: python {sys.argv[0]} [input]")
+    if len(sys.argv) == 2:
+        CONFIG_PATH = Path(sys.argv[1])
     main()

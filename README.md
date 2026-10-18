@@ -18,49 +18,91 @@ Conformance with the Java is a tested property, not a claim: each module is
 checked against reference values generated from RADDOSE-3D itself, and the
 achieved agreement is recorded rather than merely asserted.
 
+## Installing
+
+pyRADDOSE-3D is not on PyPI yet. Clone it, then install it with uv or with
+conda:
+
+```sh
+git clone https://github.com/GarmanGroup/pyRADDOSE-3D.git
+cd pyRADDOSE-3D
+```
+
+### With uv
+
+[uv](https://docs.astral.sh/uv/getting-started/installation/) makes a virtual
+environment in the clone, `.venv`, and installs into it:
+
+```sh
+uv sync --no-dev --extra montecarlo
+```
+
+`--extra montecarlo` adds ELSEPA's electron tables, which the Monte Carlo, GOS
+and XFEL subprograms read: two data packages in `packages/`, 2.3 MB up to
+20 keV and 23 MB above it. Add `--extra torch` for gradients. Plain `uv sync`
+installs the development tools as well (see [Development](#development)).
+
+Then activate it, and run:
+
+```sh
+source .venv/bin/activate    # .venv\Scripts\activate on Windows
+python programs/dose/run_dose.py docs/examples/inputs/insulin.txt
+```
+
+`uv run python ...` works without activating, but syncs first and so adds the
+development tools unless given `--no-dev`. To open the example notebooks:
+
+```sh
+uv run --no-dev --group notebooks --with jupyterlab jupyter lab docs/examples
+```
+
+### With conda
+
+[`environment.yml`](environment.yml) makes a conda environment,
+`pyraddose-3d`, with the dependencies from conda-forge, the package installed
+from the clone (editable, so a `git pull` updates it), the ELSEPA tables, and
+JupyterLab and Matplotlib for the example notebooks:
+
+```sh
+conda env create -f environment.yml
+conda activate pyraddose-3d
+python programs/dose/run_dose.py docs/examples/inputs/insulin.txt
+```
+
+For gradients, add PyTorch: `conda install -n pyraddose-3d -c conda-forge pytorch`.
+
 ## Running a dose calculation
 
 Existing RADDOSE-3D input files are read unchanged, and the output files are
 written with RADDOSE-3D's names and formats, so the port can stand in for the
-Java in an existing pipeline. Edit the parameters at the top of
-[`programs/dose/run_dose.py`](programs/dose/run_dose.py) and run it, or:
+Java in an existing pipeline. Give
+[`programs/dose/run_dose.py`](programs/dose/run_dose.py) an input file, as you
+would give one to RADDOSE-3D:
+
+```sh
+python programs/dose/run_dose.py MyInput.txt
+```
+
+It prints the summary RADDOSE-3D prints and writes its files,
+`output-Summary.txt`, `output-DoseState.csv` and the rest, to the current
+directory; its other settings are at the top of the script. Or, from Python:
 
 ```python
 from pyraddose_3d.models.experiment import Experiment
 from pyraddose_3d.outputs import summary_text, write_outputs
 from pyraddose_3d.solve import simulate
 
-experiment = Experiment.from_file("input.txt")  # or a .yaml configuration
+experiment = Experiment.from_file("MyInput.txt")  # or a .yaml configuration
 simulation = simulate(experiment, record_images=True)
 print(summary_text(simulation))
 write_outputs(simulation)  # output-Summary.txt, output-DoseState.csv, ...
 ```
 
-The notebooks in [`docs/examples`](docs/examples) walk through crystals and
-beams, composition, decay models, gradients and choosing a beam energy.
-
-## Installing
-
-pyRADDOSE-3D is not on PyPI yet. Install it from GitHub:
-
-```sh
-pip install "pyRADDOSE-3D @ git+https://github.com/GarmanGroup/pyRADDOSE-3D"
-```
-
-Add `[torch]` after the name for gradients. The Monte Carlo, GOS and XFEL
-subprograms also read ELSEPA's electron angular tables, which come in two data
-packages in the same repository: up to 20 keV, 2.3 MB, and above it, 23 MB,
-needed only for beams above about 20 keV. Install them from their
-subdirectories:
-
-```sh
-pip install \
-  "pyraddose-3d-elsepa-low @ git+https://github.com/GarmanGroup/pyRADDOSE-3D#subdirectory=packages/elsepa-low" \
-  "pyraddose-3d-elsepa-high @ git+https://github.com/GarmanGroup/pyRADDOSE-3D#subdirectory=packages/elsepa-high"
-```
-
-Once the three packages are on PyPI, `pip install "pyRADDOSE-3D[montecarlo]"`
-will install all of it.
+[`docs/examples/inputs`](docs/examples/inputs) holds example inputs, ready to
+run: RADDOSE-3D's insulin and MicroED examples, each as a RADDOSE-3D input file
+and as a YAML configuration. The notebooks beside them start by running one,
+then walk through crystals and beams, composition, decay models, gradients
+and choosing a beam energy.
 
 ## Optimising a strategy
 
