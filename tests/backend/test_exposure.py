@@ -410,7 +410,7 @@ def test_a_reversed_wedge_counts_as_a_forward_one() -> None:
 
     RADDOSE-3D used to take ``sign * int((end - start) / resolution + 1)``,
     which for a reversed wedge is ``int(-44.0)``: two angles fewer, ending two
-    steps short. Fixed in both (UPSTREAM_FIXES.md, the wedge image count).
+    steps short. Fixed in both, by RADDOSE-3D #37.
     """
     forward = exposure_angles(0.0, math.radians(90), math.radians(2))
     reverse = exposure_angles(math.radians(90), 0.0, math.radians(2))

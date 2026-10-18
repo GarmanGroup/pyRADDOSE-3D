@@ -1,7 +1,9 @@
 """Guards on the package's weight: what it depends on, imports and carries.
 
-``ROADMAP.md``, *Keeping it light*, sets the rules; these tests hold them, so
-that adding a dependency, an eager import or bulk data is a visible change.
+The package is meant to stay small enough for CCP4 to ship: few dependencies,
+torch and scipy imported only where needed, and bulk data in optional
+packages. These tests hold that, so that adding a dependency, an eager
+import or bulk data is a visible change.
 """
 
 from __future__ import annotations

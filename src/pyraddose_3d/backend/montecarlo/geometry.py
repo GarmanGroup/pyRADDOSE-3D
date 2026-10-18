@@ -14,7 +14,7 @@ lab frame:
 Here every point carries its own angle and offset, and every question is
 answered in the crystal's own frame, which gives the same answers away from
 points exactly on a face. RADDOSE-3D answered the last two wrongly for a
-rotated crystal until #44 (``UPSTREAM_FIXES.md``).
+rotated crystal until its #44.
 
 Lengths are in nm, as the Java tracks them; the mesh is in um.
 """

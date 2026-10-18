@@ -89,5 +89,3 @@ Input that asks for something not ported is refused with a message saying what -
 
 - `AbsCoefCalc RDV2` and `RDV3`, which run the original Fortran RADDOSE as an external program
 - `Type Experimental`, which RADDOSE-3D cannot build from an input file either; `Type ExperimentalPGM` works
-
-See `ROADMAP.md` at the top of the repository for when.

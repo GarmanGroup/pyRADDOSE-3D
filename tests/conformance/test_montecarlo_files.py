@@ -44,7 +44,7 @@ def _subprogram(case_dir: Path) -> str:
 _UNPORTED = pytest.mark.xfail(
     raises=NotImplementedError,
     strict=True,
-    reason="being ported: ROADMAP.md, Milestone 7",
+    reason="being ported",
 )
 #: The subprograms the port runs.
 _PORTED = ("montecarlo", "gos", "xfel")

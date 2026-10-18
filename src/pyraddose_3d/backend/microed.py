@@ -43,7 +43,7 @@ This follows RADDOSE-3D ``master`` at ``82ac582``, with its MicroED fixes
 (#40) and its stopping power's charge summed as a double (#42). Before #40,
 the distant-collision integral mixed two shell models, and the electron
 physics saw part of the crystal, or none of it, for PDB, sequence and CIF
-compositions (``UPSTREAM_FIXES.md``).
+compositions.
 """
 
 from __future__ import annotations

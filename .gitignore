@@ -112,3 +112,8 @@ ENV/
 
 # Written by hatch-vcs at build time.
 src/pyraddose_3d/_version.py
+
+# The author's working notes on the port: kept locally, not shipped.
+HISTORY.md
+ROADMAP.md
+UPSTREAM_FIXES.md

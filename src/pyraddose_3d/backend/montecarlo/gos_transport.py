@@ -27,7 +27,7 @@ collision is with an inner shell, at its energy, brought up to date as it
 loses energy and when it comes back into the crystal. Until RADDOSE-3D #55
 the inner shells' mean free path stayed at the starting energy's, an
 inverse length was taken for a length where none was open at the start,
-and the chance went stale (``UPSTREAM_FIXES.md``).
+and the chance went stale.
 
 The XFEL subprogram follows the same electrons with a :class:`Clock`: each
 carries the time since the pulse began, which its steps advance by their

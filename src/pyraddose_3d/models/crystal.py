@@ -212,7 +212,7 @@ class _CrystalBase(RD3DModel):
           laser pulse.
 
         The last three take ``simulation`` settings and need a Gaussian or
-        TopHat beam. They are being ported (``ROADMAP.md``, Milestone 7).
+        TopHat beam.
     simulation : SimulationOptions
         Settings of the Monte Carlo and XFEL subprograms.
     """

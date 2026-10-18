@@ -431,9 +431,9 @@ _CASES: list[Case] = [
             }
         },
     ),
-    # The image is 24 by 30.8 um. RADDOSE-3D used to ignore a collimation's
-    # sizes here (UPSTREAM_FIXES.md item 12): Circular meant the ellipse
-    # inscribed in the image, and Rectangular nothing.
+    # The image is 24 by 30.8 um. RADDOSE-3D ignored a collimation's sizes
+    # here until #37: Circular meant the ellipse inscribed in the image, and
+    # Rectangular nothing.
     Case(
         "081-beam-experimental-circular",
         "A",
@@ -640,7 +640,7 @@ _CASES: list[Case] = [
         },
     ),
     # RADDOSE-3D read NumCarb here and never added the carbohydrate, until
-    # UPSTREAM_FIXES.md item 8.
+    # #36.
     Case(
         "039-composition-saxs-sequence-carbohydrates",
         "A",
@@ -891,8 +891,8 @@ _CASES: list[Case] = [
             }
         },
     ),
-    # The next three exist to show RADDOSE-3D defects before they are fixed
-    # (UPSTREAM_FIXES.md), so that each fix appears as a change to them.
+    # The next three exist to show RADDOSE-3D defects before they were fixed,
+    # so that each fix appears as a change to them.
     #
     # Photoelectron escape alone loses the relaxation energy other than the
     # K-shell Auger part: here, a SeMet crystal just above the Se K edge,

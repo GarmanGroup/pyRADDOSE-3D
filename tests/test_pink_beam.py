@@ -5,7 +5,7 @@ each with a 200th of the exposure. With a negligible spread it must report
 what a monochromatic beam does -- RADDOSE-3D's ``PinkBeamTest`` checks the
 same. It used not to: the exposed volume was 200 times too large, the
 voxel fluences 200 times too small, and the surrounding gave 200 times its
-dose (UPSTREAM_FIXES.md item 6).
+dose, until RADDOSE-3D #37.
 """
 
 from __future__ import annotations
