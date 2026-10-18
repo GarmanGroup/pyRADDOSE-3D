@@ -223,6 +223,8 @@ source = ["pyraddose_3d"]
 ignore = [
     ".pre-commit-config.yaml",
     ".ruff_cache/**/*",
+    # Written at build time by hatch-vcs, so in every sdist and never in git.
+    "src/pyraddose_3d/_version.py",
     "tests/**/*",
     "uv.lock",
 ]
