@@ -87,6 +87,39 @@ def test_a_draw_takes_the_first_angle_reaching_it() -> None:
         assert math.degrees(got[0]) == pytest.approx(column)
 
 
+def test_a_materials_block_holds_each_elements_table() -> None:
+    """Gathered for a material: each element's own running chances, and
+    none for mercury above 20 keV, which ELSEPA does not tabulate."""
+    block = angles.angular_block((1, 6, 80), True)
+    assert block.slot[80] == -1
+    for z in (1, 6):
+        np.testing.assert_array_equal(
+            block.cumulative[block.slot[z]], angles._sampler(z, True).cumulative
+        )
+    with pytest.raises(ValueError, match="Z = 80"):
+        angles.deflection_angles(
+            np.array([6, 80]), np.array([30.0, 30.0]), np.array([0.5, 0.5]), (1, 6, 80)
+        )
+
+
+@pytest.mark.parametrize("high_energy", [False, True])
+def test_the_search_takes_the_first_column_reaching_the_draw(high_energy: bool) -> None:
+    """A fixed number of passes finds what a search to the end would."""
+    block = angles.angular_block((1, 6, 7, 8, 16), high_energy)
+    rng = np.random.default_rng(4)
+    n = 2000
+    slot = rng.integers(0, 5, n)
+    rows = rng.integers(0, len(block.energies_kev), n)
+    uniform = rng.random(n)
+    expected = [
+        np.searchsorted(block.cumulative[s, r], u, side="left")
+        for s, r, u in zip(slot, rows, uniform, strict=True)
+    ]
+    np.testing.assert_array_equal(
+        angles._first_reaching(block.cumulative, slot, rows, uniform), expected
+    )
+
+
 def test_the_cuboids_geometry() -> None:
     from pyraddose_3d.backend.geometry import Mesh
 

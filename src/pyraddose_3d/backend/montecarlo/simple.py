@@ -590,12 +590,14 @@ def _relaxation(
     chosen = np.flatnonzero(eligible)
     if len(chosen):
         fluoresces = ~(rng.random(len(chosen)) > yields[chosen])
-        fluorescence = tables.fluorescence_transitions()
-        for i in chosen[fluoresces]:
-            key = (int(z[i]), int(shell[i]))
-            hits = np.flatnonzero(rng.random() < fluorescence[key].cumulative)
-            index = int(hits[0]) if len(hits) else 0
-            left[i] = binding[i] - fluorescence[key].energy_kev[index]
+        light = chosen[fluoresces]
+        # A draw per photon, in order: rng.random(n) gives what n calls of
+        # rng.random() would.
+        uniform = rng.random(len(light))
+        table = tables.packed_fluorescence()
+        above = table.cumulative[z[light], shell[light]] > uniform[:, None]
+        index = np.where(above.any(axis=1), above.argmax(axis=1), 0)
+        left[light] = binding[light] - table.energy_kev[z[light], shell[light], index]
     return left, resolved
 
 

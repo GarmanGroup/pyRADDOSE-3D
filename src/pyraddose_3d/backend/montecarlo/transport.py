@@ -174,7 +174,10 @@ class _Physics:
             cdf = elastic_element_cdf(material, sigma)
             element = _first_above(cdf, self.rng.random(len(chosen)))
             theta[chosen] = deflection_angles(
-                self.z[flag][element], energy[chosen], self.rng.random(len(chosen))
+                self.z[flag][element],
+                energy[chosen],
+                self.rng.random(len(chosen)),
+                tuple(self.z[flag].tolist()),
             )
         phi = 2 * math.pi * self.rng.random(len(energy))
         return new_directions(direction, theta, phi)

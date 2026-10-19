@@ -100,10 +100,7 @@ def test_an_xfel_cascade_conserves_a_vacancys_energy(selenium) -> None:  # type:
     def counting(table, z, shell):  # type: ignore[no-untyped-def]
         index = transition(table, z, shell)
         if table is cascade.fluorescence:
-            photons.extend(
-                table[(int(a), int(b))].energy_kev[i]
-                for a, b, i in zip(z, shell, index, strict=True)
-            )
+            photons.extend(table.energy_kev[z, shell, index].tolist())
         return index
 
     cascade._transition = counting  # type: ignore[method-assign]

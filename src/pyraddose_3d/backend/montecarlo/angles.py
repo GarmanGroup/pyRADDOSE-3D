@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import lzma
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, lru_cache
 from importlib import resources
 
 import numpy as np
@@ -25,8 +25,10 @@ import numpy as np
 __all__ = [
     "HIGH_ENERGY_KEV",
     "MAX_Z",
+    "AngularBlock",
     "AngularTable",
     "MissingTablesError",
+    "angular_block",
     "angular_table",
     "deflection_angles",
 ]
@@ -169,6 +171,60 @@ def _sampler(z: int, high_energy: bool) -> _Sampler:
     )
 
 
+@dataclass(frozen=True)
+class AngularBlock:
+    """A material's elements' tables, one range of energies, in one array.
+
+    Every element's table shares its range's energies and angles, so only
+    the running chances differ.
+
+    Attributes
+    ----------
+    energies_kev : numpy.ndarray
+        The tabulated energies, keV, ascending.
+    cumulative : numpy.ndarray
+        ``(elements, energies, angles)``: each element's running chances.
+    angles : numpy.ndarray
+        Each column's angle, radians.
+    slot : numpy.ndarray
+        Indexed by atomic number: the element's place in ``cumulative``, or
+        -1 for an element without a table in this range.
+    """
+
+    energies_kev: np.ndarray
+    cumulative: np.ndarray
+    angles: np.ndarray
+    slot: np.ndarray
+
+
+@lru_cache(maxsize=16)
+def angular_block(elements: tuple[int, ...], high_energy: bool) -> AngularBlock:
+    """The tables for ``elements``' atomic numbers, as one block.
+
+    Kept for the next run of the same material; its arrays are read-only.
+    """
+    tabulated = sorted({z for z in elements if 1 <= z <= MAX_Z[high_energy]})
+    samplers = [_sampler(z, high_energy) for z in tabulated]
+    first = samplers[0]
+    for sampler in samplers[1:]:
+        if not (
+            np.array_equal(sampler.energies_kev, first.energies_kev)
+            and np.array_equal(sampler.angles, first.angles)
+        ):
+            raise ValueError("ELSEPA's tables in one range should share their grid")
+    slot = np.full(max(elements) + 1, -1, dtype=np.int64)
+    slot[tabulated] = np.arange(len(tabulated))
+    block = AngularBlock(
+        energies_kev=first.energies_kev,
+        cumulative=np.stack([sampler.cumulative for sampler in samplers]),
+        angles=first.angles,
+        slot=slot,
+    )
+    for array in (block.cumulative, block.slot):
+        array.setflags(write=False)
+    return block
+
+
 def _nearest_rows(energies: np.ndarray, energy: np.ndarray) -> np.ndarray:
     """``returnNearestEnergy``: TreeMap floor or ceiling, the floor on a tie."""
     below = np.searchsorted(energies, energy, side="right") - 1
@@ -180,7 +236,10 @@ def _nearest_rows(energies: np.ndarray, energy: np.ndarray) -> np.ndarray:
 
 
 def deflection_angles(
-    z: np.ndarray, energy: np.ndarray, uniform: np.ndarray
+    z: np.ndarray,
+    energy: np.ndarray,
+    uniform: np.ndarray,
+    elements: tuple[int, ...] | None = None,
 ) -> np.ndarray:
     """``getPrimaryElasticScatteringAngle`` for many electrons, in radians.
 
@@ -192,6 +251,9 @@ def deflection_angles(
         Each electron's energy, keV, from 0.05 to 300.
     uniform : numpy.ndarray
         A uniform random number in [0, 1) for each.
+    elements : tuple of int, optional
+        Every atomic number ``z`` can hold: the material's, so that its
+        tables are gathered once. By default, those in ``z``.
 
     Returns
     -------
@@ -200,32 +262,39 @@ def deflection_angles(
         chance, at the tabulated energy nearest the electron's, reaches the
         random number.
     """
+    if elements is None:
+        elements = tuple(np.unique(z).tolist())
     angles = np.empty_like(energy)
     high = energy > HIGH_ENERGY_KEV
-    for key in np.unique(np.stack([z, high.astype(np.int64)]), axis=1).T:
-        element, high_energy = int(key[0]), bool(key[1])
-        chosen = np.flatnonzero((z == element) & (high == high_energy))
-        sampler = _sampler(element, high_energy)
-        rows = _nearest_rows(sampler.energies_kev, energy[chosen])
-        column = _first_reaching(sampler.cumulative, rows, uniform[chosen])
-        angles[chosen] = sampler.angles[column]
+    for high_energy in (False, True):
+        chosen = np.flatnonzero(high == high_energy)
+        if not len(chosen):
+            continue
+        block = angular_block(elements, high_energy)
+        slot = block.slot[z[chosen]]
+        if (slot < 0).any():
+            # The error the missing table gives.
+            angular_table(int(z[chosen][slot < 0][0]), high_energy)
+        rows = _nearest_rows(block.energies_kev, energy[chosen])
+        column = _first_reaching(block.cumulative, slot, rows, uniform[chosen])
+        angles[chosen] = block.angles[column]
     return angles
 
 
 def _first_reaching(
-    cumulative: np.ndarray, rows: np.ndarray, uniform: np.ndarray
+    cumulative: np.ndarray, slot: np.ndarray, rows: np.ndarray, uniform: np.ndarray
 ) -> np.ndarray:
     """In each chosen row, the first column whose value is at least ``uniform``.
 
-    A binary search in every row at once: about ten passes for 606 columns.
+    A binary search in every row at once, of a fixed number of passes: ten
+    for 606 columns. A search that has closed stays put.
     """
     low = np.zeros(len(rows), dtype=np.int64)
-    high = np.full(len(rows), cumulative.shape[1] - 1, dtype=np.int64)
-    while True:
+    high = np.full(len(rows), cumulative.shape[-1] - 1, dtype=np.int64)
+    for _ in range((cumulative.shape[-1] - 1).bit_length()):
         open_ = low < high
-        if not open_.any():
-            return low
         middle = (low + high) // 2
-        reaches = cumulative[rows, middle] >= uniform
+        reaches = cumulative[slot, rows, middle] >= uniform
         high = np.where(open_ & reaches, middle, high)
         low = np.where(open_ & ~reaches, middle + 1, low)
+    return low

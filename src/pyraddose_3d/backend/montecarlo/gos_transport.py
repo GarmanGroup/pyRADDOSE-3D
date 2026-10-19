@@ -211,8 +211,7 @@ class GOSMedium:
         Returns the mean free path, nm, and the running chances over the
         elements, ``(len(energy), elements)``.
         """
-        rows = self.table.at(energy)
-        values = rows[:, np.arange(len(self.inner)), self.inner, 3]
+        values = self.table.column(energy, self.inner, 3)
         total = values.sum(axis=1)
         with np.errstate(divide="ignore", invalid="ignore"):
             return 1 / total, np.cumsum(values, axis=1) / total[:, None]
@@ -357,27 +356,34 @@ class Cascade:
         self.yields = np.zeros((len(crystal.z), _SHELL_COLUMNS))
         for row, z in enumerate(crystal.z):
             self.yields[row, :9] = shells(int(z)).fluorescence_yield
-        self.auger = tables.auger_transitions()
-        self.fluorescence = tables.fluorescence_transitions()
+        self.auger = tables.packed_auger()
+        self.fluorescence = tables.packed_fluorescence()
 
-    def _transition(self, table: dict, z: np.ndarray, shell: np.ndarray) -> np.ndarray:
-        """``getTransitionIndex`` for each vacancy: slot 0 if no draw falls."""
-        index = np.zeros(len(z), dtype=np.int64)
+    def _transition(
+        self, table: tables.PackedTransitions, z: np.ndarray, shell: np.ndarray
+    ) -> np.ndarray:
+        """``getTransitionIndex`` for each vacancy: slot 0 if no draw falls.
+
+        The draws are made a group of vacancies of one element and shell at
+        a time, the groups in a set's order, as they always were; the tables
+        are then read for every vacancy at once.
+        """
+        uniform = np.empty(len(z))
         for key in set(zip(z.tolist(), shell.tolist(), strict=True)):
             chosen = np.flatnonzero((z == key[0]) & (shell == key[1]))
-            hit = _first_above(
-                np.broadcast_to(table[key].cumulative, (len(chosen), 65)),
-                self.rng.random(len(chosen)),
-            )
-            index[chosen] = np.maximum(hit, 0)
-        return index
+            uniform[chosen] = self.rng.random(len(chosen))
+        return np.maximum(_first_above(table.cumulative[z, shell], uniform), 0)
 
     def _edge(self, element: np.ndarray, shell: np.ndarray) -> np.ndarray:
         """``getShellBindingEnergy``: a vacancy's binding energy, keV; 0 past M5."""
         return self.crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
 
     def _lifetimes(
-        self, table: dict, z: np.ndarray, shell: np.ndarray, index: np.ndarray
+        self,
+        table: tables.PackedTransitions,
+        z: np.ndarray,
+        shell: np.ndarray,
+        index: np.ndarray,
     ) -> np.ndarray:
         """How long each transition takes, fs; 0 without a clock.
 
@@ -386,12 +392,7 @@ class Cascade:
         """
         if self.clock is None:
             return np.zeros(len(z))
-        linewidth = np.array(
-            [
-                table[(int(zz), int(ss))].linewidth_ev[i]
-                for zz, ss, i in zip(z, shell, index, strict=True)
-            ]
-        ).reshape(-1)
+        linewidth = table.linewidth_ev[z, shell, index]
         draws = -np.log(1 - self.rng.random(len(z)))
         return np.asarray(self.clock.lifetime(linewidth) * draws)
 
@@ -445,26 +446,10 @@ class Cascade:
 
             auger = chosen[~fluoresces]
             index = self._transition(self.auger, z[auger], shell[auger])
-            energy = np.array(
-                [
-                    self.auger[(int(zz), int(ss))].energy_kev[i]
-                    for zz, ss, i in zip(z[auger], shell[auger], index, strict=True)
-                ]
-            ).reshape(-1)
-            exits = np.array(
-                [
-                    self.auger[(int(zz), int(ss))].exit_shell[i]  # type: ignore[index]
-                    for zz, ss, i in zip(z[auger], shell[auger], index, strict=True)
-                ],
-                dtype=np.int64,
-            ).reshape(-1)
-            drops_a = np.array(
-                [
-                    self.auger[(int(zz), int(ss))].drop_shell[i]
-                    for zz, ss, i in zip(z[auger], shell[auger], index, strict=True)
-                ],
-                dtype=np.int64,
-            ).reshape(-1)
+            slot = (z[auger], shell[auger], index)
+            energy = self.auger.energy_kev[slot]
+            exits = self.auger.exit_shell[slot]
+            drops_a = self.auger.drop_shell[slot]
             # What the Auger electron and the two vacancies left do not carry.
             left = (
                 binding[auger]
@@ -499,20 +484,10 @@ class Cascade:
 
             light = chosen[fluoresces]
             index = self._transition(self.fluorescence, z[light], shell[light])
-            drops_f = np.array(
-                [
-                    self.fluorescence[(int(zz), int(ss))].drop_shell[i]
-                    for zz, ss, i in zip(z[light], shell[light], index, strict=True)
-                ],
-                dtype=np.int64,
-            ).reshape(-1)
+            slot = (z[light], shell[light], index)
+            drops_f = self.fluorescence.drop_shell[slot]
             # What the photon, which escapes, and the vacancy left do not carry.
-            photon = np.array(
-                [
-                    self.fluorescence[(int(zz), int(ss))].energy_kev[i]
-                    for zz, ss, i in zip(z[light], shell[light], index, strict=True)
-                ]
-            ).reshape(-1)
+            photon = self.fluorescence.energy_kev[slot]
             left = binding[light] - photon - self._edge(element[light], drops_f)
             self.sink.resolved(points[light], owner[light], left, time[light])
             later_f = time[light] + self._lifetimes(
@@ -767,9 +742,7 @@ def _inelastic(
     r_kind = rng.random(n)
     real = np.flatnonzero(~plasmon)
     if len(real):
-        rows = crystal.table.at(energy[real])[
-            np.arange(len(real)), element[real], shell[real]
-        ]
+        rows = crystal.table.rows(energy[real], element[real], shell[real])
         with np.errstate(divide="ignore", invalid="ignore"):
             running = np.cumsum(rows[:, :3] / rows[:, 3:4], axis=1)
         hit = _first_above(running, r_kind[real])
@@ -873,7 +846,12 @@ def _elastic(ctx: _Context, e: _Electrons, chosen: np.ndarray, outside: bool) ->
     sigma = elastic_cross_sections(medium.material, energy)
     cdf = elastic_element_cdf(medium.material, sigma)
     element = _elastic_element(cdf, ctx.rng.random(len(chosen)))
-    theta = deflection_angles(medium.z[element], energy, ctx.rng.random(len(chosen)))
+    theta = deflection_angles(
+        medium.z[element],
+        energy,
+        ctx.rng.random(len(chosen)),
+        tuple(medium.z.tolist()),
+    )
     phi = 2 * math.pi * ctx.rng.random(len(chosen))
     e.direction[chosen] = new_directions(e.direction[chosen], theta, phi)
 

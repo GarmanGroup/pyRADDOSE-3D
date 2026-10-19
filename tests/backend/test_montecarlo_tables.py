@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from pyraddose_3d.backend.montecarlo import tables
@@ -61,3 +62,20 @@ def test_overvoltage_tables_are_indexed_as_the_java() -> None:
     # Hydrogen's K shell: 13.61 eV.
     assert low[1, 0, 0] == 13.61
     assert high[1, 0, 0] == 1.513
+
+
+@pytest.mark.parametrize("kind", ["auger", "fluorescence"])
+def test_packed_tables_hold_the_dicts_entries(kind: str) -> None:
+    """Indexed by (Z, vacancy, slot), the packed arrays read as the tables."""
+    loaded, packed = (
+        (tables.auger_transitions(), tables.packed_auger())
+        if kind == "auger"
+        else (tables.fluorescence_transitions(), tables.packed_fluorescence())
+    )
+    assert packed.drop_shell.dtype == packed.exit_shell.dtype == np.int64
+    for (z, vacancy), t in loaded.items():
+        for name in ("cumulative", "energy_kev", "linewidth_ev", "drop_shell"):
+            assert np.array_equal(getattr(packed, name)[z, vacancy], getattr(t, name))
+        if t.exit_shell is not None:
+            assert np.array_equal(packed.exit_shell[z, vacancy], t.exit_shell)
+    assert not packed.cumulative.flags.writeable

@@ -84,8 +84,8 @@ class ShellTable:
     energies: np.ndarray
     values: np.ndarray
 
-    def at(self, energy: np.ndarray) -> np.ndarray:
-        """Linearly between grid points: ``(len(energy), elements, rows, 4)``."""
+    def _bracket(self, energy: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Each energy's grid points either side, and how far it lies between."""
         energy = np.asarray(energy, dtype=float)
         upper = np.clip(
             np.searchsorted(self.energies, energy, side="right"),
@@ -94,10 +94,36 @@ class ShellTable:
         )
         lower = upper - 1
         e0, e1 = self.energies[lower], self.energies[upper]
-        weight = ((energy - e0) / (e1 - e0))[:, None, None, None]
+        return lower, upper, (energy - e0) / (e1 - e0)
+
+    def at(self, energy: np.ndarray) -> np.ndarray:
+        """Linearly between grid points: ``(len(energy), elements, rows, 4)``."""
+        lower, upper, weight = self._bracket(energy)
         return np.asarray(
-            self.values[lower] + weight * (self.values[upper] - self.values[lower])
+            self.values[lower]
+            + weight[:, None, None, None] * (self.values[upper] - self.values[lower])
         )
+
+    def rows(
+        self, energy: np.ndarray, element: np.ndarray, row: np.ndarray
+    ) -> np.ndarray:
+        """One row per energy, ``(len(energy), 4)``: :meth:`at`'s, read alone."""
+        lower, upper, weight = self._bracket(energy)
+        below = self.values[lower, element, row]
+        return np.asarray(
+            below + weight[:, None] * (self.values[upper, element, row] - below)
+        )
+
+    def column(self, energy: np.ndarray, row: np.ndarray, column: int) -> np.ndarray:
+        """One column of each element's row ``row[element]``, at each energy.
+
+        ``(len(energy), elements)``: :meth:`at`'s, read alone.
+        """
+        lower, upper, weight = self._bracket(energy)
+        element = np.arange(len(row))
+        below = self.values[lower[:, None], element, row, column]
+        above = self.values[upper[:, None], element, row, column]
+        return np.asarray(below + weight[:, None] * (above - below))
 
 
 def _edges(material: ElectronMaterial) -> list[float]:

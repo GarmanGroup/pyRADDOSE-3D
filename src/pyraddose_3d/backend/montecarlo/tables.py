@@ -19,12 +19,15 @@ from pyraddose_3d.backend.elements import read_table
 
 __all__ = [
     "AUGER_ELEMENTS",
+    "PackedTransitions",
     "Transitions",
     "auger_shells",
     "auger_transitions",
     "fluorescence_transitions",
     "overvoltage_high",
     "overvoltage_low",
+    "packed_auger",
+    "packed_fluorescence",
 ]
 
 #: The elements whose vacancies relax by Auger emission or fluorescence:
@@ -148,6 +151,47 @@ def _transitions(name: str, auger: bool) -> dict[tuple[int, int], Transitions]:
     return tables
 
 
+@dataclass(frozen=True)
+class PackedTransitions:
+    """One kind of transition's tables, every element's at once.
+
+    The arrays of :class:`Transitions`, indexed by atomic number, vacancy
+    and slot: ``(Z + 1, 9, 65)`` up to the heaviest element tabulated, zero
+    for an element or vacancy with no table. A vacancy's tables are a
+    gather, as an array library on a GPU wants them, rather than a lookup
+    in a dict for each vacancy.
+
+    Attributes
+    ----------
+    cumulative, energy_kev, linewidth_ev : numpy.ndarray
+        As in :class:`Transitions`.
+    exit_shell, drop_shell : numpy.ndarray
+        Integers; ``exit_shell`` is zero for fluorescence, which has none.
+    """
+
+    cumulative: np.ndarray
+    energy_kev: np.ndarray
+    linewidth_ev: np.ndarray
+    exit_shell: np.ndarray
+    drop_shell: np.ndarray
+
+
+def _pack(tables: dict[tuple[int, int], Transitions]) -> PackedTransitions:
+    shape = (max(z for z, _ in tables) + 1, max(s for _, s in tables) + 1, _SLOTS)
+    packed = {
+        name: np.zeros(shape, dtype=np.int64 if "shell" in name else float)
+        for name in PackedTransitions.__dataclass_fields__
+    }
+    for (z, vacancy), table in tables.items():
+        for name, array in packed.items():
+            value = getattr(table, name)
+            if value is not None:
+                array[z, vacancy] = value
+    for array in packed.values():
+        array.setflags(write=False)
+    return PackedTransitions(**packed)
+
+
 @cache
 def auger_transitions() -> dict[tuple[int, int], Transitions]:
     """Auger transitions, keyed by (atomic number, vacancy)."""
@@ -158,6 +202,18 @@ def auger_transitions() -> dict[tuple[int, int], Transitions]:
 def fluorescence_transitions() -> dict[tuple[int, int], Transitions]:
     """Fluorescence transitions, keyed by (atomic number, vacancy)."""
     return _transitions("fluorescence_transitions.tsv", auger=False)
+
+
+@cache
+def packed_auger() -> PackedTransitions:
+    """:func:`auger_transitions`, packed."""
+    return _pack(auger_transitions())
+
+
+@cache
+def packed_fluorescence() -> PackedTransitions:
+    """:func:`fluorescence_transitions`, packed."""
+    return _pack(fluorescence_transitions())
 
 
 def _overvoltage(name: str, width: int) -> np.ndarray:

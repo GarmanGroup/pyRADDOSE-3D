@@ -95,6 +95,24 @@ def test_the_table_is_exact_at_its_grid_points(material) -> None:  # type: ignor
         )
 
 
+def test_the_tables_single_reads_are_its_whole_ones(material) -> None:  # type: ignore[no-untyped-def]
+    """``rows`` and ``column`` read what ``at`` gives, to the last bit."""
+    table = gos.shell_table(material, 0.25, 0.6)
+    rng = np.random.default_rng(2)
+    energy = rng.uniform(0.2, 0.7, 500)
+    whole = table.at(energy)
+    elements = len(material.atoms)
+    element = rng.integers(0, elements, 500)
+    row = rng.integers(0, 10, 500)
+    np.testing.assert_array_equal(
+        table.rows(energy, element, row), whole[np.arange(500), element, row]
+    )
+    inner = np.array([atom.valence[1] for atom in material.atoms])
+    np.testing.assert_array_equal(
+        table.column(energy, inner, 3), whole[:, np.arange(elements), inner, 3]
+    )
+
+
 def test_distant_losses_follow_their_triangle() -> None:
     """``getEnergyLossDistant``: from Uk to W_dis, falling linearly to zero."""
     rng = np.random.default_rng(1)
@@ -146,10 +164,7 @@ def test_a_cascade_conserves_a_vacancys_energy(material) -> None:  # type: ignor
     def counting(table, z, shell):  # type: ignore[no-untyped-def]
         index = transition(table, z, shell)
         if table is cascade.fluorescence:
-            photons.extend(
-                table[(int(a), int(b))].energy_kev[i]
-                for a, b, i in zip(z, shell, index, strict=True)
-            )
+            photons.extend(table.energy_kev[z, shell, index].tolist())
         return index
 
     cascade._transition = counting  # type: ignore[method-assign]
