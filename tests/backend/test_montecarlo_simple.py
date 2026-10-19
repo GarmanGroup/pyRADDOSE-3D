@@ -321,6 +321,43 @@ def test_most_elements_have_a_shell_for_every_draw() -> None:
         assert photons.shell_cdf(z, np.array([12.1])).max() == pytest.approx(1.0)
 
 
+def test_mixed_elements_shells_are_each_ones_own() -> None:
+    """``shell_cdfs`` over photons of many elements is ``shell_cdf``'s for
+    each, to the last bit."""
+    elements = (1, 6, 16, 30, 53, 78)
+    rng = np.random.default_rng(6)
+    element = rng.integers(0, len(elements), 3000)
+    energy = rng.uniform(0.5, 100.0, 3000)
+    table = photons.stacked_shells(elements)
+    z = np.array(elements)[element]
+    mixed = photons.shell_cdfs(
+        z, table.edges[element], table.ionisation[element], energy
+    )
+    for i, one in enumerate(elements):
+        mine = element == i
+        np.testing.assert_array_equal(mixed[mine], photons.shell_cdf(one, energy[mine]))
+
+
+def test_a_spectrums_coefficients_are_each_batchs(setup) -> None:  # type: ignore[no-untyped-def]
+    """Computed once for a pink beam's every energy, they are what each
+    batch's photons would have had computed for them alone."""
+    rng = np.random.default_rng(7)
+    spectrum = np.sort(rng.uniform(11.0, 13.0, 20_000))
+    whole = photons.photon_coefficients(setup.composition, spectrum)
+    batch = rng.integers(0, len(spectrum), 5000)
+    alone = photons.photon_coefficients(setup.composition, spectrum[batch])
+    for name in (
+        "absorption",
+        "compton",
+        "elastic",
+        "photoelectric_cdf",
+        "compton_cdf",
+    ):
+        np.testing.assert_array_equal(
+            getattr(whole.take(batch), name), getattr(alone, name)
+        )
+
+
 def test_an_outer_shell_leaves_nothing_at_the_atom() -> None:
     from pyraddose_3d.backend.montecarlo.simple import _relaxation
 

@@ -48,8 +48,9 @@ from pyraddose_3d.backend.montecarlo.photons import (
     ionised_shells,
     photoelectron_directions,
     photon_coefficients,
-    shell_cdf,
+    shell_cdfs,
     shells,
+    stacked_shells,
 )
 from pyraddose_3d.backend.montecarlo.transport import Media, track
 from pyraddose_3d.backend.montecarlo.xfel import (
@@ -67,6 +68,9 @@ __all__ = ["SimpleRun", "SimpleSetup", "Surrounding", "simulate_simple"]
 
 #: Photons per batch.
 _BATCH = 250_000
+#: A material's photon coefficients at every energy of a pink beam are
+#: computed once, not every batch, if they take no more than this, bytes.
+_SPECTRUM_BYTES = 2**30
 #: GOS electrons followed together, at most: more once a batch is added.
 _TRACKED = 200_000
 
@@ -625,16 +629,16 @@ def _photoabsorb(
 ) -> _Absorbed:
     """``producePhotoElectron``: the element, the shell, the electron."""
     z_of = np.array([e.atomic_number for e in composition.elements])
+    table = stacked_shells(tuple(z_of.tolist()))
     element = choose(cdf, rng.random(len(owner)))
     u = rng.random(len(owner))
-    shell = np.empty(len(owner), dtype=np.int64)
-    binding = np.zeros(len(owner))
-    for e in np.unique(element):
-        chosen = np.flatnonzero(element == e)
-        z = int(z_of[e])
-        shell[chosen] = ionised_shells(shell_cdf(z, energy[chosen]), u[chosen])
-        known = chosen[shell[chosen] != OUTER_SHELL]
-        binding[known] = shells(z).binding[shell[known]]
+    cdf = shell_cdfs(
+        z_of[element], table.edges[element], table.ionisation[element], energy
+    )
+    shell = ionised_shells(cdf, u)
+    binding = np.where(
+        shell != OUTER_SHELL, table.binding[element, np.maximum(shell, 0)], 0.0
+    )
     direction = photoelectron_directions(rng, shell == 0, setup.rotated_polarisation)
     return _Absorbed(
         owner, points, direction, energy - binding, element, shell, binding
@@ -642,18 +646,18 @@ def _photoabsorb(
 
 
 def in_random_order(
-    energies: np.ndarray,
+    photons: int,
     run: np.ndarray,
     in_run: np.ndarray,
     orders: dict[int, np.ndarray],
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Each photon's energy, every run's in a random order of its own.
+    """Each photon's place among a run's energies, each run in its own order.
 
     Parameters
     ----------
-    energies : numpy.ndarray
-        One energy per photon of a run, keV, as sampled: ascending.
+    photons : int
+        Photons in a run: one energy each, as sampled, ascending.
     run, in_run : numpy.ndarray
         Each photon's run, and its place in it.
     orders : dict[int, numpy.ndarray]
@@ -665,17 +669,42 @@ def in_random_order(
     Returns
     -------
     numpy.ndarray
-        The photons' energies, keV.
+        Each photon's energy's index among them.
     """
-    out = np.empty(len(run))
+    out = np.empty(len(run), dtype=np.int64)
     for r in np.unique(run).tolist():
         if r not in orders:
             for done in [k for k in orders if k < r]:
                 del orders[done]
-            orders[r] = rng.permutation(len(energies))
+            orders[r] = rng.permutation(photons)
         mine = run == r
-        out[mine] = energies[orders[r][in_run[mine]]]
+        out[mine] = orders[r][in_run[mine]]
     return out
+
+
+class _Spectrum:
+    """A material's photon coefficients at the beam's energies.
+
+    Computed once for them all when they take no more than
+    :data:`_SPECTRUM_BYTES`, as a monochromatic beam's always do; for a
+    larger pink beam's, for each batch's photons.
+    """
+
+    def __init__(self, composition: Composition, energies: np.ndarray) -> None:
+        self.composition = composition
+        self.energies = energies
+        size = len(energies) * (3 + 2 * len(composition.elements)) * 8
+        self.all = (
+            photon_coefficients(composition, energies)
+            if size <= _SPECTRUM_BYTES
+            else None
+        )
+
+    def take(self, index: np.ndarray) -> PhotonCoefficients:
+        """The coefficients at the energies ``index`` picks out."""
+        if self.all is not None:
+            return self.all.take(index)
+        return photon_coefficients(self.composition, self.energies[index])
 
 
 def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[SimpleRun]:
@@ -727,6 +756,17 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             pulse,
         )
 
+    spectrum = np.asarray(
+        [setup.photon_energy] if setup.energies is None else setup.energies,
+        dtype=float,
+    )
+    crystal_spectrum = _Spectrum(setup.composition, spectrum)
+    surrounding_spectrum = (
+        _Spectrum(surrounding.composition, spectrum)
+        if surrounding is not None
+        else None
+    )
+
     total = runs * photons
     # An XFEL pulse's pink photons come in no order of energy: a photon's place
     # in the run is its time in the pulse. Each run's are shuffled, as
@@ -740,15 +780,20 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         in_run = index % photons
         placement = _placements(setup, in_run)
         n = len(index)
+        # Each photon's place in the spectrum.
         if setup.energies is None:
-            energy = np.full(n, setup.photon_energy)
+            line = np.zeros(n, dtype=np.int64)
         elif orders is not None:
-            energy = in_random_order(
-                np.asarray(setup.energies), run, in_run, orders, rng
-            )
+            line = in_random_order(len(spectrum), run, in_run, orders, rng)
         else:
-            energy = np.asarray(setup.energies)[in_run]
-        crystal = photon_coefficients(setup.composition, energy)
+            line = in_run
+        energy = spectrum[line]
+        crystal = crystal_spectrum.take(line)
+        surrounding_coefficients = (
+            surrounding_spectrum.take(line)
+            if surrounding_spectrum is not None
+            else None
+        )
         x, y = beam_positions(rng, setup.beam, n)
         front = entry_depth(setup.mesh, x, y, placement)
 
@@ -765,8 +810,9 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             hit = inside(setup.mesh, points, placement.take(candidate))
             found.append((candidate[hit], points[hit], False))
         else:
+            assert surrounding_coefficients is not None
             paths = _through_surrounding(
-                rng, setup, surrounding, crystal, energy, x, y, front, box,
+                rng, setup, crystal, surrounding_coefficients, x, y, front, box,
                 box_meshes, placement, reach,
             )  # fmt: skip
             found.extend(paths)
@@ -787,8 +833,9 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
                 continue
             if outside:
                 assert surrounding is not None
+                assert surrounding_coefficients is not None
                 composition = surrounding.composition
-                medium = photon_coefficients(composition, energy[owner])
+                medium = surrounding_coefficients.take(owner)
                 compton = rng.random(len(owner)) < medium.compton_chance
                 photo_cdf = medium.photoelectric_cdf
             else:
@@ -981,20 +1028,19 @@ def _in_boxes(
 ) -> np.ndarray:
     """``calculateCrystalOccupancySurrounding`` for each photon's surrounding."""
     result = np.zeros(len(photons), dtype=bool)
-    for index in np.unique(box[photons]):
+    for index, mesh in enumerate(meshes):
         group = np.flatnonzero(box[photons] == index)
-        result[group] = inside(
-            meshes[index], points[group], placement.take(photons[group])
-        )
+        if not len(group):
+            continue
+        result[group] = inside(mesh, points[group], placement.take(photons[group]))
     return result
 
 
 def _through_surrounding(
     rng: np.random.Generator,
     setup: SimpleSetup,
-    surrounding: Surrounding,
     crystal: PhotonCoefficients,
-    energy: np.ndarray,
+    medium: PhotonCoefficients,
     x: np.ndarray,
     y: np.ndarray,
     front: np.ndarray,
@@ -1014,14 +1060,14 @@ def _through_surrounding(
     crystal had its chance behind it only if that distance ended in the
     surrounding.
     """
-    n = len(energy)
+    n = len(x)
     outer = np.zeros(n)
-    for index in np.unique(box):
+    for index, mesh in enumerate(meshes):
         chosen = np.flatnonzero(box == index)
-        outer[chosen] = entry_depth(
-            meshes[index], x[chosen], y[chosen], placement.take(chosen)
-        )
-    medium = photon_coefficients(surrounding.composition, energy)
+        if len(chosen):
+            outer[chosen] = entry_depth(
+                mesh, x[chosen], y[chosen], placement.take(chosen)
+            )
     tracked = ~np.isnan(outer)
     through_surrounding = front != outer
     hitting = ~np.isnan(front)

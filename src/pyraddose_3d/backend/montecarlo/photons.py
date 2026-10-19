@@ -40,7 +40,9 @@ __all__ = [
     "photoelectron_directions",
     "photon_coefficients",
     "shell_cdf",
+    "shell_cdfs",
     "shells",
+    "stacked_shells",
 ]
 
 _ELECTRON_MASS = 9.10938356e-31
@@ -209,6 +211,18 @@ def shells(z: int) -> Shells:
     return Shells(edges, binding, ionisation, fluorescence)
 
 
+@cache
+def stacked_shells(elements: tuple[int, ...]) -> Shells:
+    """:func:`shells` of each element in turn, as ``(elements, 9)`` arrays."""
+    each = [shells(z) for z in elements]
+    return Shells(
+        *(
+            np.stack([getattr(one, name) for one in each])
+            for name in Shells.__dataclass_fields__
+        )
+    )
+
+
 #: ``MC.OUTER_SHELL``: a photoelectric absorption by a shell the model leaves
 #: out, an outer one. It has no binding energy and does not relax.
 OUTER_SHELL = -1
@@ -224,16 +238,34 @@ def shell_cdf(z: int, energy: np.ndarray) -> np.ndarray:
     """
     s = shells(z)
     energy = np.atleast_1d(np.asarray(energy, dtype=float))
+    rows = (len(energy), _SHELLS)
+    return shell_cdfs(
+        np.full(len(energy), z),
+        np.broadcast_to(s.edges, rows),
+        np.broadcast_to(s.ionisation, rows),
+        energy,
+    )
+
+
+def shell_cdfs(
+    z: np.ndarray, edges: np.ndarray, ionisation: np.ndarray, energy: np.ndarray
+) -> np.ndarray:
+    """:func:`shell_cdf` for photons absorbed by different elements.
+
+    ``z`` is each photon's element's atomic number, and ``edges`` and
+    ``ionisation`` its :class:`Shells`' rows, ``(photons, 9)``.
+    """
+    energy = np.asarray(energy, dtype=float)
     cdf = np.zeros((len(energy), _SHELLS))
     running = np.zeros(len(energy))
     taken = np.zeros(len(energy))
     for shell in range(_SHELLS):
-        allowed = energy > s.edges[shell]
+        allowed = energy > edges[:, shell]
         if shell in (1, 2, 3):
             allowed &= z >= 12
         elif shell >= 4:
             allowed &= z >= 73
-        p = s.ionisation[shell] if shell == 0 else s.ionisation[shell] * (1 - taken)
+        p = ionisation[:, shell] if shell == 0 else ionisation[:, shell] * (1 - taken)
         p = np.where(allowed, p, 0.0)
         taken += p
         running += p
