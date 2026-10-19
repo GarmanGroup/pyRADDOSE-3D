@@ -1142,7 +1142,9 @@ def _refuse_untabulated(
                 )
 
 
-def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
+def monte_carlo(
+    experiment: Experiment, *, device: str | None = None
+) -> list[SimpleRun]:
     """Run RADDOSE-3D's Monte Carlo, ``Subprogram MONTECARLO``, ``GOS`` or ``XFEL``.
 
     Compared with RADDOSE-3D statistically, by
@@ -1152,8 +1154,14 @@ def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
     ----------
     experiment : Experiment
         A crystal with ``subprogram: montecarlo``, ``gos`` or ``xfel``. Its
-        ``seed`` seeds NumPy's generator; the port does not reproduce
+        ``seed`` seeds the generator; the port does not reproduce
         RADDOSE-3D's draws, only their distribution.
+    device : str, optional
+        A torch device to follow the photons and electrons on -- ``"cuda"``,
+        ``"cuda:1"`` or ``"cpu"`` -- in float64, with torch's random numbers,
+        which are not NumPy's: the same seed gives a different run, as
+        likely as NumPy's. Needs PyTorch (the ``torch`` extra). By default,
+        NumPy, on the CPU.
 
     Returns
     -------
@@ -1163,7 +1171,20 @@ def monte_carlo(experiment: Experiment) -> list[SimpleRun]:
     from pyraddose_3d.backend.montecarlo.simple import simulate_simple
 
     setup = monte_carlo_setup(experiment)
-    return simulate_simple(setup, np.random.default_rng(experiment.seed))
+    if device is None:
+        return simulate_simple(setup, np.random.default_rng(experiment.seed))
+    try:
+        from pyraddose_3d.backend.montecarlo.ops import TorchRandom
+
+        rng = TorchRandom(experiment.seed, device)
+    except ModuleNotFoundError as error:
+        if error.name != "torch":
+            raise
+        raise ImportError(
+            f"running the Monte Carlo on {device!r} needs PyTorch: "
+            "pip install pyRADDOSE-3D[torch]"
+        ) from None
+    return simulate_simple(setup, rng)
 
 
 #: How messages name RADDOSE-3D's engines.

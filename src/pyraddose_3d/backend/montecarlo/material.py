@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
+from pyraddose_3d.backend.montecarlo.ops import namespace, on
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.microed import ElectronMaterial
@@ -126,7 +127,7 @@ def _atoms(material: ElectronMaterial) -> _Atoms:
 
 def _in_turn(terms: np.ndarray) -> np.ndarray:
     """The sum over atoms, the first axis, in turn as a loop adds, not pairwise."""
-    return np.asarray(np.add.accumulate(terms, axis=0)[-1])
+    return namespace(terms).add.accumulate(terms, axis=0)[-1]
 
 
 def stopping_power(material: ElectronMaterial, energy: np.ndarray) -> np.ndarray:
@@ -134,35 +135,36 @@ def stopping_power(material: ElectronMaterial, energy: np.ndarray) -> np.ndarray
 
     As :func:`pyraddose_3d.backend.microed.stopping_power`, term by term.
     """
+    xp = namespace(energy)
     m = _ELECTRON_MASS
     csquared = _SPEED_OF_LIGHT * _SPEED_OF_LIGHT
     vo = energy * KEV_TO_JOULES
-    beta_squared = 1 - np.power(m * csquared / (vo + m * csquared), 2)
-    gamma = 1 / np.power(1 - beta_squared, 0.5)
+    beta_squared = 1 - xp.power(m * csquared / (vo + m * csquared), 2)
+    gamma = 1 / xp.power(1 - beta_squared, 0.5)
     kinetic_mev = (((gamma - 1) * m * csquared) / KEV_TO_JOULES) / 1000
 
-    atoms = _atoms(material)
+    atoms = on(xp, _atoms(material))
     j, k = atoms.excitation[:, None], atoms.k[:, None]
     j_star = j / (1 + k * (j / (energy * 1000)))
-    mean_ln_i = _in_turn(atoms.ln_i_weight[:, None] * np.log(j_star))
+    mean_ln_i = _in_turn(atoms.ln_i_weight[:, None] * xp.log(j_star))
     mean_z = atoms.mean_z
 
     mean_ln_i = mean_ln_i / atoms.z_per_a
-    mean_j = np.exp(mean_ln_i)
+    mean_j = xp.exp(mean_ln_i)
     mean_j = mean_j / (1 + 0.85 * mean_j / (energy * 1000))
     mean_j = (mean_j / 1000) * KEV_TO_JOULES
     e = energy * KEV_TO_JOULES
     f_beta = (
-        np.log((m * csquared * e * beta_squared) / (2 * (1 - beta_squared)))
-        - (2 * np.power(1 - beta_squared, 0.5) - 1 + beta_squared) * math.log(2)
+        xp.log((m * csquared * e * beta_squared) / (2 * (1 - beta_squared)))
+        - (2 * xp.power(1 - beta_squared, 0.5) - 1 + beta_squared) * math.log(2)
         + 1
         - beta_squared
-        + (1.0 / 8.0) * (1 - np.power(1 - beta_squared, 0.5))
+        + (1.0 / 8.0) * (1 - xp.power(1 - beta_squared, 0.5))
     )
     power = (
         (0.153536 / beta_squared)
         * atoms.z_per_a
-        * (f_beta - 2 * np.log(mean_j) - 0.1832)
+        * (f_beta - 2 * xp.log(mean_j) - 0.1832)
     )
     power = power * 1000 * material.density / 1e7
     return power + ((kinetic_mev * mean_z) / 800) * power
@@ -177,20 +179,21 @@ def elastic_cross_sections(
     0.05 to 300 keV where it has a value; Langmore and Smith's formula
     otherwise.
     """
+    xp = namespace(energy)
     m = _ELECTRON_MASS
     csquared = 3e8 * 3e8
     vo = energy * KEV_TO_JOULES
-    beta_squared = 1 - np.power(m * csquared / (vo + m * csquared), 2)
+    beta_squared = 1 - xp.power(m * csquared / (vo + m * csquared), 2)
     in_range = (energy <= _ELSEPA_RANGE[1]) & (energy >= _ELSEPA_RANGE[0])
-    atoms = _atoms(material)
+    atoms = on(xp, _atoms(material))
     # Infinite for an electron at rest: an Auger electron of an empty
     # transition slot, which stops before it takes a step, as in the Java.
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with xp.errstate(divide="ignore", invalid="ignore"):
         formula = (atoms.formula_scale[:, None] / beta_squared) * (
-            1 - atoms.screening[:, None] / (137 * np.power(beta_squared, 0.5))
+            1 - atoms.screening[:, None] / (137 * xp.power(beta_squared, 0.5))
         )
     tabulated = _elsepa_at(atoms.elsepa_energies, atoms.elsepa, energy)
-    return np.where(in_range & (tabulated > 0.0), tabulated, formula)
+    return xp.where(in_range & (tabulated > 0.0), tabulated, formula)
 
 
 def _elsepa_at(grid: np.ndarray, table: np.ndarray, energy: np.ndarray) -> np.ndarray:
@@ -198,12 +201,13 @@ def _elsepa_at(grid: np.ndarray, table: np.ndarray, energy: np.ndarray) -> np.nd
 
     ``table`` holds a row of values on ``grid`` for each atom.
     """
-    clipped = np.clip(energy, grid[0], grid[-1])
-    below = np.searchsorted(grid, clipped, side="right") - 1
-    above = np.searchsorted(grid, clipped, side="left")
+    xp = namespace(energy)
+    clipped = xp.clip(energy, grid[0], grid[-1])
+    below = xp.searchsorted(grid, clipped, side="right") - 1
+    above = xp.searchsorted(grid, clipped, side="left")
     before, after = grid[below], grid[above]
     span = after - before
-    across = np.where(span != 0, (clipped - before) / np.where(span != 0, span, 1), 0.0)
+    across = xp.where(span != 0, (clipped - before) / xp.where(span != 0, span, 1), 0.0)
     low, high = table[:, below], table[:, above]
     return low + ((high - low) * across)
 
@@ -212,7 +216,7 @@ def elastic_mean_free_path(
     material: ElectronMaterial, cross_sections: np.ndarray
 ) -> np.ndarray:
     """``getElectronElasticMFPL``, in nm, from :func:`elastic_cross_sections`."""
-    atoms = _atoms(material)
+    atoms = on(namespace(cross_sections), _atoms(material))
     part = _in_turn(
         (atoms.elastic_fraction[:, None] * cross_sections)
         / atoms.elastic_weight[:, None]
@@ -228,6 +232,7 @@ def elastic_element_cdf(
     ``(elements, energies)``, in atomic-number order: each element's
     cross-section times its atoms per nm^3, over their sum.
     """
-    weighted = cross_sections * _atoms(material).per_volume[:, None]
+    xp = namespace(cross_sections)
+    weighted = cross_sections * on(xp, _atoms(material)).per_volume[:, None]
     total = _in_turn(weighted)
-    return np.cumsum(weighted / total, axis=0)
+    return xp.cumsum(weighted / total, axis=0)

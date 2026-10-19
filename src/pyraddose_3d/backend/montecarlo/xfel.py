@@ -24,10 +24,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.special import ndtr, ndtri
+from scipy.special import ndtr
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.montecarlo.geometry import Placement, voxel_indices
+from pyraddose_3d.backend.montecarlo.ops import namespace, ndtri
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.montecarlo.photons import BeamShape
@@ -55,7 +56,8 @@ DEFAULT_PULSE_WINDOW = 2.0
 
 def light(distance_nm: np.ndarray | float) -> np.ndarray:
     """How long light takes to travel ``distance_nm``, fs."""
-    return np.asarray((1 / _SPEED_OF_LIGHT) * (np.asarray(distance_nm) / 1e9) * 1e15)
+    xp = namespace(distance_nm)
+    return (1 / _SPEED_OF_LIGHT) * (xp.asarray(distance_nm) / 1e9) * 1e15
 
 
 @dataclass(frozen=True)
@@ -92,19 +94,20 @@ class Pulse:
         one at its quantile (i + 1/2) / N, truncated to the window and scaled
         up to fill it, so that the whole pulse energy arrives within it.
         """
+        xp = namespace(in_run)
         if self.sigma is None:
             with np.errstate(divide="ignore"):
                 # Photons per time bin; infinite for a pulse of no length.
-                divisions = photons / np.float64(self.length / self.bin)
-            return np.asarray(np.trunc(in_run / divisions) * self.bin)
-        tail = ndtr(-self.length / (2 * self.sigma))
-        u = (np.asarray(in_run) + 0.5) / photons
+                divisions = float(photons / np.float64(self.length / self.bin))
+            return xp.trunc(in_run / divisions) * self.bin
+        tail = float(ndtr(-self.length / (2 * self.sigma)))
+        u = (in_run + 0.5) / photons
         t = self.length / 2 + self.sigma * ndtri(tail + u * (1 - 2 * tail))
-        return np.asarray(np.trunc(t / self.bin) * self.bin)
+        return xp.trunc(t / self.bin) * self.bin
 
     def arrival(self, slot: np.ndarray, z_nm: np.ndarray) -> np.ndarray:
         """When the pulse's front, at the crystal's front at ``slot``, reaches z."""
-        return np.asarray(slot + light(z_nm + self.depth / 2))
+        return slot + light(z_nm + self.depth / 2)
 
 
 def pulse_timing(setup: SimpleSetup, layers: int) -> Pulse:
@@ -147,16 +150,17 @@ class TimedSink:
         self, points: np.ndarray, owner: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         """Each point's run-by-voxel index, and its voxel's layer in z."""
+        xp = namespace(points)
         ijk = voxel_indices(
             points,
             self.placement.take(owner),
             self.grid.minimum,
             self.grid.pixels_per_micron,
         )
-        ijk = np.clip(ijk, 0, np.array(self.grid.size) - 1)
+        ijk = xp.clip(ijk, 0, xp.asarray(self.grid.size) - 1)
         nx, ny, nz = self.grid.size
         flat = ((self.run[owner] * nx + ijk[:, 0]) * ny + ijk[:, 1]) * nz + ijk[:, 2]
-        return np.asarray(flat), ijk[:, 2]
+        return flat, ijk[:, 2]
 
     def _layer(self, points: np.ndarray, owner: np.ndarray) -> np.ndarray:
         """Each point's voxel layer in z.
@@ -165,16 +169,20 @@ class TimedSink:
         not where its next step would have ended, which can be undefined; its
         voxel is where it stopped, whose z alone the layer then takes.
         """
-        defined = np.isfinite(points).all(axis=1)
-        layer = np.empty(len(points), dtype=np.int64)
+        xp = namespace(points)
+        defined = xp.isfinite(points).all(axis=1)
+        layer = xp.empty(len(points), dtype=xp.int64)
         if defined.any():
             _, layer[defined] = self._voxels(points[defined], owner[defined])
         if (~defined).any():
             z = points[~defined, 2]
-            index = np.floor(
-                (z / 1000 - self.grid.minimum[2]) * self.grid.pixels_per_micron + 0.5
+            index = xp.floor(
+                (z / 1000 - float(self.grid.minimum[2])) * self.grid.pixels_per_micron
+                + 0.5
             )
-            layer[~defined] = np.clip(index, 0, self.grid.size[2] - 1)
+            layer[~defined] = xp.astype(
+                xp.clip(index, 0, self.grid.size[2] - 1), xp.int64
+            )
         return layer
 
     def dose(self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray) -> None:
@@ -190,11 +198,12 @@ class TimedSink:
         """``addResolved``: kept if its time bin starts before the voxel's cutoff."""
         if not len(owner):
             return
+        xp = namespace(energy)
         flat, layer = self._voxels(points, owner)
-        np.add.at(self.tallies.resolved, flat, energy)
-        bins = np.maximum(np.trunc(time / self.pulse.bin), 0)
+        xp.add.at(self.tallies.resolved, flat, energy)
+        bins = xp.maximum(xp.trunc(time / self.pulse.bin), 0)
         kept = bins * self.pulse.bin < self.pulse.cutoff[layer]
-        np.add.at(self.tallies.resolved_cut, flat[kept], energy[kept])
+        xp.add.at(self.tallies.resolved_cut, flat[kept], energy[kept])
 
     def ionise(
         self,
@@ -207,13 +216,14 @@ class TimedSink:
         """``addIonisation``: counted only before the voxel's cutoff."""
         if not len(owner):
             return
+        xp = namespace(count)
         kept = time < self.pulse.cutoff[self._layer(points, owner)]
         run = self.run[owner]
-        np.add.at(self.tallies.ionisations, run[kept], count[kept])
+        xp.add.at(self.tallies.ionisations, run[kept], count[kept])
         known = kept & (element >= 0)
-        np.add.at(self.tallies.element_ions, (run[known], element[known]), count[known])
+        xp.add.at(self.tallies.element_ions, (run[known], element[known]), count[known])
         exposed = known & self.beam.exposes(points[:, 0], points[:, 1])
-        np.add.at(
+        xp.add.at(
             self.tallies.element_ions_exposed,
             (run[exposed], element[exposed]),
             count[exposed],

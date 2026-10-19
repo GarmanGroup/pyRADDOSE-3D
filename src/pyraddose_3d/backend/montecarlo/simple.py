@@ -12,13 +12,17 @@ Every run is simulated at once, in batches of photons, and tallied by run:
 the runs share one generator, whose draws are independent whichever run
 they fall to. ``processDose`` then turns each run's tallies into the rows of
 ``outputMC.CSV`` and ``outputXFEL.CSV``.
+
+The photons and electrons are NumPy arrays, or tensors on a torch device,
+as the generator's draws are (:mod:`.ops`); the tallies are processed as
+NumPy arrays either way.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -38,6 +42,13 @@ from pyraddose_3d.backend.montecarlo.gos_transport import (
     track_gos,
 )
 from pyraddose_3d.backend.montecarlo.material import stopping_power
+from pyraddose_3d.backend.montecarlo.ops import (
+    float64_by_default,
+    namespace,
+    on,
+    random_namespace,
+    to_numpy,
+)
 from pyraddose_3d.backend.montecarlo.photons import (
     OUTER_SHELL,
     BeamShape,
@@ -253,20 +264,27 @@ class SimpleRun:
 class _Tallies:
     """What the runs accumulate: keV and counts, by run and voxel."""
 
-    def __init__(self, runs: int, voxels: int, elements: int) -> None:
-        self.dose = np.zeros(runs * voxels)  # doseSimple
-        self.resolved = np.zeros(runs * voxels)  # voxelEnergyvResolved
+    def __init__(self, runs: int, voxels: int, elements: int, xp: Any = np) -> None:
+        zeros = xp.zeros
+        self.dose = zeros(runs * voxels)  # doseSimple
+        self.resolved = zeros(runs * voxels)  # voxelEnergyvResolved
         # In the XFEL subprogram, its part from before each voxel's cutoff.
-        self.resolved_cut = np.zeros(runs * voxels)
-        self.voxel_elastic = np.zeros(runs * voxels)  # voxelElastic
-        self.raddose = np.zeros(runs)
-        self.raddose_compton = np.zeros(runs)
-        self.elastic = np.zeros(runs)
-        self.ionisations = np.zeros(runs)
-        self.element_ions = np.zeros((runs, elements))
-        self.element_ions_exposed = np.zeros((runs, elements))
-        self.electrons = np.zeros(runs)
+        self.resolved_cut = zeros(runs * voxels)
+        self.voxel_elastic = zeros(runs * voxels)  # voxelElastic
+        self.raddose = zeros(runs)
+        self.raddose_compton = zeros(runs)
+        self.elastic = zeros(runs)
+        self.ionisations = zeros(runs)
+        self.element_ions = zeros((runs, elements))
+        self.element_ions_exposed = zeros((runs, elements))
+        self.electrons = zeros(runs)
         self.passes = 0
+
+    def to_numpy(self) -> _Tallies:
+        """These tallies, as NumPy arrays."""
+        for name, value in vars(self).items():
+            setattr(self, name, to_numpy(value))
+        return self
 
 
 @dataclass
@@ -286,10 +304,11 @@ class _Grid:
         self, points: np.ndarray, placement: Placement, run: np.ndarray
     ) -> np.ndarray:
         """``convertToPixelCoordinates``, as an index into run-by-voxel tallies."""
+        xp = namespace(points)
         ijk = voxel_indices(points, placement, self.minimum, self.pixels_per_micron)
-        ijk = np.minimum(ijk, np.array(self.size) - 1)
+        ijk = xp.minimum(ijk, xp.asarray(self.size) - 1)
         nx, ny, nz = self.size
-        return np.asarray(((run * nx + ijk[:, 0]) * ny + ijk[:, 1]) * nz + ijk[:, 2])
+        return ((run * nx + ijk[:, 0]) * ny + ijk[:, 1]) * nz + ijk[:, 2]
 
 
 def _grid(setup: SimpleSetup) -> _Grid:
@@ -316,10 +335,11 @@ class _Owned:
         self, points: np.ndarray, which: np.ndarray, energy: np.ndarray, starting: bool
     ) -> None:
         """Deposit for the electrons ``which``."""
+        xp = namespace(energy)
         flat = self.grid.flat(points, self.placement.take(which), self.run[which])
-        np.add.at(self.tallies.dose, flat, energy)
+        xp.add.at(self.tallies.dose, flat, energy)
         if starting:
-            np.add.at(self.tallies.resolved, flat, energy)
+            xp.add.at(self.tallies.resolved, flat, energy)
 
 
 @dataclass
@@ -338,7 +358,9 @@ class _GOSSink:
     def dose(self, points: np.ndarray, owner: np.ndarray, energy: np.ndarray) -> None:
         """``doseSimple``."""
         if len(owner):
-            np.add.at(self.tallies.dose, self._flat(points, owner), energy)
+            namespace(energy).add.at(
+                self.tallies.dose, self._flat(points, owner), energy
+            )
 
     def resolved(
         self,
@@ -349,7 +371,9 @@ class _GOSSink:
     ) -> None:
         """``voxelEnergyvResolved``."""
         if len(owner):
-            np.add.at(self.tallies.resolved, self._flat(points, owner), energy)
+            namespace(energy).add.at(
+                self.tallies.resolved, self._flat(points, owner), energy
+            )
 
     def ionise(
         self,
@@ -362,12 +386,13 @@ class _GOSSink:
         """``addIonisation``: an element of -1 counts in the total alone."""
         if not len(owner):
             return
+        xp = namespace(count)
         run = self.run[owner]
-        np.add.at(self.tallies.ionisations, run, count)
+        xp.add.at(self.tallies.ionisations, run, count)
         known = element >= 0
-        np.add.at(self.tallies.element_ions, (run[known], element[known]), count[known])
+        xp.add.at(self.tallies.element_ions, (run[known], element[known]), count[known])
         exposed = known & self.beam.exposes(points[:, 0], points[:, 1])
-        np.add.at(
+        xp.add.at(
             self.tallies.element_ions_exposed,
             (run[exposed], element[exposed]),
             count[exposed],
@@ -405,7 +430,8 @@ class _GOSQueue:
             self.parts.setdefault(name, []).append(array)
 
     def _get(self, name: str) -> np.ndarray:
-        return np.concatenate(self.parts[name])
+        parts = self.parts[name]
+        return namespace(*parts).concatenate(parts)
 
     def add(
         self,
@@ -420,11 +446,12 @@ class _GOSQueue:
 
         ``time`` is when each photon interacted, fs.
         """
-        owner = np.concatenate([s[0] for s in starts])
-        photons = np.unique(owner)
+        xp = namespace(run)
+        owner = xp.concatenate([s[0] for s in starts])
+        photons = xp.unique(owner)
 
         def record(of: np.ndarray) -> np.ndarray:
-            return self.records + np.searchsorted(photons, of)
+            return self.records + xp.searchsorted(photons, of)
 
         self._put(
             run=run[photons],
@@ -433,10 +460,10 @@ class _GOSQueue:
             box=box[photons],
             time=time[photons],
             owner=record(owner),
-            points=np.concatenate([s[1] for s in starts]),
-            directions=np.concatenate([s[2] for s in starts]),
-            energies=np.concatenate([s[3] for s in starts]),
-            outside=np.concatenate([np.full(len(s[0]), s[4]) for s in starts]),
+            points=xp.concatenate([s[1] for s in starts]),
+            directions=xp.concatenate([s[2] for s in starts]),
+            energies=xp.concatenate([s[3] for s in starts]),
+            outside=xp.concatenate([xp.full(len(s[0]), s[4]) for s in starts]),
         )
         for points, of, element, shell in vacancies:
             self._put(
@@ -493,7 +520,7 @@ class _GOSQueue:
             self._get("directions"),
             self._get("energies"),
             owner,
-            np.ones(len(owner), dtype=bool),
+            namespace(owner).ones(len(owner), dtype=bool),
             self._get("outside"),
             self._get("box")[owner],
             vacancies,
@@ -510,18 +537,19 @@ def _placements(setup: SimpleSetup, index: np.ndarray) -> Placement:
     ``MC.photonAngle``: a still at its start angle, a rotation from its start
     to its end, as RADDOSE-3D has it since #48.
     """
+    xp = namespace(index)
     start, end = setup.start_angle, setup.end_angle
     if setup.xfel or abs(start - end) < setup.angular_resolution:
         # An XFEL pulse lasts femtoseconds: a still at the wedge's start.
-        angle = np.full(len(index), start)
+        angle = xp.full(len(index), start)
     else:
         angle = start + ((index / setup.photons) * (end - start))
     # "convert to 0-2pi", truncating towards zero as Java's cast does.
-    times_over = np.trunc(angle / (2 * math.pi))
+    times_over = xp.trunc(angle / (2 * math.pi))
     angle = angle - (times_over * 2 * math.pi)
-    rate = np.array(setup.translation_per_radian)
+    rate = xp.array(setup.translation_per_radian)
     offset = (
-        np.array(setup.start_offset)[None, :] + rate[None, :] * (angle - start)[:, None]
+        xp.array(setup.start_offset)[None, :] + rate[None, :] * (angle - start)[:, None]
     )
     return Placement(angle, offset)
 
@@ -576,10 +604,11 @@ def _relaxation(
     fluorescence table, as RADDOSE-3D draws it since #48. An outer shell
     leaves nothing.
     """
+    xp = namespace(binding)
     known = shell != OUTER_SHELL
-    left = np.where(known, binding, 0.0)
+    left = xp.where(known, binding, 0.0)
     eligible = (
-        np.isin(z, _RELAXING)
+        xp.isin(z, _RELAXING)
         & known
         & (
             (shell == 0)
@@ -590,17 +619,17 @@ def _relaxation(
             | ((shell < 9) & (z > 32) & (z < 35))
         )
     )
-    resolved = np.where(~eligible & known, binding, 0.0)
-    chosen = np.flatnonzero(eligible)
+    resolved = xp.where(~eligible & known, binding, 0.0)
+    chosen = xp.flatnonzero(eligible)
     if len(chosen):
         fluoresces = ~(rng.random(len(chosen)) > yields[chosen])
         light = chosen[fluoresces]
         # A draw per photon, in order: rng.random(n) gives what n calls of
         # rng.random() would.
         uniform = rng.random(len(light))
-        table = tables.packed_fluorescence()
+        table = on(xp, tables.packed_fluorescence())
         above = table.cumulative[z[light], shell[light]] > uniform[:, None]
-        index = np.where(above.any(axis=1), above.argmax(axis=1), 0)
+        index = xp.where(xp.any(above, axis=1), xp.argmax(above, axis=1), 0)
         left[light] = binding[light] - table.energy_kev[z[light], shell[light], index]
     return left, resolved
 
@@ -628,16 +657,18 @@ def _photoabsorb(
     points: np.ndarray,
 ) -> _Absorbed:
     """``producePhotoElectron``: the element, the shell, the electron."""
-    z_of = np.array([e.atomic_number for e in composition.elements])
-    table = stacked_shells(tuple(z_of.tolist()))
+    xp = random_namespace(rng)
+    elements = tuple(e.atomic_number for e in composition.elements)
+    z_of = xp.asarray(elements, dtype=xp.int64)
+    table = on(xp, stacked_shells(elements))
     element = choose(cdf, rng.random(len(owner)))
     u = rng.random(len(owner))
     cdf = shell_cdfs(
         z_of[element], table.edges[element], table.ionisation[element], energy
     )
     shell = ionised_shells(cdf, u)
-    binding = np.where(
-        shell != OUTER_SHELL, table.binding[element, np.maximum(shell, 0)], 0.0
+    binding = xp.where(
+        shell != OUTER_SHELL, table.binding[element, xp.maximum(shell, 0)], 0.0
     )
     direction = photoelectron_directions(rng, shell == 0, setup.rotated_polarisation)
     return _Absorbed(
@@ -671,8 +702,9 @@ def in_random_order(
     numpy.ndarray
         Each photon's energy's index among them.
     """
-    out = np.empty(len(run), dtype=np.int64)
-    for r in np.unique(run).tolist():
+    xp = namespace(run)
+    out = xp.empty(len(run), dtype=xp.int64)
+    for r in xp.unique(run).tolist():
         if r not in orders:
             for done in [k for k in orders if k < r]:
                 del orders[done]
@@ -690,12 +722,15 @@ class _Spectrum:
     larger pink beam's, for each batch's photons.
     """
 
-    def __init__(self, composition: Composition, energies: np.ndarray) -> None:
+    def __init__(
+        self, composition: Composition, energies: np.ndarray, xp: Any = np
+    ) -> None:
         self.composition = composition
         self.energies = energies
+        self.xp = xp
         size = len(energies) * (3 + 2 * len(composition.elements)) * 8
-        self.all = (
-            photon_coefficients(composition, energies)
+        self.all: PhotonCoefficients | None = (
+            on(xp, photon_coefficients(composition, energies), keep=False)
             if size <= _SPECTRUM_BYTES
             else None
         )
@@ -704,7 +739,12 @@ class _Spectrum:
         """The coefficients at the energies ``index`` picks out."""
         if self.all is not None:
             return self.all.take(index)
-        return photon_coefficients(self.composition, self.energies[index])
+        coefficients: PhotonCoefficients = on(
+            self.xp,
+            photon_coefficients(self.composition, self.energies[to_numpy(index)]),
+            keep=False,
+        )
+        return coefficients
 
 
 def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[SimpleRun]:
@@ -714,20 +754,29 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
     ----------
     setup : SimpleSetup
         The experiment.
-    rng : numpy.random.Generator
-        The random numbers.
+    rng : numpy.random.Generator or TorchRandom
+        The random numbers: NumPy's, or torch's on a device, where the
+        photons and electrons then are too.
 
     Returns
     -------
     list[SimpleRun]
         One per run.
     """
+    xp = random_namespace(rng)
+    with float64_by_default(xp):
+        return _simulate(setup, rng, xp)
+
+
+def _simulate(setup: SimpleSetup, rng: np.random.Generator, xp: Any) -> list[SimpleRun]:
     runs, photons = setup.runs, setup.photons
     grid = _grid(setup)
     elements = setup.composition.elements
-    z_of = np.array([e.atomic_number for e in elements])
-    yield_of = np.stack([shells(int(z)).fluorescence_yield for z in z_of])
-    tallies = _Tallies(runs, grid.voxels, len(elements))
+    z_of = xp.asarray([e.atomic_number for e in elements], dtype=xp.int64)
+    yield_of = xp.asarray(
+        np.stack([shells(int(e.atomic_number)).fluorescence_yield for e in elements])
+    )
+    tallies = _Tallies(runs, grid.voxels, len(elements), xp)
     vertices = np.asarray(setup.mesh.vertices)
     reach = float(np.max(np.linalg.norm(vertices[:, None] - vertices[None], axis=-1)))
     surrounding = setup.surrounding
@@ -740,7 +789,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         surrounding.material if surrounding is not None else None,
         box_meshes,
     )
-    pulse = pulse_timing(setup, grid.size[2]) if setup.xfel else None
+    pulse = on(xp, pulse_timing(setup, grid.size[2])) if setup.xfel else None
     gos = None
     if setup.gos:
         highest = (
@@ -749,8 +798,8 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             else float(np.max(setup.energies))
         )
         gos = _GOSQueue(
-            gos_medium(setup.material, highest),
-            gos_medium(surrounding.material, highest)
+            on(xp, gos_medium(setup.material, highest)),
+            on(xp, gos_medium(surrounding.material, highest))
             if surrounding is not None
             else None,
             pulse,
@@ -760,12 +809,13 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         [setup.photon_energy] if setup.energies is None else setup.energies,
         dtype=float,
     )
-    crystal_spectrum = _Spectrum(setup.composition, spectrum)
+    crystal_spectrum = _Spectrum(setup.composition, spectrum, xp)
     surrounding_spectrum = (
-        _Spectrum(surrounding.composition, spectrum)
+        _Spectrum(surrounding.composition, spectrum, xp)
         if surrounding is not None
         else None
     )
+    spectrum = xp.asarray(spectrum)
 
     total = runs * photons
     # An XFEL pulse's pink photons come in no order of energy: a photon's place
@@ -775,14 +825,14 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         {} if setup.xfel and setup.energies is not None else None
     )
     for first in range(0, total, _BATCH):
-        index = np.arange(first, min(first + _BATCH, total))
+        index = xp.arange(first, min(first + _BATCH, total))
         run = index // photons
         in_run = index % photons
         placement = _placements(setup, in_run)
         n = len(index)
         # Each photon's place in the spectrum.
         if setup.energies is None:
-            line = np.zeros(n, dtype=np.int64)
+            line = xp.zeros(n, dtype=xp.int64)
         elif orders is not None:
             line = in_random_order(len(spectrum), run, in_run, orders, rng)
         else:
@@ -799,11 +849,11 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
 
         # Each interaction: (photons, points, in the surrounding?).
         found: list[tuple[np.ndarray, np.ndarray, bool]] = []
-        box = np.zeros(n, dtype=np.int64)
+        box = xp.zeros(n, dtype=xp.int64)
         if surrounding is None:
-            travel = -crystal.total_mean_free_path_nm * np.log(rng.random(n))
-            candidate = np.flatnonzero(~np.isnan(front) & (travel <= reach * 1000))
-            points = np.stack(
+            travel = -crystal.total_mean_free_path_nm * xp.log(rng.random(n))
+            candidate = xp.flatnonzero(~xp.isnan(front) & (travel <= reach * 1000))
+            points = xp.stack(
                 [x[candidate], y[candidate], front[candidate] + travel[candidate]],
                 axis=1,
             )
@@ -818,7 +868,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
             found.extend(paths)
 
         # In the XFEL subprogram, when each photon interacts.
-        time = np.zeros(n)
+        time = xp.zeros(n)
         timed = None
         if pulse is not None:
             slot = pulse.slots(in_run, photons)
@@ -844,14 +894,14 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
                 elastic = rng.random(len(owner)) < here.elastic_chance
                 hit = owner[elastic]
                 flat = grid.flat(points[elastic], placement.take(hit), run[hit])
-                np.add.at(tallies.voxel_elastic, flat, 1)
-                np.add.at(tallies.elastic, run[hit], 1)
+                xp.add.at(tallies.voxel_elastic, flat, 1)
+                xp.add.at(tallies.elastic, run[hit], 1)
                 owner, points = owner[~elastic], points[~elastic]
-                here = here.take(np.flatnonzero(~elastic))
+                here = here.take(xp.flatnonzero(~elastic))
                 compton = rng.random(len(owner)) < here.compton_chance
                 photo_cdf = here.photoelectric_cdf
 
-            pe = np.flatnonzero(~compton)
+            pe = xp.flatnonzero(~compton)
             absorbed = _photoabsorb(
                 rng, setup, composition, photo_cdf[pe], energy[owner[pe]],
                 owner[pe], points[pe],
@@ -862,7 +912,7 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
                 _tally_crystal(
                     rng, setup, grid, tallies, z_of, yield_of, placement, run, x, y,
                     absorbed, cs_owner, cs_points, cs_energy,
-                    here.take(np.flatnonzero(compton)), timed,
+                    here.take(xp.flatnonzero(compton)), timed,
                 )  # fmt: skip
                 if setup.gos:
                     # An outer shell's vacancy has nothing to relax.
@@ -877,20 +927,20 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
                     )
             starts.append(
                 (
-                    np.concatenate([absorbed.owner, cs_owner]),
-                    np.concatenate([absorbed.points, cs_points]),
-                    np.concatenate([absorbed.direction, cs_direction]),
-                    np.concatenate([absorbed.energy, cs_energy]),
+                    xp.concatenate([absorbed.owner, cs_owner]),
+                    xp.concatenate([absorbed.points, cs_points]),
+                    xp.concatenate([absorbed.direction, cs_direction]),
+                    xp.concatenate([absorbed.energy, cs_energy]),
                     outside,
                 )
             )
 
         if not starts:
             continue
-        owner = np.concatenate([s[0] for s in starts])
+        owner = xp.concatenate([s[0] for s in starts])
         electron_place = placement.take(owner)
         electron_run = run[owner]
-        np.add.at(tallies.electrons, electron_run, 1)
+        xp.add.at(tallies.electrons, electron_run, 1)
         if gos is not None:
             gos.add(starts, vacancies, run, placement, box, time)
             if gos.electrons >= _TRACKED:
@@ -899,10 +949,10 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         passes = track(
             rng,
             media,
-            np.concatenate([s[1] for s in starts]),
-            np.concatenate([s[2] for s in starts]),
-            np.concatenate([s[3] for s in starts]),
-            np.concatenate([np.full(len(s[0]), s[4]) for s in starts]),
+            xp.concatenate([s[1] for s in starts]),
+            xp.concatenate([s[2] for s in starts]),
+            xp.concatenate([s[3] for s in starts]),
+            xp.concatenate([xp.full(len(s[0]), s[4]) for s in starts]),
             electron_place,
             box[owner],
             _Owned(grid, tallies, electron_place, electron_run),
@@ -913,8 +963,8 @@ def simulate_simple(setup: SimpleSetup, rng: np.random.Generator) -> list[Simple
         gos.follow(rng, setup, grid, tallies, box_meshes)
     if pulse is not None:
         volume = _sample_volume(setup.mesh) * 1e-12
-        return xfel_runs(setup, tallies, grid, volume, pulse.depth)
-    return _process(setup, tallies, grid)
+        return xfel_runs(setup, tallies.to_numpy(), grid, volume, pulse.depth)
+    return _process(setup, tallies.to_numpy(), grid)
 
 
 def _tally_crystal(
@@ -943,8 +993,9 @@ def _tally_crystal(
     subprogram, the sink that counts an ionisation only before its voxel's
     cutoff, and each photon's time.
     """
+    xp = namespace(absorbed.energy)
     pe = absorbed.owner
-    np.add.at(tallies.raddose, run[pe], absorbed.energy + absorbed.binding)
+    xp.add.at(tallies.raddose, run[pe], absorbed.energy + absorbed.binding)
     if timed is None:
         _ionise(tallies, run[pe], absorbed.element, setup.beam.exposes(x[pe], y[pe]))
     else:
@@ -953,7 +1004,7 @@ def _tally_crystal(
             absorbed.points,
             pe,
             absorbed.element,
-            np.ones(len(pe), dtype=np.int64),
+            xp.ones(len(pe), dtype=xp.int64),
             time[pe],
         )
     if setup.gos:
@@ -964,15 +1015,15 @@ def _tally_crystal(
         )  # fmt: skip
         return
     shell = absorbed.shell
-    shell_yield = np.where(
-        shell >= 0, yield_of[absorbed.element, np.maximum(shell, 0)], 0.0
+    shell_yield = xp.where(
+        shell >= 0, yield_of[absorbed.element, xp.maximum(shell, 0)], 0.0
     )
     left, resolved = _relaxation(
         z_of[absorbed.element], shell, absorbed.binding, shell_yield, rng
     )
     flat = grid.flat(absorbed.points, placement.take(pe), run[pe])
-    np.add.at(tallies.dose, flat, left)
-    np.add.at(tallies.resolved, flat, resolved)
+    xp.add.at(tallies.dose, flat, left)
+    xp.add.at(tallies.resolved, flat, resolved)
 
     _compton_ions(
         rng, setup, tallies, run, x, y, cs_owner, cs_points, cs_energy,
@@ -994,7 +1045,8 @@ def _compton_ions(
     timed: tuple[TimedSink, np.ndarray] | None = None,
 ) -> None:
     """A Compton scattering's RADDOSE-3D-style energy and ionisation."""
-    np.add.at(tallies.raddose_compton, run[cs_owner], cs_energy)
+    xp = namespace(cs_energy)
+    xp.add.at(tallies.raddose_compton, run[cs_owner], cs_energy)
     cs_element = choose(cs_coefficients.compton_cdf, rng.random(len(cs_owner)))
     if timed is None:
         exposed = setup.beam.exposes(x[cs_owner], y[cs_owner])
@@ -1005,7 +1057,7 @@ def _compton_ions(
             cs_points,
             cs_owner,
             cs_element,
-            np.ones(len(cs_owner), dtype=np.int64),
+            xp.ones(len(cs_owner), dtype=xp.int64),
             time[cs_owner],
         )
 
@@ -1014,9 +1066,10 @@ def _ionise(
     tallies: _Tallies, run: np.ndarray, element: np.ndarray, exposed: np.ndarray
 ) -> None:
     """``addIonisation``."""
-    np.add.at(tallies.ionisations, run, 1)
-    np.add.at(tallies.element_ions, (run, element), 1)
-    np.add.at(tallies.element_ions_exposed, (run[exposed], element[exposed]), 1)
+    xp = namespace(run)
+    xp.add.at(tallies.ionisations, run, 1)
+    xp.add.at(tallies.element_ions, (run, element), 1)
+    xp.add.at(tallies.element_ions_exposed, (run[exposed], element[exposed]), 1)
 
 
 def _in_boxes(
@@ -1027,9 +1080,10 @@ def _in_boxes(
     placement: Placement,
 ) -> np.ndarray:
     """``calculateCrystalOccupancySurrounding`` for each photon's surrounding."""
-    result = np.zeros(len(photons), dtype=bool)
+    xp = namespace(points)
+    result = xp.zeros(len(photons), dtype=bool)
     for index, mesh in enumerate(meshes):
-        group = np.flatnonzero(box[photons] == index)
+        group = xp.flatnonzero(box[photons] == index)
         if not len(group):
             continue
         result[group] = inside(mesh, points[group], placement.take(photons[group]))
@@ -1060,44 +1114,45 @@ def _through_surrounding(
     crystal had its chance behind it only if that distance ended in the
     surrounding.
     """
+    xp = namespace(x)
     n = len(x)
-    outer = np.zeros(n)
+    outer = xp.zeros(n)
     for index, mesh in enumerate(meshes):
-        chosen = np.flatnonzero(box == index)
+        chosen = xp.flatnonzero(box == index)
         if len(chosen):
             outer[chosen] = entry_depth(
                 mesh, x[chosen], y[chosen], placement.take(chosen)
             )
-    tracked = ~np.isnan(outer)
+    tracked = ~xp.isnan(outer)
     through_surrounding = front != outer
-    hitting = ~np.isnan(front)
+    hitting = ~xp.isnan(front)
     found: list[tuple[np.ndarray, np.ndarray, bool]] = []
 
     # In front of the crystal, or beside it.
-    first = -medium.photon_mean_free_path_nm * np.log(rng.random(n))
-    first = np.where(tracked & through_surrounding, first, 0.0)
-    in_front = tracked & through_surrounding & hitting & (first < np.abs(front - outer))
-    owner = np.flatnonzero(in_front)
+    first = -medium.photon_mean_free_path_nm * xp.log(rng.random(n))
+    first = xp.where(tracked & through_surrounding, first, 0.0)
+    in_front = tracked & through_surrounding & hitting & (first < xp.abs(front - outer))
+    owner = xp.flatnonzero(in_front)
     found.append(
         (
             owner,
-            np.stack([x[owner], y[owner], outer[owner] + first[owner]], axis=1),
+            xp.stack([x[owner], y[owner], outer[owner] + first[owner]], axis=1),
             True,
         )
     )
-    beside = np.flatnonzero(tracked & ~hitting)
-    points = np.stack([x[beside], y[beside], outer[beside] + first[beside]], axis=1)
+    beside = xp.flatnonzero(tracked & ~hitting)
+    points = xp.stack([x[beside], y[beside], outer[beside] + first[beside]], axis=1)
     in_box = _in_boxes(meshes, box, points, beside, placement)
     found.append((beside[in_box], points[in_box], True))
 
     # In the crystal, from its front face.
-    crossing = np.flatnonzero(hitting & ~in_front)
-    travel = -crystal.total_mean_free_path_nm[crossing] * np.log(
+    crossing = xp.flatnonzero(hitting & ~in_front)
+    travel = -crystal.total_mean_free_path_nm[crossing] * xp.log(
         rng.random(len(crossing))
     )
-    points = np.stack([x[crossing], y[crossing], front[crossing] + travel], axis=1)
-    in_crystal = np.zeros(len(crossing), dtype=bool)
-    near = np.flatnonzero(travel <= reach * 1000)
+    points = xp.stack([x[crossing], y[crossing], front[crossing] + travel], axis=1)
+    in_crystal = xp.zeros(len(crossing), dtype=bool)
+    near = xp.flatnonzero(travel <= reach * 1000)
     in_crystal[near] = inside(setup.mesh, points[near], placement.take(crossing[near]))
     found.append((crossing[in_crystal], points[in_crystal], False))
 
@@ -1107,10 +1162,10 @@ def _through_surrounding(
         back = entry_depth(
             setup.mesh, x[behind], y[behind], placement.take(behind), crossing=1
         )
-        again = -medium.photon_mean_free_path_nm[behind] * np.log(
+        again = -medium.photon_mean_free_path_nm[behind] * xp.log(
             rng.random(len(behind))
         )
-        points = np.stack([x[behind], y[behind], back + again], axis=1)
+        points = xp.stack([x[behind], y[behind], back + again], axis=1)
         in_box = _in_boxes(meshes, box, points, behind, placement)
         found.append((behind[in_box], points[in_box], True))
     return found

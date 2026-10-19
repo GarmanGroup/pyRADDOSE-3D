@@ -4,7 +4,7 @@ This directory contains the script for calculating the dose a crystal absorbs du
 
 ## Files
 
-- `run_dose.py` - The Python script for running a dose calculation. Give it an input on the command line, or edit the parameters at the top: the path to your input, where to write the outputs, and whether to write the per-image files.
+- `run_dose.py` - The Python script for running a dose calculation. Give it an input on the command line, or edit the parameters at the top: the path to your input, where to write the outputs, whether to write the per-image files, and where the Monte Carlo runs.
 - `plot_dose_contours.py` - Draws the dose `run_dose.py` wrote, as RADDOSE-3D's `DoseState.R` does, with matplotlib.
 
 In `docs/examples/inputs`:
@@ -78,6 +78,8 @@ A crystal with `subprogram: montecarlo`, `gos` or `xfel` (`Subprogram MonteCarlo
 | `outputIonsPerAtom.CSV` | the last run's ionisations per atom of each element, in the exposed region |
 
 The runs are random, and compared with RADDOSE-3D's statistically: the same seed repeats the port's runs, not RADDOSE-3D's. They need the ELSEPA data packages (the `montecarlo` extra). XFEL is the Monte Carlo's GOS model with a clock, as RADDOSE-3D's is with its #57, so a surrounding, a rotation and an offset work as in the other subprograms; a pulse lasts femtoseconds, so the crystal stands still at its wedge's start.
+
+To follow the photons and electrons on a GPU, set `MC_DEVICE = "cuda"` at the top of `run_dose.py`, or call `monte_carlo(experiment, device="cuda")` from Python. It needs PyTorch (the `torch` extra) and computes in float64, as on the CPU. A GPU's random numbers are not NumPy's, so the same seed repeats a run on the same device, but gives a different run from NumPy's.
 
 ## Escape modelling and the seed
 

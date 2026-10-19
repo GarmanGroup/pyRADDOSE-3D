@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
@@ -69,6 +69,7 @@ from pyraddose_3d.backend.montecarlo.material import (
     elastic_mean_free_path,
     stopping_power,
 )
+from pyraddose_3d.backend.montecarlo.ops import namespace, on, random_namespace
 from pyraddose_3d.backend.montecarlo.photons import (
     isotropic_directions,
     stacked_shells,
@@ -123,16 +124,17 @@ class Clock:
     @staticmethod
     def flight(energy: np.ndarray, distance: np.ndarray) -> np.ndarray:
         """``getTimeToDistance``: fs for ``distance`` nm at ``energy`` keV."""
+        xp = namespace(energy)
         rest = _ELECTRON_MASS * _SPEED_OF_LIGHT**2
         beta_squared = 1 - ((rest / (energy * KEV_TO_JOULES + rest)) ** 2)
-        speed = np.sqrt(beta_squared * _SPEED_OF_LIGHT**2) * 1e9 / 1e15  # nm/fs
-        return np.asarray((1 / speed) * distance)
+        speed = xp.sqrt(beta_squared * _SPEED_OF_LIGHT**2) * 1e9 / 1e15  # nm/fs
+        return (1 / speed) * distance
 
     @staticmethod
     def lifetime(linewidth_ev: np.ndarray) -> np.ndarray:
         """A transition's lifetime from its natural linewidth: hbar over it, fs."""
-        return np.asarray(
-            1e15 * ((_PLANCK / (2 * math.pi)) / ((linewidth_ev / 1000) * KEV_TO_JOULES))
+        return 1e15 * (
+            (_PLANCK / (2 * math.pi)) / ((linewidth_ev / 1000) * KEV_TO_JOULES)
         )
 
 
@@ -214,10 +216,11 @@ class GOSMedium:
         Returns the mean free path, nm, and the running chances over the
         elements, ``(len(energy), elements)``.
         """
+        xp = namespace(energy)
         values = self.table.column(energy, self.inner, 3)
         total = values.sum(axis=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return 1 / total, np.cumsum(values, axis=1) / total[:, None]
+        with xp.errstate(divide="ignore", invalid="ignore"):
+            return 1 / total, xp.cumsum(values, axis=1) / total[:, None]
 
     def inner_shells(self, energy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """``betheIonisationxSection`` and ``getAllShellProbs`` at each energy.
@@ -226,20 +229,21 @@ class GOSMedium:
         running chances over every element's nine shells in turn,
         ``(len(energy), elements * 9)``: NaN where no shell is open.
         """
+        xp = namespace(energy)
         sigma = bethe_shells(self.material, energy).reshape(len(energy), -1)
         total = sigma.sum(axis=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            free_path = np.where(total > 0, 1 / total, 0.0)
-            return free_path, np.cumsum(sigma, axis=1) / total[:, None]
+        with xp.errstate(divide="ignore", invalid="ignore"):
+            free_path = xp.where(total > 0, 1 / total, 0.0)
+            return free_path, xp.cumsum(sigma, axis=1) / total[:, None]
 
     def elastic_free_path(self, energy: np.ndarray) -> np.ndarray:
         """``getElectronElasticMFPL``, nm."""
         sigma = elastic_cross_sections(self.material, energy)
-        return np.asarray(elastic_mean_free_path(self.material, sigma))
+        return elastic_mean_free_path(self.material, sigma)
 
     def stopping_power(self, energy: np.ndarray) -> np.ndarray:
         """``getStoppingPower``, keV/nm."""
-        return np.asarray(stopping_power(self.material, energy))
+        return stopping_power(self.material, energy)
 
 
 def _resonance(material: ElectronMaterial, atom: object, index: int) -> float:
@@ -283,13 +287,14 @@ def gos_medium(material: ElectronMaterial, highest: float) -> GOSMedium:
 
 def _first_above(cumulative: np.ndarray, uniform: np.ndarray) -> np.ndarray:
     """The first column whose running chance exceeds the draw, -1 if none."""
+    xp = namespace(uniform)
     above = cumulative > uniform[:, None]
-    return np.where(above.any(axis=1), above.argmax(axis=1), -1)
+    return xp.where(xp.any(above, axis=1), xp.argmax(above, axis=1), -1)
 
 
 def _relaxes(z: np.ndarray, shell: np.ndarray) -> np.ndarray:
     """``produceAugerElectron``'s test: which vacancies the tables relax."""
-    return np.isin(z, list(_RELAXING)) & (
+    return namespace(z).isin(z, list(_RELAXING)) & (
         (shell == 0)
         | ((shell < 2) & (z == 11))
         | ((shell < 3) & (z == 12))
@@ -354,34 +359,41 @@ class Cascade:
         clock: Clock | None = None,
     ) -> None:
         self.rng = rng
+        self.xp = xp = random_namespace(rng)
         self.crystal = crystal
         self.sink = sink
         self.clock = clock
-        self.yields = np.zeros((len(crystal.z), _SHELL_COLUMNS))
-        self.yields[:, :9] = stacked_shells(
-            tuple(crystal.z.tolist())
+        self.yields = xp.zeros((len(crystal.z), _SHELL_COLUMNS))
+        self.yields[:, :9] = on(
+            xp, stacked_shells(tuple(crystal.z.tolist()))
         ).fluorescence_yield
-        self.auger = tables.packed_auger()
-        self.fluorescence = tables.packed_fluorescence()
+        self.auger = on(xp, tables.packed_auger())
+        self.fluorescence = on(xp, tables.packed_fluorescence())
 
     def _transition(
         self, table: tables.PackedTransitions, z: np.ndarray, shell: np.ndarray
     ) -> np.ndarray:
         """``getTransitionIndex`` for each vacancy: slot 0 if no draw falls.
 
-        The draws are made a group of vacancies of one element and shell at
-        a time, the groups in a set's order, as they always were; the tables
+        NumPy's draws are made a group of vacancies of one element and shell
+        at a time, the groups in a set's order, as they always were; torch's
+        (:class:`~.ops.TorchRandom`), for every vacancy at once. The tables
         are then read for every vacancy at once.
         """
-        uniform = np.empty(len(z))
-        for key in set(zip(z.tolist(), shell.tolist(), strict=True)):
-            chosen = np.flatnonzero((z == key[0]) & (shell == key[1]))
-            uniform[chosen] = self.rng.random(len(chosen))
-        return np.maximum(_first_above(table.cumulative[z, shell], uniform), 0)
+        xp = self.xp
+        if getattr(self.rng, "draws_in_groups", True):
+            uniform = xp.empty(len(z))
+            for key in set(zip(z.tolist(), shell.tolist(), strict=True)):
+                chosen = xp.flatnonzero((z == key[0]) & (shell == key[1]))
+                uniform[chosen] = self.rng.random(len(chosen))
+        else:
+            uniform = self.rng.random(len(z))
+        return xp.maximum(_first_above(table.cumulative[z, shell], uniform), 0)
 
     def _edge(self, element: np.ndarray, shell: np.ndarray) -> np.ndarray:
         """``getShellBindingEnergy``: a vacancy's binding energy, keV; 0 past M5."""
-        return self.crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
+        clamped = self.xp.minimum(shell, _SHELL_COLUMNS - 1)
+        return self.crystal.binding[element, clamped]
 
     def _lifetimes(
         self,
@@ -395,11 +407,12 @@ class Cascade:
         Drawn from the exponential its lifetime is the mean of, as since
         RADDOSE-3D #58: it took the lifetime itself, every time.
         """
+        xp = self.xp
         if self.clock is None:
-            return np.zeros(len(z))
+            return xp.zeros(len(z))
         linewidth = table.linewidth_ev[z, shell, index]
-        draws = -np.log(1 - self.rng.random(len(z)))
-        return np.asarray(self.clock.lifetime(linewidth) * draws)
+        draws = -xp.log(1 - self.rng.random(len(z)))
+        return self.clock.lifetime(linewidth) * draws
 
     def relax(
         self,
@@ -418,13 +431,14 @@ class Cascade:
         shell's edge; the vacancies it leaves hold their edges.
         """
         crystal = self.crystal
+        xp = self.xp
         if time is None:
-            time = np.zeros(len(element))
+            time = xp.zeros(len(element))
         if held is None:
-            held = crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
+            held = crystal.binding[element, xp.minimum(shell, _SHELL_COLUMNS - 1)]
         for _ in range(_MAX_GENERATIONS):
             if self.clock is not None:
-                on_time = np.flatnonzero(time < self.clock.last)
+                on_time = xp.flatnonzero(time < self.clock.last)
                 points, owner, element, shell, time, held = (
                     points[on_time],
                     owner[on_time],
@@ -435,15 +449,15 @@ class Cascade:
                 )
             if not len(element):
                 return
-            shell = np.minimum(shell, _SHELL_COLUMNS - 1)
+            shell = xp.minimum(shell, _SHELL_COLUMNS - 1)
             z = crystal.z[element]
             binding = held
             relaxing = _relaxes(z, shell)
             if (~relaxing).any():
-                rest = np.flatnonzero(~relaxing)
+                rest = xp.flatnonzero(~relaxing)
                 self.sink.resolved(points[rest], owner[rest], binding[rest], time[rest])
                 self.sink.dose(points[rest], owner[rest], binding[rest])
-            chosen = np.flatnonzero(relaxing)
+            chosen = xp.flatnonzero(relaxing)
             fluoresces = ~(
                 self.rng.random(len(chosen))
                 > self.yields[element[chosen], shell[chosen]]
@@ -468,15 +482,15 @@ class Cascade:
             )
             directions = isotropic_directions(self.rng, len(auger))
             emitted = (
-                np.flatnonzero(later_a < self.clock.last)
+                xp.flatnonzero(later_a < self.clock.last)
                 if self.clock is not None
-                else np.arange(len(auger))
+                else xp.arange(len(auger))
             )
             self.sink.ionise(
                 points[auger[emitted]],
                 owner[auger[emitted]],
                 element[auger[emitted]],
-                np.ones(len(emitted), dtype=np.int64),
+                xp.ones(len(emitted), dtype=xp.int64),
                 later_a[emitted],
             )
             born.add(
@@ -501,12 +515,12 @@ class Cascade:
 
             # The vacancies left: the Auger electron's and the one filled
             # from, then the fluorescence's, each relaxed in turn.
-            points = np.concatenate([points[auger], points[auger], points[light]])
-            owner = np.concatenate([owner[auger], owner[auger], owner[light]])
-            element = np.concatenate([element[auger], element[auger], element[light]])
-            shell = np.concatenate([exits, drops_a, drops_f])
-            time = np.concatenate([later_a, later_a, later_f])
-            held = crystal.binding[element, np.minimum(shell, _SHELL_COLUMNS - 1)]
+            points = xp.concatenate([points[auger], points[auger], points[light]])
+            owner = xp.concatenate([owner[auger], owner[auger], owner[light]])
+            element = xp.concatenate([element[auger], element[auger], element[light]])
+            shell = xp.concatenate([exits, drops_a, drops_f])
+            time = xp.concatenate([later_a, later_a, later_f])
+            held = crystal.binding[element, xp.minimum(shell, _SHELL_COLUMNS - 1)]
 
 
 @dataclass
@@ -532,18 +546,18 @@ class _Electrons:
     time: np.ndarray  # timeStamp, fs
 
     @classmethod
-    def blank(cls, n: int) -> _Electrons:
+    def blank(cls, n: int, xp: Any = np) -> _Electrons:
         """``n`` electrons, every field zero, false or fresh."""
         arrays: dict[str, np.ndarray] = {}
         for name in cls.__dataclass_fields__:
             if name in _VECTORS:
-                arrays[name] = np.zeros((n, 3))
+                arrays[name] = xp.zeros((n, 3))
             elif name in _FLAGS:
-                arrays[name] = np.full(n, name == "fresh")
+                arrays[name] = xp.full(n, name == "fresh")
             elif name in _INDICES:
-                arrays[name] = np.zeros(n, dtype=np.int64)
+                arrays[name] = xp.zeros(n, dtype=xp.int64)
             else:
-                arrays[name] = np.zeros(n)
+                arrays[name] = xp.zeros(n)
         return cls(**arrays)
 
     def __len__(self) -> int:
@@ -566,20 +580,21 @@ class _Electrons:
         times: np.ndarray,
     ) -> _Electrons:
         """These electrons, and new ones, fresh, to be set up."""
-        new = _Electrons.blank(len(energies))
-        new.position = np.asarray(points, dtype=float)
-        new.target = new.position.copy()
-        new.direction = np.asarray(directions, dtype=float)
-        new.energy = np.asarray(energies, dtype=float)
-        new.start = new.energy.copy()
+        xp = namespace(energies)
+        new = _Electrons.blank(len(energies), xp)
+        new.position = xp.asarray(points, dtype=float)
+        new.target = xp.copy(new.position)
+        new.direction = xp.asarray(directions, dtype=float)
+        new.energy = xp.asarray(energies, dtype=float)
+        new.start = xp.copy(new.energy)
         new.primary[:] = primary
-        new.outside = np.asarray(outside, dtype=bool)
-        new.owner = np.asarray(owners, dtype=np.int64)
-        new.box = np.asarray(box, dtype=np.int64)
-        new.time = np.asarray(times, dtype=float)
+        new.outside = xp.asarray(outside, dtype=bool)
+        new.owner = xp.asarray(owners, dtype=xp.int64)
+        new.box = xp.asarray(box, dtype=xp.int64)
+        new.time = xp.asarray(times, dtype=float)
         return _Electrons(
             **{
-                name: np.concatenate([getattr(self, name), getattr(new, name)])
+                name: xp.concatenate([getattr(self, name), getattr(new, name)])
                 for name in self.__dataclass_fields__
             }
         )
@@ -593,6 +608,7 @@ _INDICES = frozenset(("owner", "box"))
 
 @dataclass
 class _Context:
+    xp: Any
     rng: np.random.Generator
     crystal: GOSMedium
     surrounding: GOSMedium | None
@@ -615,20 +631,23 @@ class _Context:
 
 def _total_free_path(elastic: np.ndarray, inelastic: np.ndarray) -> np.ndarray:
     """``lambdaT``: elastic and inelastic together, or elastic alone."""
-    with np.errstate(divide="ignore"):
-        return np.where(inelastic > 0, 1 / (1 / elastic + 1 / inelastic), elastic)
+    xp = namespace(elastic)
+    with xp.errstate(divide="ignore"):
+        return xp.where(inelastic > 0, 1 / (1 / elastic + 1 / inelastic), elastic)
 
 
 def _combined(outer: np.ndarray, inner: np.ndarray) -> np.ndarray:
     """``gosInelasticLambda``: the outer subshells with the inner shells."""
-    with np.errstate(divide="ignore"):
-        return np.where(inner > 0, 1 / (1 / outer + 1 / inner), outer)
+    xp = namespace(outer)
+    with xp.errstate(divide="ignore"):
+        return xp.where(inner > 0, 1 / (1 / outer + 1 / inner), outer)
 
 
 def _inner_chance(free_path: np.ndarray, inner: np.ndarray) -> np.ndarray:
     """``Pinner``: the chance an inelastic collision is with an inner shell."""
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(inner > 0, free_path / inner, 0.0)
+    xp = namespace(free_path)
+    with xp.errstate(divide="ignore", invalid="ignore"):
+        return xp.where(inner > 0, free_path / inner, 0.0)
 
 
 def _draw_step(
@@ -640,9 +659,10 @@ def _draw_step(
     mean free paths are infinite, or one whose direction is undefined, gets
     an undefined step, as in the Java; it stops or leaves before taking it.
     """
+    xp = ctx.xp
     total = _total_free_path(elastic, e.inelastic_free_path[chosen])
-    with np.errstate(invalid="ignore"):
-        e.step[chosen] = -total * np.log(ctx.rng.random(len(chosen)))
+    with xp.errstate(invalid="ignore"):
+        e.step[chosen] = -total * xp.log(ctx.rng.random(len(chosen)))
         e.p_inelastic[chosen] = 1 - total / elastic
         e.target[chosen] = (
             e.position[chosen] + e.step[chosen, None] * e.direction[chosen]
@@ -673,10 +693,11 @@ def _low_energy_ions(
     ``int(E / plasmon energy)`` of them, all of one element, drawn as an
     inelastic collision's is: ``chooseLowEnElement``.
     """
+    xp = ctx.xp
     crystal = ctx.crystal
     if not crystal.plasma > 0:
         return
-    count = (energy / crystal.plasma).astype(np.int64)
+    count = xp.astype(energy / crystal.plasma, xp.int64)
     some = count > 0
     chosen, energy, points, count = (
         chosen[some],
@@ -701,25 +722,26 @@ def _choose_element(
     element (-1 for none: an inner draw where no shell is open), the shell,
     and which were inner.
     """
+    xp = ctx.xp
     crystal = ctx.crystal
     r_inner = ctx.rng.random(len(chosen))
     r_element = ctx.rng.random(len(chosen))
     inner = r_inner < e.p_inner[chosen]
-    element = np.full(len(chosen), -1, dtype=np.int64)
-    shell = np.full(len(chosen), -1, dtype=np.int64)
-    a = np.flatnonzero(inner)
+    element = xp.full(len(chosen), -1, dtype=xp.int64)
+    shell = xp.full(len(chosen), -1, dtype=xp.int64)
+    a = xp.flatnonzero(inner)
     if len(a):
         _, cumulative = crystal.inner_shells(e.inner_energy[chosen[a]])
         flat = _first_above(cumulative, r_element[a])
         found = flat >= 0
         element[a[found]] = flat[found] // 9
         shell[a[found]] = flat[found] % 9
-    b = np.flatnonzero(~inner)
+    b = xp.flatnonzero(~inner)
     if len(b):
         _, cumulative = crystal.outer(e.energy[chosen[b]])
         atom = _first_above(cumulative, r_element[b])
         # A draw past the last element, only by rounding: the last element.
-        atom = np.where(atom < 0, len(crystal.inner) - 1, atom)
+        atom = xp.where(atom < 0, len(crystal.inner) - 1, atom)
         element[b] = atom
         shell[b] = crystal.inner[atom]
     return element, shell, inner
@@ -733,6 +755,7 @@ def _inelastic(
     Each has just moved to ``position``; ``direction`` is still the one it
     came in on.
     """
+    xp = ctx.xp
     crystal = ctx.crystal
     rng = ctx.rng
     n = len(chosen)
@@ -743,72 +766,72 @@ def _inelastic(
     plasmon = element < 0
 
     # The kind of collision: distant longitudinal (0), transverse (1), close (2).
-    kind = np.zeros(n, dtype=np.int64)
+    kind = xp.zeros(n, dtype=xp.int64)
     r_kind = rng.random(n)
-    real = np.flatnonzero(~plasmon)
+    real = xp.flatnonzero(~plasmon)
     if len(real):
         rows = crystal.table.rows(energy[real], element[real], shell[real])
-        with np.errstate(divide="ignore", invalid="ignore"):
-            running = np.cumsum(rows[:, :3] / rows[:, 3:4], axis=1)
+        with xp.errstate(divide="ignore", invalid="ignore"):
+            running = xp.cumsum(rows[:, :3] / rows[:, 3:4], axis=1)
         hit = _first_above(running, r_kind[real])
-        kind[real] = np.maximum(hit, 0)
+        kind[real] = xp.maximum(hit, 0)
 
-    safe_element = np.maximum(element, 0)
-    safe_shell = np.clip(shell, 0, 9)
+    safe_element = xp.maximum(element, 0)
+    safe_shell = xp.clip(shell, 0, 9)
     # A valence collision's binding energy is its subshell's, as the model's
     # cross-sections have it; an inner shell's, its edge. As RADDOSE-3D has
     # it since #52: the edges have none for the valence subshells of Al, Si,
     # P, As and Se, whose collisions then recoiled by nothing and lost their
     # electron to an undefined deflection.
-    uk = np.where(
+    uk = xp.where(
         plasmon,
         0.0,
-        np.where(
+        xp.where(
             inner,
             crystal.binding[safe_element, safe_shell],
             crystal.valence_binding[safe_element],
         )
         * 1000,
     )
-    wk = np.where(plasmon, 0.0, crystal.wk[safe_element, safe_shell])
-    q_ak = np.where(plasmon, wk, qak(energy, wk, uk))
+    wk = xp.where(plasmon, 0.0, crystal.wk[safe_element, safe_shell])
+    q_ak = xp.where(plasmon, wk, qak(energy, wk, uk))
     w_ak = wak(energy, wk, uk)
     w_dis = 3 * w_ak - 2 * uk
 
     distant = kind < 2
-    loss = np.zeros(n)
-    q = np.zeros(n)
-    theta = np.zeros(n)
-    d = np.flatnonzero(distant)
+    loss = xp.zeros(n)
+    q = xp.zeros(n)
+    theta = xp.zeros(n)
+    d = xp.flatnonzero(distant)
     if len(d):
-        loss[d] = np.where(
+        loss[d] = xp.where(
             plasmon[d], wk[d] / 1000, energy_loss_distant(rng, w_dis[d], uk[d]) / 1000
         )
         q[d] = recoil_distant(rng, energy[d], w_ak[d], q_ak[d])
         longitudinal = kind[d] == 0
-        theta[d] = np.where(
+        theta[d] = xp.where(
             longitudinal, primary_angle_distant(energy[d], q[d], w_ak[d]), 0.0
         )
-    c = np.flatnonzero(~distant)
+    c = xp.flatnonzero(~distant)
     if len(c):
         k = sample_k(rng, energy[c], uk[c])
-        loss[c] = np.where(plasmon[c], wk[c] / 1000, k * (energy[c] + uk[c] / 1000))
+        loss[c] = xp.where(plasmon[c], wk[c] / 1000, k * (energy[c] + uk[c] / 1000))
         theta[c] = primary_angle_close(energy[c], loss[c])
 
     secondary = loss - uk / 1000
-    freed = np.flatnonzero(secondary > 0)
+    freed = xp.flatnonzero(secondary > 0)
     time = e.time[chosen]
     if len(freed):
         ctx.sink.ionise(
             points[freed],
             owner[freed],
             element[freed],
-            np.ones(len(freed), dtype=np.int64),
+            xp.ones(len(freed), dtype=xp.int64),
             time[freed],
         )
         followed = freed[secondary[freed] > STOPPED_KEV]
         if len(followed):
-            angle = np.where(
+            angle = xp.where(
                 distant[followed],
                 secondary_angle_distant(energy[followed], w_ak[followed], q[followed]),
                 secondary_angle_close(energy[followed], loss[followed]),
@@ -839,7 +862,7 @@ def _inelastic(
 
     phi = 2 * math.pi * rng.random(n)
     e.direction[chosen] = new_directions(e.direction[chosen], theta, phi)
-    return np.where(secondary > 0, loss, 0.0)
+    return xp.where(secondary > 0, loss, 0.0)
 
 
 def _elastic(ctx: _Context, e: _Electrons, chosen: np.ndarray, outside: bool) -> None:
@@ -855,7 +878,7 @@ def _elastic(ctx: _Context, e: _Electrons, chosen: np.ndarray, outside: bool) ->
         medium.z[element],
         energy,
         ctx.rng.random(len(chosen)),
-        tuple(medium.z.tolist()),
+        tuple(atom.z for atom in medium.material.atoms),
     )
     phi = 2 * math.pi * ctx.rng.random(len(chosen))
     e.direction[chosen] = new_directions(e.direction[chosen], theta, phi)
@@ -863,8 +886,9 @@ def _elastic(ctx: _Context, e: _Electrons, chosen: np.ndarray, outside: bool) ->
 
 def _setup(ctx: _Context, e: _Electrons, fresh: np.ndarray) -> np.ndarray:
     """The start of ``trackPhotoelectron``: returns which have ended at once."""
+    xp = ctx.xp
     e.fresh[fresh] = False
-    ended = np.zeros(len(e), dtype=bool)
+    ended = xp.zeros(len(e), dtype=bool)
     inside_crystal = fresh[~e.outside[fresh]]
     if len(inside_crystal):
         _crystal_state(ctx, e, inside_crystal)
@@ -896,7 +920,7 @@ def _setup(ctx: _Context, e: _Electrons, fresh: np.ndarray) -> np.ndarray:
             e.position[there], e.owner[there], e.start[there], e.time[there]
         )
         crystal_side = there[~e.outside[there]]
-        points = e.position[crystal_side].copy()
+        points = xp.copy(e.position[crystal_side])
         points[:, :2] = e.target[crystal_side, :2]
         _low_energy_ions(ctx, e, crystal_side, e.start[crystal_side], points)
     return ended
@@ -957,17 +981,18 @@ def track_gos(
     int
         How many passes it took.
     """
+    xp = random_namespace(rng)
     cascade = Cascade(rng, crystal, sink, clock)
     ctx = _Context(
-        rng, crystal, surrounding, mesh, boxes, placement, sink, cascade, clock
+        xp, rng, crystal, surrounding, mesh, boxes, placement, sink, cascade, clock
     )
     if start_time is None:
-        start_time = np.zeros(int(np.max(owner, initial=-1)) + 1)
-    e = _Electrons.blank(0).extend(
+        start_time = xp.zeros(int(xp.max(owner, initial=-1)) + 1)
+    e = _Electrons.blank(0, xp).extend(
         position, direction, energy, owner, False, in_surrounding, box,
         start_time[owner],
     )  # fmt: skip
-    e.primary[:] = np.asarray(primary, dtype=bool)
+    e.primary[:] = xp.asarray(primary, dtype=bool)
     born = _Born()
     if vacancies is not None:
         cascade.relax(*vacancies, born, start_time[vacancies[1]])
@@ -976,7 +1001,7 @@ def track_gos(
     passes = 0
     while len(e):
         passes += 1
-        ended = _setup(ctx, e, np.flatnonzero(e.fresh))
+        ended = _setup(ctx, e, xp.flatnonzero(e.fresh))
         born = _Born()
         live = ~ended
 
@@ -984,7 +1009,7 @@ def track_gos(
         # cross-sections, with the inner shells' at the starting energy, and a
         # fresh step.
         first_in = live & ctx.crystal_has(e.target, e.owner)
-        back = np.flatnonzero(first_in & e.outside)
+        back = xp.flatnonzero(first_in & e.outside)
         if len(back):
             to_face = exit_distance(
                 mesh, e.position[back], e.direction[back], placement.take(e.owner[back])
@@ -1000,24 +1025,23 @@ def track_gos(
                 e.outside[back] = False
                 _crystal_state(ctx, e, back)
         in_crystal = live & ~e.outside
-        in_crystal[in_crystal] = ctx.crystal_has(
-            e.target[in_crystal], e.owner[in_crystal]
-        )
+        checked = xp.flatnonzero(in_crystal)
+        in_crystal[checked] = ctx.crystal_has(e.target[checked], e.owner[checked])
 
-        a = np.flatnonzero(in_crystal)
+        a = xp.flatnonzero(in_crystal)
         if len(a):
             ended |= _in_crystal(ctx, e, a, born)
 
-        leaving = np.flatnonzero(live & ~in_crystal & ~e.outside)
+        leaving = xp.flatnonzero(live & ~in_crystal & ~e.outside)
         if len(leaving):
             ended |= _leave(ctx, e, leaving)
 
-        wandering = np.flatnonzero(live & ~in_crystal & e.outside & ~ended)
-        wandering = wandering[~np.isin(wandering, leaving)]
+        wandering = xp.flatnonzero(live & ~in_crystal & e.outside & ~ended)
+        wandering = wandering[~xp.isin(wandering, leaving)]
         if len(wandering):
             ended |= _wander(ctx, e, wandering)
 
-        stopped = np.flatnonzero(live & ~ended & (e.energy < STOPPED_KEV))
+        stopped = xp.flatnonzero(live & ~ended & (e.energy < STOPPED_KEV))
         if len(stopped):
             ended[stopped] = True
             there = stopped[ctx.crystal_has(e.position[stopped], e.owner[stopped])]
@@ -1032,7 +1056,7 @@ def track_gos(
             )
             # Its ionisations' exposure is judged where its next step would
             # have ended, as the Java passes it.
-            points = e.position[there].copy()
+            points = xp.copy(e.position[there])
             points[:, :2] = e.target[there, :2]
             _low_energy_ions(ctx, e, there, e.energy[there], points)
 
@@ -1042,18 +1066,19 @@ def track_gos(
 
 def _join(e: _Electrons, born: _Born, crystal: GOSMedium) -> _Electrons:
     """The freed electrons, in the crystal, joining those still followed."""
+    xp = namespace(e.energy)
     if not born.energies:
         return e
-    energies = np.concatenate(born.energies)
+    energies = xp.concatenate(born.energies)
     return e.extend(
-        np.concatenate(born.points),
-        np.concatenate(born.directions),
+        xp.concatenate(born.points),
+        xp.concatenate(born.directions),
         energies,
-        np.concatenate(born.owners),
+        xp.concatenate(born.owners),
         False,
-        np.zeros(len(energies), dtype=bool),
-        np.zeros(len(energies), dtype=np.int64),
-        np.concatenate(born.times),
+        xp.zeros(len(energies), dtype=bool),
+        xp.zeros(len(energies), dtype=xp.int64),
+        xp.concatenate(born.times),
     )
 
 
@@ -1063,8 +1088,9 @@ def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> np.
     With a clock, the step first takes its flight time, and one that ends
     after ``lastTime`` ends the electron there. Returns which have ended.
     """
+    xp = ctx.xp
     crystal = ctx.crystal
-    ended = np.zeros(len(e), dtype=bool)
+    ended = xp.zeros(len(e), dtype=bool)
     if ctx.clock is not None:
         e.time[a] += ctx.clock.flight(e.energy[a], e.step[a])
         late = e.time[a] > ctx.clock.last
@@ -1079,16 +1105,16 @@ def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> np.
     )
     e.position[a] = e.target[a]
 
-    loss = np.zeros(len(a))
+    loss = xp.zeros(len(a))
     inelastic = ctx.rng.random(len(a)) < e.p_inelastic[a]
-    hit = np.flatnonzero(inelastic)
+    hit = xp.flatnonzero(inelastic)
     if len(hit):
         loss[hit] = _inelastic(ctx, e, a[hit], born)
     _elastic(ctx, e, a[~inelastic], False)
 
     # Brought up to date after losing energy, and always below 0.5 keV.
     above = energy > _UPDATE_ABOVE
-    update = np.flatnonzero(~above | (loss > 0))
+    update = xp.flatnonzero(~above | (loss > 0))
     if len(update):
         u = a[update]
         e.energy[u] -= loss[update]
@@ -1099,7 +1125,7 @@ def _in_crystal(ctx: _Context, e: _Electrons, a: np.ndarray, born: _Born) -> np.
     e.p_inner[a] = _inner_chance(e.inelastic_free_path[a], e.inner_current[a])
     going = a[e.energy[a] >= 0]
     _draw_step(
-        ctx, e, going, crystal.elastic_free_path(np.maximum(e.energy[going], 1e-9))
+        ctx, e, going, crystal.elastic_free_path(xp.maximum(e.energy[going], 1e-9))
     )
     return ended
 
@@ -1112,7 +1138,8 @@ def _leave(ctx: _Context, e: _Electrons, leaving: np.ndarray) -> np.ndarray:
     the first step there took its inelastic mean free path too. Returns
     which have ended.
     """
-    ended = np.zeros(len(e), dtype=bool)
+    xp = ctx.xp
+    ended = xp.zeros(len(e), dtype=bool)
     if ctx.surrounding is None:
         ended[leaving] = True
         return ended
@@ -1137,10 +1164,11 @@ def _wander(ctx: _Context, e: _Electrons, wandering: np.ndarray) -> np.ndarray:
 
     Until it leaves the surrounding. Returns which have ended.
     """
-    ended = np.zeros(len(e), dtype=bool)
-    still = np.zeros(len(wandering), dtype=bool)
+    xp = ctx.xp
+    ended = xp.zeros(len(e), dtype=bool)
+    still = xp.zeros(len(wandering), dtype=bool)
     for index, mesh in enumerate(ctx.boxes):
-        group = np.flatnonzero(e.box[wandering] == index)
+        group = xp.flatnonzero(e.box[wandering] == index)
         if len(group):
             still[group] = inside(
                 mesh,

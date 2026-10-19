@@ -15,11 +15,12 @@ from itertools import pairwise
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.special import ndtr, ndtri
+from scipy.special import ndtr
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.coefficients import material_coefficients
 from pyraddose_3d.backend.elements import read_table
+from pyraddose_3d.backend.montecarlo.ops import namespace, ndtri, on, random_namespace
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.composition import Composition
@@ -109,14 +110,15 @@ class BeamShape:
         undefined one, where an electron's last step was drawn from a
         negative mean free path, is inside.
         """
+        xp = namespace(x_nm)
         half_x, half_y = self.collimation[0] / 2, self.collimation[1] / 2
         if self.circular:
             return ~(
-                (np.power(x_nm / 1000, 2) / math.pow(half_x, 2))
-                + (np.power(y_nm / 1000, 2) / math.pow(half_y, 2))
+                (xp.power(x_nm / 1000, 2) / math.pow(half_x, 2))
+                + (xp.power(y_nm / 1000, 2) / math.pow(half_y, 2))
                 > 1
             )
-        return ~(np.abs(x_nm / 1000) > half_x) & ~(np.abs(y_nm / 1000) > half_y)
+        return ~(xp.abs(x_nm / 1000) > half_x) & ~(xp.abs(y_nm / 1000) > half_y)
 
 
 def beam_positions(
@@ -130,10 +132,11 @@ def beam_positions(
     #45: a circular top-hat filled a bow tie, and a circular Gaussian drew
     its radius from a one-dimensional normal.
     """
+    xp = random_namespace(rng)
     cx, cy = beam.collimation
-    x = np.empty(n)
-    y = np.empty(n)
-    pending = np.arange(n)
+    x = xp.empty(n)
+    y = xp.empty(n)
+    pending = xp.arange(n)
     while len(pending):
         m = len(pending)
         if beam.kind == "tophat":
@@ -142,7 +145,7 @@ def beam_positions(
         else:
             tx = _truncated_normal(rng, beam.sigma[0], cx, m) * 1000
             ty = _truncated_normal(rng, beam.sigma[1], cy, m) * 1000
-        keep = beam.exposes(tx, ty) if beam.circular else np.ones(m, dtype=bool)
+        keep = beam.exposes(tx, ty) if beam.circular else xp.ones(m, dtype=bool)
         x[pending[keep]] = tx[keep]
         y[pending[keep]] = ty[keep]
         pending = pending[~keep]
@@ -255,10 +258,10 @@ def shell_cdfs(
     ``z`` is each photon's element's atomic number, and ``edges`` and
     ``ionisation`` its :class:`Shells`' rows, ``(photons, 9)``.
     """
-    energy = np.asarray(energy, dtype=float)
-    cdf = np.zeros((len(energy), _SHELLS))
-    running = np.zeros(len(energy))
-    taken = np.zeros(len(energy))
+    xp = namespace(energy)
+    cdf = xp.zeros((len(energy), _SHELLS))
+    running = xp.zeros(len(energy))
+    taken = xp.zeros(len(energy))
     for shell in range(_SHELLS):
         allowed = energy > edges[:, shell]
         if shell in (1, 2, 3):
@@ -266,10 +269,10 @@ def shell_cdfs(
         elif shell >= 4:
             allowed &= z >= 73
         p = ionisation[:, shell] if shell == 0 else ionisation[:, shell] * (1 - taken)
-        p = np.where(allowed, p, 0.0)
+        p = xp.where(allowed, p, 0.0)
         taken += p
         running += p
-        cdf[:, shell] = np.where(allowed, running, 0.0)
+        cdf[:, shell] = xp.where(allowed, running, 0.0)
     return cdf
 
 
@@ -278,8 +281,9 @@ def ionised_shells(cdf: np.ndarray, uniform: np.ndarray) -> np.ndarray:
 
     :data:`OUTER_SHELL` for a draw past them all.
     """
+    xp = namespace(uniform)
     above = cdf > uniform[:, None]
-    return np.where(above.any(axis=1), above.argmax(axis=1), OUTER_SHELL)
+    return xp.where(xp.any(above, axis=1), xp.argmax(above, axis=1), OUTER_SHELL)
 
 
 @dataclass(frozen=True)
@@ -372,8 +376,9 @@ def choose(cdf: np.ndarray, uniform: np.ndarray) -> np.ndarray:
 
     The last, should rounding leave none.
     """
+    xp = namespace(uniform)
     above = cdf > uniform[:, None]
-    return np.where(above.any(axis=1), above.argmax(axis=1), cdf.shape[1] - 1)
+    return xp.where(xp.any(above, axis=1), xp.argmax(above, axis=1), cdf.shape[1] - 1)
 
 
 def _emission_cdf() -> np.ndarray:
@@ -409,15 +414,17 @@ _EMISSION = _emission_cdf()
 
 def cos_angle_to_x(rng: np.random.Generator, n: int) -> np.ndarray:
     """``getCosAngleToX``: the cosine of the emission angle to the polarisation."""
+    xp = random_namespace(rng)
+    emission = on(xp, _EMISSION)
     u = rng.random(n)
-    above = _EMISSION[None, :] > u[:, None]
-    found = above.any(axis=1)
-    bin_ = above.argmax(axis=1)
-    last = np.where(bin_ > 0, _EMISSION[np.maximum(bin_ - 1, 0)], 0.0)
+    above = emission[None, :] > u[:, None]
+    found = xp.any(above, axis=1)
+    bin_ = xp.argmax(above, axis=1)
+    last = xp.where(bin_ > 0, emission[xp.maximum(bin_ - 1, 0)], 0.0)
     step = math.pi / _EMISSION_BINS
-    along = (u - last) / (_EMISSION[bin_] - last)
-    angle = np.where(found, bin_ * step + along * step, 0.0)
-    return np.cos(angle)
+    along = (u - last) / (emission[bin_] - last)
+    angle = xp.where(found, bin_ * step + along * step, 0.0)
+    return xp.cos(angle)
 
 
 def isotropic_directions(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -425,11 +432,12 @@ def isotropic_directions(rng: np.random.Generator, n: int) -> np.ndarray:
 
     The cosine of the polar angle is uniform on [-1, 1].
     """
+    xp = random_namespace(rng)
     cos_theta = 1 - 2 * rng.random(n)
     phi = 2 * math.pi * rng.random(n)
-    sin_theta = np.sqrt(1 - cos_theta * cos_theta)
-    return np.stack(
-        [sin_theta * np.cos(phi), sin_theta * np.sin(phi), cos_theta], axis=1
+    sin_theta = xp.sqrt(1 - cos_theta * cos_theta)
+    return xp.stack(
+        [sin_theta * xp.cos(phi), sin_theta * xp.sin(phi), cos_theta], axis=1
     )
 
 
@@ -440,12 +448,13 @@ def about_axis(
 
     Each at its angle to the axis, uniformly around it.
     """
+    xp = random_namespace(rng)
     around = 2 * math.pi * rng.random(len(cos_to_axis))
-    sin = np.sqrt(1 - cos_to_axis * cos_to_axis)
-    a, b = sin * np.cos(around), sin * np.sin(around)
+    sin = xp.sqrt(1 - cos_to_axis * cos_to_axis)
+    a, b = sin * xp.cos(around), sin * xp.sin(around)
     if axis == 0:
-        return np.stack([cos_to_axis, a, b], axis=1)
-    return np.stack([a, cos_to_axis, b], axis=1)
+        return xp.stack([cos_to_axis, a, b], axis=1)
+    return xp.stack([a, cos_to_axis, b], axis=1)
 
 
 def photoelectron_directions(
@@ -461,9 +470,10 @@ def photoelectron_directions(
     As RADDOSE-3D has it since #47, and every K-shell photoelectron since
     #59: three in four did, but in XFEL.
     """
+    xp = random_namespace(rng)
     n = len(k_shell)
-    polarised = np.asarray(k_shell, dtype=bool)
-    direction = np.empty((n, 3))
+    polarised = xp.asarray(k_shell, dtype=bool)
+    direction = xp.empty((n, 3))
     m = int(polarised.sum())
     if m:
         direction[polarised] = about_axis(
@@ -480,8 +490,9 @@ def klein_nishina_cosines(rng: np.random.Generator, k: np.ndarray) -> np.ndarray
 
     ``k`` is each photon's energy over the electron's rest energy.
     """
-    mu = np.empty(len(k))
-    pending = np.arange(len(k))
+    xp = random_namespace(rng)
+    mu = xp.empty(len(k))
+    pending = xp.arange(len(k))
     while len(pending):
         trial = 1 - 2 * rng.random(len(pending))
         p = 1 / (1 + k[pending] * (1 - trial))
@@ -501,19 +512,20 @@ def compton_electrons(
     at its angle to the beam uniformly around it, as RADDOSE-3D has it since
     #47.
     """
-    photon_energy = np.asarray(photon_energy, dtype=float)
+    xp = random_namespace(rng)
+    photon_energy = xp.asarray(photon_energy, dtype=float)
     n = len(photon_energy)
     mc_squared = _ELECTRON_MASS * math.pow(_SPEED_OF_LIGHT, 2)
     incident = photon_energy * KEV_TO_JOULES
-    photon_theta = np.arccos(klein_nishina_cosines(rng, incident / mc_squared))
+    photon_theta = xp.arccos(klein_nishina_cosines(rng, incident / mc_squared))
     energy = (
-        (np.power(incident, 2) * (1 - np.cos(photon_theta)))
-        / (mc_squared * (1 + ((incident / mc_squared) * (1 - np.cos(photon_theta)))))
+        (xp.power(incident, 2) * (1 - xp.cos(photon_theta)))
+        / (mc_squared * (1 + ((incident / mc_squared) * (1 - xp.cos(photon_theta)))))
     ) / KEV_TO_JOULES
-    electron_phi = np.arctan(
-        (1 / np.tan(photon_theta / 2)) / (1 + (incident / mc_squared))
+    electron_phi = xp.arctan(
+        (1 / xp.tan(photon_theta / 2)) / (1 + (incident / mc_squared))
     )
     around = 2 * math.pi * rng.random(n)
-    x = np.sin(electron_phi) * np.cos(around)
-    y = np.sin(electron_phi) * np.sin(around)
-    return energy, np.stack([x, y, np.cos(electron_phi)], axis=1)
+    x = xp.sin(electron_phi) * xp.cos(around)
+    y = xp.sin(electron_phi) * xp.sin(around)
+    return energy, xp.stack([x, y, xp.cos(electron_phi)], axis=1)

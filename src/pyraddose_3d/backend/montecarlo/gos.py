@@ -31,6 +31,7 @@ import numpy as np
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
 from pyraddose_3d.backend.microed import distant_integrals, inelastic_shells
 from pyraddose_3d.backend.montecarlo import tables
+from pyraddose_3d.backend.montecarlo.ops import namespace, on
 
 if TYPE_CHECKING:
     from pyraddose_3d.backend.microed import ElectronMaterial
@@ -86,9 +87,10 @@ class ShellTable:
 
     def _bracket(self, energy: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Each energy's grid points either side, and how far it lies between."""
-        energy = np.asarray(energy, dtype=float)
-        upper = np.clip(
-            np.searchsorted(self.energies, energy, side="right"),
+        xp = namespace(energy)
+        energy = xp.asarray(energy, dtype=float)
+        upper = xp.clip(
+            xp.searchsorted(self.energies, energy, side="right"),
             1,
             len(self.energies) - 1,
         )
@@ -99,9 +101,8 @@ class ShellTable:
     def at(self, energy: np.ndarray) -> np.ndarray:
         """Linearly between grid points: ``(len(energy), elements, rows, 4)``."""
         lower, upper, weight = self._bracket(energy)
-        return np.asarray(
-            self.values[lower]
-            + weight[:, None, None, None] * (self.values[upper] - self.values[lower])
+        return self.values[lower] + weight[:, None, None, None] * (
+            self.values[upper] - self.values[lower]
         )
 
     def rows(
@@ -110,9 +111,7 @@ class ShellTable:
         """One row per energy, ``(len(energy), 4)``: :meth:`at`'s, read alone."""
         lower, upper, weight = self._bracket(energy)
         below = self.values[lower, element, row]
-        return np.asarray(
-            below + weight[:, None] * (self.values[upper, element, row] - below)
-        )
+        return below + weight[:, None] * (self.values[upper, element, row] - below)
 
     def column(self, energy: np.ndarray, row: np.ndarray, column: int) -> np.ndarray:
         """One column of each element's row ``row[element]``, at each energy.
@@ -120,10 +119,10 @@ class ShellTable:
         ``(len(energy), elements)``: :meth:`at`'s, read alone.
         """
         lower, upper, weight = self._bracket(energy)
-        element = np.arange(len(row))
+        element = namespace(energy).arange(len(row))
         below = self.values[lower[:, None], element, row, column]
         above = self.values[upper[:, None], element, row, column]
-        return np.asarray(below + weight[:, None] * (above - below))
+        return below + weight[:, None] * (above - below)
 
 
 def _edges(material: ElectronMaterial) -> list[float]:
@@ -269,27 +268,28 @@ def bethe_shells(material: ElectronMaterial, energy: np.ndarray) -> np.ndarray:
         ``(len(energy), elements, 9)``, nm^-1: the Java's ``shellXSections``,
         each shell's cross-section times the atoms per nm^3.
     """
-    energy = np.asarray(energy, dtype=float)
-    each = _bethe_shells(material)
+    xp = namespace(energy)
+    energy = xp.asarray(energy, dtype=float)
+    each = on(xp, _bethe_shells(material))
     lo, hi = each.low.T, each.high.T
     vo = energy * KEV_TO_JOULES
-    beta_squared = 1 - np.power(_MC2 / (vo + _MC2), 2)
-    x = np.power(vo * (vo + 2 * _MC2), 0.5) / _MC2
+    beta_squared = 1 - xp.power(_MC2 / (vo + _MC2), 2)
+    x = xp.power(vo * (vo + 2 * _MC2), 0.5) / _MC2
     beta_squared, x = beta_squared[:, None], x[:, None]
     # (energies, shells) from here.
     u = energy[:, None] / each.binding
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with xp.errstate(divide="ignore", invalid="ignore"):
         below_16 = (
             4
             * math.pi
             * math.pow(_BOHR, 2)
-            * ((u - 1) / np.power(u, 2))
-            * np.power(
+            * ((u - 1) / xp.power(u, 2))
+            * xp.power(
                 lo[1]
                 + u * lo[2]
                 + lo[3] / (1 + u)
-                + lo[4] / np.power(1 + u, 3)
-                + lo[5] / np.power(1 + u, 5),
+                + lo[4] / xp.power(1 + u, 3)
+                + lo[5] / xp.power(1 + u, 5),
                 2,
             )
         )
@@ -299,28 +299,30 @@ def bethe_shells(material: ElectronMaterial, energy: np.ndarray) -> np.ndarray:
             * math.pow(_BOHR, 2)
             * (hi[2] / beta_squared)
             * (
-                (np.log(np.power(x, 2)) - beta_squared) * (1 + (1 / x) * hi[3])
+                (xp.log(xp.power(x, 2)) - beta_squared) * (1 + (1 / x) * hi[3])
                 + hi[4]
-                + hi[5] * np.power(1 - beta_squared, 0.25)
+                + hi[5] * xp.power(1 - beta_squared, 0.25)
                 + hi[6] * (1 / x)
             )
         )
         above_16 = pwba * (u / (u + hi[0]))
-    sigma = np.where(u < 16, below_16, above_16)
-    result = np.zeros((len(energy), len(material.atoms), 9))
-    result[:, each.element, each.shell] = np.where(u >= 1, sigma * each.per_volume, 0.0)
+    sigma = xp.where(u < 16, below_16, above_16)
+    result = xp.zeros((len(energy), len(material.atoms), 9))
+    result[:, each.element, each.shell] = xp.where(u >= 1, sigma * each.per_volume, 0.0)
     return result
 
 
 def wak(energy: np.ndarray, wk: np.ndarray, uk: np.ndarray) -> np.ndarray:
     """``WkToWak``, eV."""
-    return np.where(energy * 1000 > 3 * wk - 2 * uk, wk, (energy * 1000 + 2 * uk) / 3)
+    xp = namespace(energy)
+    return xp.where(energy * 1000 > 3 * wk - 2 * uk, wk, (energy * 1000 + 2 * uk) / 3)
 
 
 def qak(energy: np.ndarray, wk: np.ndarray, uk: np.ndarray) -> np.ndarray:
     """``getQak``, eV."""
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(
+    xp = namespace(energy)
+    with xp.errstate(divide="ignore", invalid="ignore"):
+        return xp.where(
             energy * 1000 > 3 * wk - 2 * uk,
             uk,
             uk * (energy * 1000 / (3 * wk - 2 * uk)),
@@ -331,21 +333,23 @@ def energy_loss_distant(
     rng: np.random.Generator, w_dis: np.ndarray, uk: np.ndarray
 ) -> np.ndarray:
     """``getEnergyLossDistant``: W from the triangle on [Uk, W_dis], eV."""
-    return np.asarray(
-        w_dis - np.power(rng.random(len(w_dis)) * np.power(w_dis - uk, 2), 0.5)
+    xp = namespace(w_dis)
+    return xp.asarray(
+        w_dis - xp.power(rng.random(len(w_dis)) * xp.power(w_dis - uk, 2), 0.5)
     )
 
 
 def _q_minus(energy: np.ndarray, wak_ev: np.ndarray) -> np.ndarray:
     """``getQminusModified``, J."""
+    xp = namespace(energy)
     e = energy * KEV_TO_JOULES
     w = (wak_ev / 1000) * KEV_TO_JOULES
-    with np.errstate(invalid="ignore"):
+    with xp.errstate(invalid="ignore"):
         value = (
-            np.power(
-                np.power(
-                    np.power(e * (e + 2 * _MC2), 0.5)
-                    - np.power((e - w) * (e - w + 2 * _MC2), 0.5),
+            xp.power(
+                xp.power(
+                    xp.power(e * (e + 2 * _MC2), 0.5)
+                    - xp.power((e - w) * (e - w + 2 * _MC2), 0.5),
                     2,
                 )
                 + math.pow(_MC2, 2),
@@ -353,30 +357,32 @@ def _q_minus(energy: np.ndarray, wak_ev: np.ndarray) -> np.ndarray:
             )
             - _MC2
         )
-    return np.where(w > e, 0.0, value)
+    return xp.where(w > e, 0.0, value)
 
 
 def recoil_distant(
     rng: np.random.Generator, energy: np.ndarray, wak_ev: np.ndarray, qak_ev: np.ndarray
 ) -> np.ndarray:
     """``getRecoilEnergyDistant``: Q, J; zero where Qak is."""
+    xp = namespace(energy)
     q_minus = _q_minus(energy, wak_ev)
     q_s = q_minus / (1 + q_minus / (2 * _MC2))
     q_ak = (qak_ev / 1000) * KEV_TO_JOULES
     u = rng.random(len(energy))
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with xp.errstate(divide="ignore", invalid="ignore"):
         q = (
             q_s
             * 1
-            / (np.power((q_s / q_ak) * (1 + q_ak / (2 * _MC2)), u) - (q_s / (2 * _MC2)))
+            / (xp.power((q_s / q_ak) * (1 + q_ak / (2 * _MC2)), u) - (q_s / (2 * _MC2)))
         )
-    return np.asarray(np.where(qak_ev == 0, 0.0, q))
+    return xp.asarray(xp.where(qak_ev == 0, 0.0, q))
 
 
 def _close_a(energy: np.ndarray) -> np.ndarray:
     """``getClosea``."""
+    xp = namespace(energy)
     vo = energy * KEV_TO_JOULES
-    return np.asarray(np.power(vo / (vo + _MC2), 2))
+    return xp.asarray(xp.power(vo / (vo + _MC2), 2))
 
 
 def sample_k(
@@ -387,32 +393,33 @@ def sample_k(
     By rejection, as the Java draws it; after 10,000 rejections the last k is
     kept, as the Java keeps it.
     """
-    energy = np.asarray(energy, dtype=float)
+    xp = namespace(energy)
+    energy = xp.asarray(energy, dtype=float)
     a = _close_a(energy)
-    kc = np.maximum(qk_ev, _WCC) / (energy * 1000 + qk_ev)
-    k = np.zeros(len(energy))
+    kc = xp.maximum(qk_ev, _WCC) / (energy * 1000 + qk_ev)
+    k = xp.zeros(len(energy))
     # With Qk zero every trial is k = 0, whose density is infinite: always
     # rejected, so the Java keeps k = 0 after 10,000 tries.
-    pending = np.flatnonzero(kc > 0)
+    pending = xp.flatnonzero(kc > 0)
     for _ in range(_SAMPLE_K_TRIES):
         if not len(pending):
             break
         ap, kcp = a[pending], kc[pending]
         zeta = rng.random(len(pending)) * (1.0 + 5.0 * ap * kcp / 2.0)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            trial = np.where(
+        with xp.errstate(divide="ignore", invalid="ignore"):
+            trial = xp.where(
                 zeta < 1,
                 kcp / (1 - zeta * (1 - 2 * kcp)),
                 kcp + (zeta - 1) * (1 - 2 * kcp) / (5 * ap * kcp),
             )
             pdf = (
-                np.power(trial, -2.0)
-                + np.power(1 - trial, -2.0)
+                xp.power(trial, -2.0)
+                + xp.power(1 - trial, -2.0)
                 - 1 / (trial * (1 - trial))
                 + ap * (1 + 1 / (trial * (1 - trial)))
             ) * ((trial - kcp >= 0) & (0.5 - trial >= 0))
-            accept = rng.random(len(pending)) * (1 + 5 * ap * np.power(trial, 2)) < (
-                np.power(trial, 2) * pdf
+            accept = rng.random(len(pending)) * (1 + 5 * ap * xp.power(trial, 2)) < (
+                xp.power(trial, 2) * pdf
             )
         k[pending] = trial
         pending = pending[~accept]
@@ -423,37 +430,40 @@ def primary_angle_distant(
     energy: np.ndarray, q: np.ndarray, wak_ev: np.ndarray
 ) -> np.ndarray:
     """``getGOSPrimaryScatterLong``: the primary's deflection, radians."""
+    xp = namespace(energy)
     e = energy * KEV_TO_JOULES
     w = (wak_ev / 1000) * KEV_TO_JOULES
-    with np.errstate(invalid="ignore", divide="ignore"):
+    with xp.errstate(invalid="ignore", divide="ignore"):
         numerator = (
             e * (e + 2 * _MC2) + (e - w) * (e - w + 2 * _MC2) - q * (q + 2 * _MC2)
         )
-        denominator = 2 * np.power(
+        denominator = 2 * xp.power(
             e * (e + 2 * _MC2) * (e - w) * (e - w + 2 * _MC2), 0.5
         )
-        return np.asarray(np.arccos(numerator / denominator))
+        return xp.asarray(xp.arccos(numerator / denominator))
 
 
 def primary_angle_close(energy: np.ndarray, w_kev: np.ndarray) -> np.ndarray:
     """``getGOSPrimaryScatterClose``, radians."""
+    xp = namespace(energy)
     e = energy * KEV_TO_JOULES
     w = w_kev * KEV_TO_JOULES
-    with np.errstate(invalid="ignore", divide="ignore"):
-        return np.asarray(
-            np.arccos(
-                np.power(((e - w) / e) * ((e + 2 * _MC2) / (e - w + 2 * _MC2)), 0.5)
+    with xp.errstate(invalid="ignore", divide="ignore"):
+        return xp.asarray(
+            xp.arccos(
+                xp.power(((e - w) / e) * ((e + 2 * _MC2) / (e - w + 2 * _MC2)), 0.5)
             )
         )
 
 
 def secondary_angle_close(energy: np.ndarray, w_kev: np.ndarray) -> np.ndarray:
     """``secondaryScatterClose``: the secondary's angle to the primary."""
+    xp = namespace(energy)
     w = w_kev * KEV_TO_JOULES
     e = energy * KEV_TO_JOULES
-    with np.errstate(invalid="ignore", divide="ignore"):
-        return np.asarray(
-            np.arccos(np.power((w / e) * ((e + 2 * _MC2) / (w + 2 * _MC2)), 0.5))
+    with xp.errstate(invalid="ignore", divide="ignore"):
+        return xp.asarray(
+            xp.arccos(xp.power((w / e) * ((e + 2 * _MC2) / (w + 2 * _MC2)), 0.5))
         )
 
 
@@ -461,15 +471,16 @@ def secondary_angle_distant(
     energy: np.ndarray, wak_ev: np.ndarray, q: np.ndarray
 ) -> np.ndarray:
     """``secondaryScatterDistant``: the secondary's angle to the primary."""
+    xp = namespace(energy)
     vo = energy * KEV_TO_JOULES
-    beta_squared = 1 - np.power(_MC2 / (vo + _MC2), 2)
+    beta_squared = 1 - xp.power(_MC2 / (vo + _MC2), 2)
     w = (wak_ev / 1000) * KEV_TO_JOULES
-    with np.errstate(invalid="ignore", divide="ignore"):
-        cos_theta = np.power(
-            ((np.power(w, 2) / beta_squared) / (q * (q + 2 * _MC2)))
-            * np.power(
-                1 + (q * (q + 2 * _MC2) - np.power(w, 2)) / (2 * w * (vo + _MC2)), 2
+    with xp.errstate(invalid="ignore", divide="ignore"):
+        cos_theta = xp.power(
+            ((xp.power(w, 2) / beta_squared) / (q * (q + 2 * _MC2)))
+            * xp.power(
+                1 + (q * (q + 2 * _MC2) - xp.power(w, 2)) / (2 * w * (vo + _MC2)), 2
             ),
             0.5,
         )
-        return np.asarray(np.arccos(cos_theta))
+        return xp.asarray(xp.arccos(cos_theta))

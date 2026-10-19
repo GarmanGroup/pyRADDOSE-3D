@@ -22,6 +22,8 @@ from importlib import resources
 
 import numpy as np
 
+from pyraddose_3d.backend.montecarlo.ops import namespace, on
+
 __all__ = [
     "HIGH_ENERGY_KEV",
     "MAX_Z",
@@ -227,12 +229,13 @@ def angular_block(elements: tuple[int, ...], high_energy: bool) -> AngularBlock:
 
 def _nearest_rows(energies: np.ndarray, energy: np.ndarray) -> np.ndarray:
     """``returnNearestEnergy``: TreeMap floor or ceiling, the floor on a tie."""
-    below = np.searchsorted(energies, energy, side="right") - 1
-    above = np.searchsorted(energies, energy, side="left")
-    below = np.where(below < 0, above, below)
-    above = np.where(above >= len(energies), below, above)
-    nearer_below = np.abs(energy - energies[below]) <= np.abs(energy - energies[above])
-    return np.where(nearer_below, below, above)
+    xp = namespace(energy)
+    below = xp.searchsorted(energies, energy, side="right") - 1
+    above = xp.searchsorted(energies, energy, side="left")
+    below = xp.where(below < 0, above, below)
+    above = xp.where(above >= len(energies), below, above)
+    nearer_below = xp.abs(energy - energies[below]) <= xp.abs(energy - energies[above])
+    return xp.where(nearer_below, below, above)
 
 
 def deflection_angles(
@@ -262,15 +265,16 @@ def deflection_angles(
         chance, at the tabulated energy nearest the electron's, reaches the
         random number.
     """
+    xp = namespace(energy)
     if elements is None:
-        elements = tuple(np.unique(z).tolist())
-    angles = np.empty_like(energy)
+        elements = tuple(xp.unique(z).tolist())
+    angles = xp.empty_like(energy)
     high = energy > HIGH_ENERGY_KEV
     for high_energy in (False, True):
-        chosen = np.flatnonzero(high == high_energy)
+        chosen = xp.flatnonzero(high == high_energy)
         if not len(chosen):
             continue
-        block = angular_block(elements, high_energy)
+        block = on(xp, angular_block(elements, high_energy))
         slot = block.slot[z[chosen]]
         if (slot < 0).any():
             # The error the missing table gives.
@@ -289,12 +293,13 @@ def _first_reaching(
     A binary search in every row at once, of a fixed number of passes: ten
     for 606 columns. A search that has closed stays put.
     """
-    low = np.zeros(len(rows), dtype=np.int64)
-    high = np.full(len(rows), cumulative.shape[-1] - 1, dtype=np.int64)
+    xp = namespace(uniform)
+    low = xp.zeros(len(rows), dtype=xp.int64)
+    high = xp.full(len(rows), cumulative.shape[-1] - 1, dtype=xp.int64)
     for _ in range((cumulative.shape[-1] - 1).bit_length()):
         open_ = low < high
         middle = (low + high) // 2
         reaches = cumulative[slot, rows, middle] >= uniform
-        high = np.where(open_ & reaches, middle, high)
-        low = np.where(open_ & ~reaches, middle + 1, low)
+        high = xp.where(open_ & reaches, middle, high)
+        low = xp.where(open_ & ~reaches, middle + 1, low)
     return low
