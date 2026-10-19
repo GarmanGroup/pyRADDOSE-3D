@@ -22,6 +22,33 @@ jobs:
       - uses: actions/checkout@v7
       - run: pipx run check-manifest
 
+  # The Monte Carlo is being reworked to run on a GPU. On NumPy every rework
+  # must leave its results exactly as they were, which only a comparison on
+  # one machine can check: tools/mc_ab.py runs every Monte Carlo, GOS and
+  # XFEL case with this PR's code and its base's, and compares every field.
+  # A PR that means to change the results is labelled "changes results".
+  montecarlo-unchanged:
+    name: Monte Carlo unchanged on NumPy
+    if: >-
+      github.event_name == 'pull_request'
+      && !contains(github.event.pull_request.labels.*.name, 'changes results')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install Dependencies
+        run: uv sync --no-dev --group test
+
+      - name: 🎲 Compare with the base, bit for bit
+        run: uv run python tools/mc_ab.py --base "origin/${{ github.base_ref }}" --seeds 11
+
   test:
     name: ${{ matrix.platform }} (${{ matrix.python-version }})
     runs-on: ${{ matrix.platform }}
