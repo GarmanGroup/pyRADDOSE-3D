@@ -1,5 +1,6 @@
 site_name: pyRADDOSE-3D
 site_description: Radiation dose in macromolecular crystallography, as RADDOSE-3D calculates it, in Python
+site_url: https://garmangroup.github.io/pyRADDOSE-3D/
 repo_url: https://github.com/GarmanGroup/pyRADDOSE-3D
 docs_dir: docs
 strict: true

@@ -4,10 +4,14 @@
 [![PyPI](https://img.shields.io/pypi/v/pyRADDOSE-3D.svg?color=green)](https://pypi.org/project/pyRADDOSE-3D)
 [![Python Version](https://img.shields.io/pypi/pyversions/pyRADDOSE-3D.svg?color=green)](https://python.org)
 [![CI](https://github.com/GarmanGroup/pyRADDOSE-3D/actions/workflows/ci.yml/badge.svg)](https://github.com/GarmanGroup/pyRADDOSE-3D/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-garmangroup.github.io-blue)](https://garmangroup.github.io/pyRADDOSE-3D/)
 [![codecov](https://codecov.io/gh/GarmanGroup/pyRADDOSE-3D/branch/main/graph/badge.svg)](https://codecov.io/gh/GarmanGroup/pyRADDOSE-3D)
 
 A Python port of [RADDOSE-3D](https://github.com/GarmanGroup/RADDOSE-3D), which
 models radiation dose in macromolecular crystallography.
+
+**Documentation:** https://garmangroup.github.io/pyRADDOSE-3D/, with the example
+notebooks run and their results shown.
 
 NumPy by default, so it installs at ~100 MB. Install `pyRADDOSE-3D[torch]` and
 the same code runs on PyTorch, making the deterministic dose calculation
@@ -113,7 +117,9 @@ be turned with the mouse; `pyraddose_3d.plotting` draws them from Python.
 run: RADDOSE-3D's insulin and MicroED examples, each as a RADDOSE-3D input file
 and as a YAML configuration. The notebooks beside them start by running one,
 then walk through crystals and beams, composition, decay models, gradients,
-choosing a beam energy and drawing the dose.
+choosing a beam energy and drawing the dose. They are committed without their
+results; [the documentation](https://garmangroup.github.io/pyRADDOSE-3D/) shows
+them run.
 
 ## Optimising a strategy
 
