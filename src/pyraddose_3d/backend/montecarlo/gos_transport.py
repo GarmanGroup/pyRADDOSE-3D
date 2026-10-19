@@ -69,7 +69,10 @@ from pyraddose_3d.backend.montecarlo.material import (
     elastic_mean_free_path,
     stopping_power,
 )
-from pyraddose_3d.backend.montecarlo.photons import isotropic_directions, shells
+from pyraddose_3d.backend.montecarlo.photons import (
+    isotropic_directions,
+    stacked_shells,
+)
 from pyraddose_3d.backend.montecarlo.transport import STOPPED_KEV, new_directions
 from pyraddose_3d.backend.montecarlo.transport import _first_above as _elastic_element
 
@@ -258,8 +261,9 @@ def gos_medium(material: ElectronMaterial, highest: float) -> GOSMedium:
         [[_resonance(material, atom, i) for i in range(10)] for atom in atoms]
     )
     binding = np.zeros((len(atoms), _SHELL_COLUMNS))
-    for row, atom in enumerate(atoms):
-        binding[row, :9] = np.nan_to_num(shells(atom.z).binding)
+    binding[:, :9] = np.nan_to_num(
+        stacked_shells(tuple(atom.z for atom in atoms)).binding
+    )
     return GOSMedium(
         material=material,
         table=shell_table(material, STOPPED_KEV, highest * 1.001),
@@ -354,8 +358,9 @@ class Cascade:
         self.sink = sink
         self.clock = clock
         self.yields = np.zeros((len(crystal.z), _SHELL_COLUMNS))
-        for row, z in enumerate(crystal.z):
-            self.yields[row, :9] = shells(int(z)).fluorescence_yield
+        self.yields[:, :9] = stacked_shells(
+            tuple(crystal.z.tolist())
+        ).fluorescence_yield
         self.auger = tables.packed_auger()
         self.fluorescence = tables.packed_fluorescence()
 
@@ -1134,13 +1139,14 @@ def _wander(ctx: _Context, e: _Electrons, wandering: np.ndarray) -> np.ndarray:
     """
     ended = np.zeros(len(e), dtype=bool)
     still = np.zeros(len(wandering), dtype=bool)
-    for index in np.unique(e.box[wandering]):
+    for index, mesh in enumerate(ctx.boxes):
         group = np.flatnonzero(e.box[wandering] == index)
-        still[group] = inside(
-            ctx.boxes[index],
-            e.target[wandering[group]],
-            ctx.placement.take(e.owner[wandering[group]]),
-        )
+        if len(group):
+            still[group] = inside(
+                mesh,
+                e.target[wandering[group]],
+                ctx.placement.take(e.owner[wandering[group]]),
+            )
     ended[wandering[~still]] = True
     c = wandering[still]
     if ctx.clock is not None and len(c):

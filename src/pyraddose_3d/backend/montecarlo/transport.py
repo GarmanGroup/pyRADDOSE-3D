@@ -333,13 +333,12 @@ def track(
         c = np.flatnonzero(wandering)
         if len(c):
             still_in = np.zeros(len(c), dtype=bool)
-            for index in np.unique(box[c]):
+            for index, mesh in enumerate(media.boxes):
                 group = np.flatnonzero(box[c] == index)
-                still_in[group] = inside(
-                    media.boxes[index],
-                    reached[c[group]],
-                    placement.take(which[c[group]]),
-                )
+                if len(group):
+                    still_in[group] = inside(
+                        mesh, reached[c[group]], placement.take(which[c[group]])
+                    )
             finished[c[~still_in]] = True
             c = c[still_in]
             lost = step[c] * power[c]
