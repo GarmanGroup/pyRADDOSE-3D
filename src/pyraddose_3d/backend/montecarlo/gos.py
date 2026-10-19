@@ -21,6 +21,7 @@ joules, as the Java keeps it.
 
 from __future__ import annotations
 
+import functools
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -28,7 +29,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from pyraddose_3d.backend.beam import KEV_TO_JOULES
-from pyraddose_3d.backend.microed import inelastic_shells
+from pyraddose_3d.backend.microed import distant_integrals, inelastic_shells
 from pyraddose_3d.backend.montecarlo import tables
 
 if TYPE_CHECKING:
@@ -62,6 +63,9 @@ _SAMPLE_K_TRIES = 10000
 _PER_E_FOLD = 400
 #: How many of each distant integral's first steps the grid brackets.
 _STEPS = 100
+#: Energies whose distant integrals are computed together: a thousand-point
+#: walk for each of some 25 subshells, so about 13 MB an array at 64.
+_ENERGIES_AT_ONCE = 64
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,7 @@ def _steps(material: ElectronMaterial) -> list[float]:
     return steps
 
 
+@functools.lru_cache(maxsize=4)
 def shell_table(
     material: ElectronMaterial, lowest: float, highest: float
 ) -> ShellTable:
@@ -138,6 +143,10 @@ def shell_table(
     subshells' values within 3 x 10^-4. The rest lie within 0.2% above an
     edge, where the Java's trapezium rule for the distant terms moves in
     steps no grid follows; they are within 4%.
+
+    Kept for the next run of the same material, as building it takes a
+    couple of seconds; its arrays are read-only, so that no run can change
+    the next one's.
     """
     count = max(2, math.ceil(math.log(highest / lowest) * _PER_E_FOLD) + 1)
     grid = set(np.geomspace(lowest, highest, count).tolist())
@@ -146,7 +155,21 @@ def shell_table(
             # Either side of it, so no interval straddles the change.
             grid.update((edge * (1 - 1e-9), edge * (1 + 1e-9)))
     energies = np.array(sorted(grid))
-    values = np.stack([inelastic_shells(material, float(e)) for e in energies])
+    # The distant integrals, most of the work, a batch of energies at a time.
+    integrals = np.concatenate(
+        [
+            distant_integrals(material, energies[i : i + _ENERGIES_AT_ONCE])
+            for i in range(0, len(energies), _ENERGIES_AT_ONCE)
+        ]
+    )
+    values = np.stack(
+        [
+            inelastic_shells(material, float(e), row)
+            for e, row in zip(energies, integrals, strict=True)
+        ]
+    )
+    energies.setflags(write=False)
+    values.setflags(write=False)
     return ShellTable(energies, values)
 
 
