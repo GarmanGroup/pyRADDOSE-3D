@@ -216,6 +216,46 @@ def _shell_count(z: int) -> int:
     return 9
 
 
+@dataclass(frozen=True)
+class _BetheShells:
+    """Every inner shell Bethe's cross-sections cover in a material, in turn.
+
+    ``element`` and ``shell`` place each in :func:`bethe_shells`' result;
+    ``low`` and ``high`` are its overvoltage tables' rows, ``binding`` its
+    binding energy, keV, and ``per_volume`` its element's atoms per nm^3.
+    """
+
+    element: np.ndarray
+    shell: np.ndarray
+    low: np.ndarray
+    high: np.ndarray
+    binding: np.ndarray
+    per_volume: np.ndarray
+
+
+@functools.lru_cache(maxsize=8)
+def _bethe_shells(material: ElectronMaterial) -> _BetheShells:
+    low, high = tables.overvoltage_low(), tables.overvoltage_high()
+    element, shell, per_volume = [], [], []
+    for column, atom in enumerate(material.atoms):
+        if atom.z == 1:
+            continue
+        for i in range(_shell_count(atom.z)):
+            element.append(column)
+            shell.append(i)
+            per_volume.append(atom.count / (material.cell_volume / 1000))
+    z = np.array([material.atoms[e].z for e in element], dtype=np.int64)
+    rows = (z, np.array(shell, dtype=np.int64))
+    return _BetheShells(
+        element=np.array(element, dtype=np.int64),
+        shell=rows[1],
+        low=low[rows],
+        high=high[rows],
+        binding=low[rows][:, 0] / 1000,
+        per_volume=np.array(per_volume),
+    )
+
+
 def bethe_shells(material: ElectronMaterial, energy: np.ndarray) -> np.ndarray:
     """``betheIonisationxSection``: each inner shell's inverse mean free path.
 
@@ -230,49 +270,45 @@ def bethe_shells(material: ElectronMaterial, energy: np.ndarray) -> np.ndarray:
         each shell's cross-section times the atoms per nm^3.
     """
     energy = np.asarray(energy, dtype=float)
-    low, high = tables.overvoltage_low(), tables.overvoltage_high()
+    each = _bethe_shells(material)
+    lo, hi = each.low.T, each.high.T
     vo = energy * KEV_TO_JOULES
     beta_squared = 1 - np.power(_MC2 / (vo + _MC2), 2)
     x = np.power(vo * (vo + 2 * _MC2), 0.5) / _MC2
+    beta_squared, x = beta_squared[:, None], x[:, None]
+    # (energies, shells) from here.
+    u = energy[:, None] / each.binding
+    with np.errstate(divide="ignore", invalid="ignore"):
+        below_16 = (
+            4
+            * math.pi
+            * math.pow(_BOHR, 2)
+            * ((u - 1) / np.power(u, 2))
+            * np.power(
+                lo[1]
+                + u * lo[2]
+                + lo[3] / (1 + u)
+                + lo[4] / np.power(1 + u, 3)
+                + lo[5] / np.power(1 + u, 5),
+                2,
+            )
+        )
+        pwba = (
+            4
+            * math.pi
+            * math.pow(_BOHR, 2)
+            * (hi[2] / beta_squared)
+            * (
+                (np.log(np.power(x, 2)) - beta_squared) * (1 + (1 / x) * hi[3])
+                + hi[4]
+                + hi[5] * np.power(1 - beta_squared, 0.25)
+                + hi[6] * (1 / x)
+            )
+        )
+        above_16 = pwba * (u / (u + hi[0]))
+    sigma = np.where(u < 16, below_16, above_16)
     result = np.zeros((len(energy), len(material.atoms), 9))
-    for column, atom in enumerate(material.atoms):
-        if atom.z == 1:
-            continue
-        per_volume = atom.count / (material.cell_volume / 1000)
-        for i in range(_shell_count(atom.z)):
-            lo, hi = low[atom.z, i], high[atom.z, i]
-            binding = lo[0] / 1000
-            u = energy / binding
-            with np.errstate(divide="ignore", invalid="ignore"):
-                below_16 = (
-                    4
-                    * math.pi
-                    * math.pow(_BOHR, 2)
-                    * ((u - 1) / np.power(u, 2))
-                    * np.power(
-                        lo[1]
-                        + u * lo[2]
-                        + lo[3] / (1 + u)
-                        + lo[4] / np.power(1 + u, 3)
-                        + lo[5] / np.power(1 + u, 5),
-                        2,
-                    )
-                )
-                pwba = (
-                    4
-                    * math.pi
-                    * math.pow(_BOHR, 2)
-                    * (hi[2] / beta_squared)
-                    * (
-                        (np.log(np.power(x, 2)) - beta_squared) * (1 + (1 / x) * hi[3])
-                        + hi[4]
-                        + hi[5] * np.power(1 - beta_squared, 0.25)
-                        + hi[6] * (1 / x)
-                    )
-                )
-                above_16 = pwba * (u / (u + hi[0]))
-            sigma = np.where(u < 16, below_16, above_16)
-            result[:, column, i] = np.where(u >= 1, sigma * per_volume, 0.0)
+    result[:, each.element, each.shell] = np.where(u >= 1, sigma * each.per_volume, 0.0)
     return result
 
 
