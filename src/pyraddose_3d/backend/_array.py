@@ -131,8 +131,11 @@ def promote(*values: Any) -> tuple[ModuleType, tuple[Any, ...]]:
     -- an angle defaulting to 90 degrees, say -- needs its arguments brought
     into one type first.
 
-    Scalars take the dtype of the first tensor among ``values``, so a float32
-    calculation is not silently widened.
+    Python numbers take the dtype of the first floating tensor among
+    ``values``, so a float32 calculation is not silently widened; with none,
+    float64. NumPy arrays keep their own dtype: a float64 mesh is never cut
+    to float32 because a float32 tensor came first, as it once was. Every
+    conversion lands on the first tensor's device.
 
     Parameters
     ----------
@@ -151,10 +154,18 @@ def promote(*values: Any) -> tuple[ModuleType, tuple[Any, ...]]:
 
     import torch
 
-    dtype = next((v.dtype for v in values if is_torch(v)), None)
-    return xp, tuple(
-        v if is_torch(v) else torch.as_tensor(v, dtype=dtype) for v in values
-    )
+    tensors = [v for v in values if is_torch(v)]
+    device = tensors[0].device
+    number = next((t.dtype for t in tensors if t.is_floating_point()), torch.float64)
+
+    def convert(v: Any) -> Any:
+        if is_torch(v):
+            return v
+        if isinstance(v, np.ndarray | np.generic):
+            return torch.as_tensor(v, device=device)
+        return torch.as_tensor(v, dtype=number, device=device)
+
+    return xp, tuple(convert(v) for v in values)
 
 
 def sort(x: Any, axis: int = -1) -> Any:
@@ -206,7 +217,7 @@ def astype(x: Any, dtype: Any) -> Any:
     return x.astype(dtype)
 
 
-def to_namespace(xp: ModuleType, x: Any) -> Any:
+def to_namespace(xp: ModuleType, x: Any, like: Any = None) -> Any:
     """Bring ``x`` into ``xp``, leaving it alone if it is already there.
 
     The fourth divergence, and the one that bites hardest. Choosing a
@@ -226,20 +237,27 @@ def to_namespace(xp: ModuleType, x: Any) -> Any:
         Target namespace, from :func:`array_namespace`.
     x : Any
         Array, tensor or scalar.
+    like : Any, optional
+        A tensor whose device the result should be on. Without it, a new
+        tensor is on the CPU.
 
     Returns
     -------
     Any
         ``x`` as one of ``xp``'s arrays. Converting a NumPy array to a
         tensor shares its memory rather than copying, and a tensor that is
-        already a tensor is returned unchanged, gradient history intact.
+        already a tensor is returned unchanged, gradient history intact,
+        unless it must move to ``like``'s device. Python numbers become what
+        NumPy would make them: float64, int64 or bool. ``torch.as_tensor``
+        made Python floats float32, torch's default.
     """
     if xp is np:
         return x.detach().cpu().numpy() if is_torch(x) else np.asarray(x)
+    device = like.device if is_torch(like) else None
     if is_torch(x):
-        return x
+        return x if device is None or x.device == device else x.to(device)
     if isinstance(x, (list, tuple)) and any(is_torch(v) for v in x):
         # torch.as_tensor refuses a sequence containing tensors, and would
         # drop their gradient history even if it did not.
-        return xp.stack([xp.as_tensor(v) for v in x])
-    return xp.as_tensor(x)
+        return xp.stack([to_namespace(xp, v, like) for v in x])
+    return xp.as_tensor(np.asarray(x), device=device)

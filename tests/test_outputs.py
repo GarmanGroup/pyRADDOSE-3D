@@ -95,11 +95,12 @@ def test_the_r_script_is_stamped_with_the_time_given(simulation: Simulation) -> 
 def test_writes_from_a_differentiable_run(experiment: Experiment) -> None:
     """A run carrying gradients writes the files a NumPy run writes.
 
-    Not digit for digit: torch's cos and sin can differ from NumPy's in the
-    last bit, and on a voxel lying on a crystal face that flips its path
-    length -- the knife edge the corpus's tolerances are set by, which a
-    still has too. So the text must match with the numbers masked, and the
-    numbers agree within the corpus's loosest tier A tolerance.
+    Not digit for digit: torch's arithmetic can round in the last bit where
+    NumPy's does not, and on a voxel lying on a crystal face that flips its
+    path length -- the knife edge the corpus's tolerances are set by. So the
+    text must match with the numbers masked, and the numbers agree within
+    tier A's 1e-4: 3.4e-6 at worst. They differed by 2e-4 while a Python
+    float became a float32 tensor and cut the mesh to float32.
     """
     torch = pytest.importorskip("torch")
     flux = torch.tensor(experiment.beam.flux, dtype=torch.float64, requires_grad=True)
@@ -112,4 +113,4 @@ def test_writes_from_a_differentiable_run(experiment: Experiment) -> None:
     for got, want in zip(tensors.summaries, arrays.summaries, strict=True):
         got_values, want_values = got.as_dict(), want.as_dict()
         for name, value in want_values.items():
-            assert got_values[name] == pytest.approx(value, rel=5e-3), name
+            assert got_values[name] == pytest.approx(value, rel=1e-4), name
