@@ -218,9 +218,12 @@ class GOSMedium:
         """
         xp = namespace(energy)
         values = self.table.column(energy, self.inner, 3)
-        total = values.sum(axis=1)
+        # Summed element after element, as the Java's loop does: a sum over
+        # the axis would be pairwise for eight elements or more.
+        running = xp.cumsum(values, axis=1)
+        total = running[:, -1]
         with xp.errstate(divide="ignore", invalid="ignore"):
-            return 1 / total, xp.cumsum(values, axis=1) / total[:, None]
+            return 1 / total, running / total[:, None]
 
     def inner_shells(self, energy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """``betheIonisationxSection`` and ``getAllShellProbs`` at each energy.
