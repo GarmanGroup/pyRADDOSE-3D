@@ -1,0 +1,133 @@
+{
+ "machine": {
+  "system": "macOS-26.6.2-arm64-arm-64bit",
+  "processor": "arm",
+  "python": "3.12.9",
+  "numpy": "2.5.3"
+ },
+ "date": "2026-10-19T13:44:48",
+ "cases": [
+  {
+   "case": "140-montecarlo-baseline",
+   "subprogram": "montecarlo",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 1.154,
+   "parts_s": {
+    "photon coefficients": 0.001,
+    "geometry: entry_depth": 0.144,
+    "simple transport": 0.34,
+    "processing (MC)": 0.001
+   },
+   "electrons": 212.0,
+   "passes": 211.0
+  },
+  {
+   "case": "148-montecarlo-surrounding",
+   "subprogram": "montecarlo",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 0.803,
+   "parts_s": {
+    "photon coefficients": 0.002,
+    "geometry: entry_depth": 0.236,
+    "simple transport": 0.483,
+    "processing (MC)": 0.001
+   },
+   "electrons": 293.0,
+   "passes": 194.0
+  },
+  {
+   "case": "152-montecarlo-cylinder-surrounding",
+   "subprogram": "montecarlo",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 4.019,
+   "parts_s": {
+    "photon coefficients": 0.002,
+    "geometry: entry_depth": 3.153,
+    "simple transport": 0.526,
+    "processing (MC)": 0.001
+   },
+   "electrons": 133.0,
+   "passes": 190.0
+  },
+  {
+   "case": "154-montecarlo-platinum",
+   "subprogram": "montecarlo",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 0.499,
+   "parts_s": {
+    "photon coefficients": 0.002,
+    "geometry: entry_depth": 0.145,
+    "simple transport": 0.335,
+    "processing (MC)": 0.001
+   },
+   "electrons": 360.0,
+   "passes": 235.0
+  },
+  {
+   "case": "160-gos-baseline",
+   "subprogram": "gos",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 5.458,
+   "parts_s": {
+    "GOS setup": 3.107,
+    "photon coefficients": 0.001,
+    "geometry: entry_depth": 0.117,
+    "GOS transport": 2.21,
+    "processing (MC)": 0.003
+   },
+   "electrons": 212.0,
+   "passes": 543.0
+  },
+  {
+   "case": "162-gos-surrounding",
+   "subprogram": "gos",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 3.204,
+   "parts_s": {
+    "GOS setup": 0.896,
+    "photon coefficients": 0.002,
+    "geometry: entry_depth": 0.25,
+    "GOS transport": 1.98,
+    "processing (MC)": 0.003
+   },
+   "electrons": 293.0,
+   "passes": 511.0
+  },
+  {
+   "case": "180-xfel-baseline",
+   "subprogram": "xfel",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 1.543,
+   "parts_s": {
+    "photon coefficients": 0.001,
+    "geometry: entry_depth": 0.108,
+    "GOS transport": 1.416,
+    "processing (XFEL)": 0.001
+   },
+   "electrons": 212.0,
+   "passes": 357.0
+  },
+  {
+   "case": "187-xfel-gaussian-pulse",
+   "subprogram": "xfel",
+   "photons": 100000,
+   "runs": 1,
+   "wall_s": 1.111,
+   "parts_s": {
+    "photon coefficients": 0.001,
+    "geometry: entry_depth": 0.101,
+    "GOS transport": 0.988,
+    "processing (XFEL)": 0.001
+   },
+   "electrons": 212.0,
+   "passes": 274.0
+  }
+ ]
+}

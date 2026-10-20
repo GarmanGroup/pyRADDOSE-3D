@@ -37,6 +37,13 @@ CONFIG_PATH = EXAMPLES / "insulin.txt"
 # directory.
 OUTPUT_PREFIX = "output-"
 
+# Where the Monte Carlo, GOS and XFEL subprograms follow their photons and
+# electrons: None for NumPy on the CPU, or a PyTorch device such as "cuda" to
+# run them on a GPU, which needs PyTorch installed (the torch extra). A GPU's
+# random numbers are not NumPy's, so the same seed gives a different, equally
+# likely run.
+MC_DEVICE = None
+
 # Whether to write the per-image files -- VoxelDose.csv, VoxelFluences.csv,
 # DWDs.csv and RDE.csv -- as RADDOSE-3D does by default. They need every
 # voxel's dose and fluence at every image kept in memory, so turn this off
@@ -87,7 +94,7 @@ def run_microed(experiment: Experiment, start_time: float) -> None:
 
 def run_monte_carlo(experiment: Experiment, start_time: float) -> None:
     """The Monte Carlo or XFEL: print each run's doses, and write its files."""
-    runs = monte_carlo(experiment)
+    runs = monte_carlo(experiment, device=MC_DEVICE)
     for run in runs:
         print(monte_carlo_report(run))
     elapsed_time = time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))

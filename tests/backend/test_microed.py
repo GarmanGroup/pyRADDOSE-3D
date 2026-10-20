@@ -11,6 +11,7 @@ import dataclasses
 import math
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 from pyraddose_3d.backend import microed as backend
@@ -120,16 +121,19 @@ def _java_distant_integral(energy: float, binding: float, wk: float) -> float:
 
 @pytest.mark.parametrize("energy", [10.0, 120.0, 300.0, 2000.0])
 def test_the_vectorised_distant_integral_is_the_javas_loop(energy: float) -> None:
-    """Same points, same sums, for every subshell of every element."""
+    """Same points, same sums, for every subshell of every element, all at
+    once, as the GOS model's table computes them."""
     m = material(protein_heavy_atoms={"Zn": 0.333, "S": 6.0, "Se": 1.0})
-    for atom in m.atoms:
-        _, inner = atom.valence
-        for index in range(inner + 1):
-            wk = backend._wk(m, m.sternheimer_a, atom, index)
-            binding = atom.subshell_binding(index)
-            assert backend._distant_integral(
-                energy, binding, wk
-            ) == _java_distant_integral(energy, binding, wk), (atom.symbol, index)
+    subshells = [
+        (atom.symbol, index, atom.subshell_binding(index),
+         backend._wk(m, m.sternheimer_a, atom, index))
+        for atom in m.atoms
+        for index in range(atom.valence[1] + 1)
+    ]  # fmt: skip
+    _, _, binding, wk = (np.array(column) for column in zip(*subshells, strict=True))
+    got = backend._distant_integrals(np.full(len(binding), energy), binding, wk)
+    for (symbol, index, b, w), value in zip(subshells, got, strict=True):
+        assert value == _java_distant_integral(energy, b, w), (symbol, index)
 
 
 def test_the_baseline_matches_the_javas_mean_free_paths() -> None:

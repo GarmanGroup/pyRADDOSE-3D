@@ -11,7 +11,13 @@ import math
 import numpy as np
 import pytest
 
-from pyraddose_3d.backend._array import array_namespace, erf, is_torch, promote
+from pyraddose_3d.backend._array import (
+    array_namespace,
+    erf,
+    is_torch,
+    promote,
+    to_namespace,
+)
 
 torch = pytest.importorskip("torch", reason="torch is an optional extra")
 
@@ -134,3 +140,41 @@ def test_promote_does_not_detach_gradients() -> None:
     _, (promoted, _) = promote(leaf, 1.0)
     assert promoted is leaf
     assert promoted.requires_grad
+
+
+def test_promote_never_narrows_a_numpy_array() -> None:
+    """A float64 mesh beside a float32 tensor stays float64: it was cut to
+    float32, which moved the torch path's doses by 2e-4."""
+    vertices = np.zeros((4, 3))
+    _, (promoted, scalar, _tensor) = promote(
+        vertices, 0.5, torch.zeros(3, dtype=torch.float32)
+    )
+    assert promoted.dtype == torch.float64
+    assert scalar.dtype == torch.float32
+
+
+def test_promote_gives_numbers_a_floating_dtype() -> None:
+    """Beside an integer tensor, 0.5 is 0.5, not 0."""
+    _, (_index, half) = promote(torch.tensor([1, 2]), 0.5)
+    assert half.dtype == torch.float64
+    assert half.item() == 0.5
+
+
+def test_numbers_become_float64_tensors() -> None:
+    """torch.as_tensor made Python floats float32, torch's default."""
+    assert to_namespace(torch, (0.0, 0.0, 0.0)).dtype == torch.float64
+    assert to_namespace(torch, 0.5).dtype == torch.float64
+    assert to_namespace(torch, [1, 2]).dtype == torch.int64
+    assert to_namespace(torch, [True, False]).dtype == torch.bool
+
+
+def test_conversions_follow_the_tensors_device() -> None:
+    """Tensors made to meet a tensor are made on its device, so a CUDA run
+    does not mix devices. The meta device checks it without a GPU."""
+    meta = torch.zeros(3, dtype=torch.float64, device="meta")
+    _, (vertices, angle, _tensor) = promote(np.zeros((4, 3)), 0.5, meta)
+    assert vertices.device.type == "meta"
+    assert angle.device.type == "meta"
+    assert to_namespace(torch, (0.0, 1.0), like=meta).device.type == "meta"
+    assert to_namespace(torch, torch.zeros(2), like=meta).device.type == "meta"
+    assert to_namespace(torch, np.zeros(2)).device.type == "cpu"

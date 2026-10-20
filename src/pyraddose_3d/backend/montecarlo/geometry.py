@@ -16,7 +16,9 @@ answered in the crystal's own frame, which gives the same answers away from
 points exactly on a face. RADDOSE-3D answered the last two wrongly for a
 rotated crystal until its #44.
 
-Lengths are in nm, as the Java tracks them; the mesh is in um.
+Lengths are in nm, as the Java tracks them; the mesh is in um. Points,
+placements and the mesh are NumPy arrays, or tensors on one device
+(:mod:`.ops`).
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from pyraddose_3d.backend.montecarlo.ops import namespace, on
 from pyraddose_3d.backend.voxels import occupancy
 
 if TYPE_CHECKING:
@@ -70,21 +73,24 @@ def _to_crystal(points_nm: np.ndarray, placement: Placement) -> np.ndarray:
     The inverse of ``setUpRotatedVertices``, which translates the mesh and
     then rotates it.
     """
+    xp = namespace(points_nm)
     p = points_nm / 1000
-    cos, sin = np.cos(placement.angle), np.sin(placement.angle)
+    cos, sin = xp.cos(placement.angle), xp.sin(placement.angle)
     x = p[:, 0] * cos - p[:, 2] * sin
     z = p[:, 0] * sin + p[:, 2] * cos
-    rotated = np.stack([x, p[:, 1], z], axis=1)
+    rotated = xp.stack([x, p[:, 1], z], axis=1)
     return rotated - placement.offset
 
 
 def inside(mesh: Mesh, points_nm: np.ndarray, placement: Placement) -> np.ndarray:
     """``isMicrocrystalAt``: which points are inside the placed crystal."""
+    xp = namespace(points_nm)
+    mesh = on(xp, mesh)
     local = _to_crystal(points_nm, placement)
-    result = np.empty(len(local), dtype=bool)
+    result = xp.empty(len(local), dtype=bool)
     for start in range(0, len(local), _BATCH):
         chunk = local[start : start + _BATCH]
-        result[start : start + _BATCH] = np.asarray(occupancy(mesh, chunk))
+        result[start : start + _BATCH] = xp.asarray(occupancy(mesh, chunk))
     return result
 
 
@@ -102,19 +108,20 @@ def entry_depth(
     NaN where the line misses: since #48 RADDOSE-3D's is too, not 0.0,
     which a face at z = 0 also gives.
     """
-    origin = _to_crystal(np.stack([x_nm, y_nm, np.zeros_like(x_nm)], axis=1), placement)
-    direction = np.stack(
-        [-np.sin(placement.angle), np.zeros_like(x_nm), np.cos(placement.angle)],
+    xp = namespace(x_nm)
+    origin = _to_crystal(xp.stack([x_nm, y_nm, xp.zeros_like(x_nm)], axis=1), placement)
+    direction = xp.stack(
+        [-xp.sin(placement.angle), xp.zeros_like(x_nm), xp.cos(placement.angle)],
         axis=1,
     )
-    corners = np.asarray(mesh.corners())
-    depth = np.zeros(len(origin))
+    corners = xp.asarray(on(xp, mesh).corners())
+    depth = xp.zeros(len(origin))
     for start in range(0, len(origin), _BATCH):
         o = origin[start : start + _BATCH]
         d = direction[start : start + _BATCH]
         t, hit = _line_triangle(corners, o, d)
-        t = np.sort(np.where(hit, t, np.inf), axis=1)[:, crossing]
-        depth[start : start + _BATCH] = np.where(np.isfinite(t), t * 1000, np.nan)
+        t = xp.sort(xp.where(hit, t, xp.inf), axis=1)[:, crossing]
+        depth[start : start + _BATCH] = xp.where(xp.isfinite(t), t * 1000, xp.nan)
     return depth
 
 
@@ -122,19 +129,35 @@ def _line_triangle(
     corners: np.ndarray, origin: np.ndarray, direction: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Moller-Trumbore for a line, both ways: its parameter at each triangle."""
+    xp = namespace(origin)
     a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
     edge1, edge2 = b - a, c - a
-    p = np.cross(direction[:, None, :], edge2[None, :, :])
-    det = np.einsum("tk,ntk->nt", edge1, p)
+    p = xp.cross(direction[:, None, :], edge2[None, :, :])
+    det = _dot3(xp, "tk,ntk->nt", edge1, p)
     parallel = det == 0
-    inverse = 1 / np.where(parallel, 1.0, det)
+    inverse = 1 / xp.where(parallel, 1.0, det)
     to_origin = origin[:, None, :] - a[None, :, :]
-    u = np.einsum("ntk,ntk->nt", to_origin, p) * inverse
-    q = np.cross(to_origin, edge1[None, :, :])
-    v = np.einsum("nk,ntk->nt", direction, q) * inverse
-    t = np.einsum("tk,ntk->nt", edge2, q) * inverse
+    u = _dot3(xp, "ntk,ntk->nt", to_origin, p) * inverse
+    q = xp.cross(to_origin, edge1[None, :, :])
+    v = _dot3(xp, "nk,ntk->nt", direction, q) * inverse
+    t = _dot3(xp, "tk,ntk->nt", edge2, q) * inverse
     hit = ~parallel & (u >= 0) & (v >= 0) & (u + v <= 1)
     return t, hit
+
+
+def _dot3(xp: object, subscripts: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """``einsum``'s dot products of 3-vectors, on the last axis.
+
+    NumPy's own ``einsum``, as it always was. On torch, the components are
+    multiplied and added in order: its ``einsum`` goes by matrix products,
+    which fuse and reorder them.
+    """
+    if xp is np:
+        return np.asarray(np.einsum(subscripts, a, b))
+    left, out = subscripts.split("->")[0].split(",")[0], subscripts.split("->")[1]
+    # Broadcast ``a`` to ``b``'s axes: each of its letters where ``b`` has it.
+    a = a[tuple(slice(None) if letter in left else None for letter in out + "k")]
+    return a[..., 0] * b[..., 0] + a[..., 1] * b[..., 1] + a[..., 2] * b[..., 2]
 
 
 def exit_distance(
@@ -146,9 +169,10 @@ def exit_distance(
     inside, where it leaves; from outside, where it enters. 0 where it
     crosses none.
     """
+    xp = namespace(points_nm)
     origin = _to_crystal(points_nm, placement)
-    cos, sin = np.cos(placement.angle), np.sin(placement.angle)
-    turned = np.stack(
+    cos, sin = xp.cos(placement.angle), xp.sin(placement.angle)
+    turned = xp.stack(
         [
             direction[:, 0] * cos - direction[:, 2] * sin,
             direction[:, 1],
@@ -156,14 +180,14 @@ def exit_distance(
         ],
         axis=1,
     )
-    corners = np.asarray(mesh.corners())
-    distance = np.zeros(len(origin))
+    corners = xp.asarray(on(xp, mesh).corners())
+    distance = xp.zeros(len(origin))
     for start in range(0, len(origin), _BATCH):
         t, hit = _line_triangle(
             corners, origin[start : start + _BATCH], turned[start : start + _BATCH]
         )
-        t = np.where(hit & (t > 0), t, np.inf).min(axis=1)
-        distance[start : start + _BATCH] = np.where(np.isfinite(t), t * 1000, 0.0)
+        t = xp.min(xp.where(hit & (t > 0), t, xp.inf), axis=1)
+        distance[start : start + _BATCH] = xp.where(xp.isfinite(t), t * 1000, 0.0)
     return distance
 
 
@@ -178,6 +202,7 @@ def voxel_indices(
     In the crystal's own frame; rounded half up, as ``StrictMath.round``;
     negative indices raised to 0.
     """
+    xp = namespace(points_nm)
     local = _to_crystal(points_nm, placement)
-    index = np.floor((local - minimum_um) * pixels_per_micron + 0.5)
-    return np.maximum(index, 0).astype(np.int64)
+    index = xp.floor((local - on(xp, minimum_um)) * pixels_per_micron + 0.5)
+    return xp.astype(xp.maximum(index, 0), xp.int64)

@@ -34,8 +34,6 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from pyraddose_3d.backend.montecarlo.angles import deflection_angles
 from pyraddose_3d.backend.montecarlo.geometry import exit_distance, inside
 from pyraddose_3d.backend.montecarlo.material import (
@@ -44,9 +42,12 @@ from pyraddose_3d.backend.montecarlo.material import (
     elastic_mean_free_path,
     stopping_power,
 )
+from pyraddose_3d.backend.montecarlo.ops import namespace, random_namespace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+    import numpy as np
 
     from pyraddose_3d.backend.geometry import Mesh
     from pyraddose_3d.backend.microed import ElectronMaterial
@@ -88,29 +89,30 @@ def new_directions(
 
     At phi around the old direction, as RADDOSE-3D has it since #47.
     """
+    xp = namespace(direction)
     x, y, z = direction[:, 0], direction[:, 1], direction[:, 2]
-    sin_t, cos_t = np.sin(theta), np.cos(theta)
-    sin_p, cos_p = np.sin(phi), np.cos(phi)
-    polar = np.abs(z) > 0.99999
-    s = np.sqrt(np.where(polar, 1.0, 1 - z * z))
-    turned = np.stack(
+    sin_t, cos_t = xp.sin(theta), xp.cos(theta)
+    sin_p, cos_p = xp.sin(phi), xp.cos(phi)
+    polar = xp.abs(z) > 0.99999
+    s = xp.sqrt(xp.where(polar, 1.0, 1 - z * z))
+    turned = xp.stack(
         [
-            np.where(
+            xp.where(
                 polar,
                 sin_t * cos_p,
                 sin_t * (x * z * cos_p - y * sin_p) / s + x * cos_t,
             ),
-            np.where(
+            xp.where(
                 polar,
                 sin_t * sin_p,
                 sin_t * (y * z * cos_p + x * sin_p) / s + y * cos_t,
             ),
-            np.where(polar, np.sign(z) * cos_t, -sin_t * cos_p * s + z * cos_t),
+            xp.where(polar, xp.sign(z) * cos_t, -sin_t * cos_p * s + z * cos_t),
         ],
         axis=1,
     )
-    magnitude = np.sqrt(np.sum(np.power(turned, 2), axis=1, keepdims=True))
-    return np.asarray(turned / magnitude)
+    magnitude = xp.sqrt(xp.sum(xp.power(turned, 2), axis=1, keepdims=True))
+    return turned / magnitude
 
 
 class _Physics:
@@ -119,12 +121,17 @@ class _Physics:
     def __init__(self, media: Media, rng: np.random.Generator) -> None:
         self.media = media
         self.rng = rng
+        self.xp = xp = random_namespace(rng)
         surrounding = media.surrounding
-        self.z = {
-            False: np.array([a.z for a in media.crystal.atoms]),
-            True: np.array([a.z for a in surrounding.atoms])
+        self.elements = {
+            False: tuple(a.z for a in media.crystal.atoms),
+            True: tuple(a.z for a in surrounding.atoms)
             if surrounding is not None
-            else np.zeros(0, dtype=np.int64),
+            else (),
+        }
+        self.z = {
+            flag: xp.asarray(elements, dtype=xp.int64)
+            for flag, elements in self.elements.items()
         }
 
     def _material(self, surrounding: bool) -> ElectronMaterial:
@@ -137,9 +144,9 @@ class _Physics:
         outside: np.ndarray,
         compute: Callable[[bool, np.ndarray], np.ndarray],
     ) -> np.ndarray:
-        result = np.empty(len(outside))
+        result = self.xp.empty(len(outside))
         for flag in (False, True):
-            chosen = np.flatnonzero(outside == flag)
+            chosen = self.xp.flatnonzero(outside == flag)
             if len(chosen):
                 result[chosen] = compute(flag, chosen)
         return result
@@ -156,17 +163,19 @@ class _Physics:
         def free_path(flag: bool, i: np.ndarray) -> np.ndarray:
             material = self._material(flag)
             sigma = elastic_cross_sections(material, energy[i])
-            return np.asarray(elastic_mean_free_path(material, sigma))
+            return elastic_mean_free_path(material, sigma)
 
-        return -self._each(outside, free_path) * np.log(self.rng.random(len(energy)))
+        return -self._each(outside, free_path) * self.xp.log(
+            self.rng.random(len(energy))
+        )
 
     def deflect(
         self, direction: np.ndarray, energy: np.ndarray, outside: np.ndarray
     ) -> np.ndarray:
         """Scatter elastically: an element, its ELSEPA angle, and phi."""
-        theta = np.empty(len(energy))
+        theta = self.xp.empty(len(energy))
         for flag in (False, True):
-            chosen = np.flatnonzero(outside == flag)
+            chosen = self.xp.flatnonzero(outside == flag)
             if not len(chosen):
                 continue
             material = self._material(flag)
@@ -174,7 +183,10 @@ class _Physics:
             cdf = elastic_element_cdf(material, sigma)
             element = _first_above(cdf, self.rng.random(len(chosen)))
             theta[chosen] = deflection_angles(
-                self.z[flag][element], energy[chosen], self.rng.random(len(chosen))
+                self.z[flag][element],
+                energy[chosen],
+                self.rng.random(len(chosen)),
+                self.elements[flag],
             )
         phi = 2 * math.pi * self.rng.random(len(energy))
         return new_directions(direction, theta, phi)
@@ -223,19 +235,20 @@ def track(
         How many passes it took: the most steps any electron made.
     """
     physics = _Physics(media, rng)
-    which = np.arange(len(energy))
-    previous = np.array(position, dtype=float)
-    direction = np.array(direction, dtype=float)
-    energy = np.array(energy, dtype=float)
-    outside = np.array(in_surrounding, dtype=bool)
-    box = np.asarray(box)
+    xp = physics.xp
+    which = xp.arange(len(energy))
+    previous = xp.array(position, dtype=float)
+    direction = xp.array(direction, dtype=float)
+    energy = xp.array(energy, dtype=float)
+    outside = xp.array(in_surrounding, dtype=bool)
+    box = xp.asarray(box)
 
     def crystal_has(points: np.ndarray, electrons: np.ndarray) -> np.ndarray:
         return inside(media.mesh, points, placement.take(electrons))
 
     # ``startingEnergy < 0.05``: the whole energy, where it was freed, if that
     # is in the crystal.
-    low = np.flatnonzero(energy < STOPPED_KEV)
+    low = xp.flatnonzero(energy < STOPPED_KEV)
     if len(low):
         there = low[crystal_has(previous[low], which[low])]
         deposit(previous[there], which[there], energy[there], True)
@@ -254,12 +267,12 @@ def track(
         power = physics.stopping_power(energy, outside)
         # ``finished`` ends an electron at once; ``exits`` after the check
         # for having stopped, as the Java's loop ends.
-        finished = np.zeros(len(which), dtype=bool)
-        exits = np.zeros(len(which), dtype=bool)
+        finished = xp.zeros(len(which), dtype=bool)
+        exits = xp.zeros(len(which), dtype=bool)
 
         # Back into the crystal from the surrounding: to the face it enters by,
         # slowed by the way, then a fresh step in the crystal.
-        entering = np.flatnonzero(within & outside)
+        entering = xp.flatnonzero(within & outside)
         if len(entering):
             to_face = exit_distance(
                 media.mesh,
@@ -287,7 +300,7 @@ def track(
             within[entering] = crystal_has(reached[entering], which[entering])
 
         # In the crystal: deposit, scatter, slow down, and draw the next step.
-        a = np.flatnonzero(within & ~outside & ~finished)
+        a = xp.flatnonzero(within & ~outside & ~finished)
         lost = step[a] * power[a]
         deposit(reached[a], which[a], lost, False)
         previous[a] = reached[a]
@@ -300,7 +313,7 @@ def track(
         # Leaving the crystal: the distance to its surface, deposited where it
         # left from -- if that is in the crystal, which a point moved onto a
         # face on the way in need not be.
-        b = np.flatnonzero(~within & ~outside & ~finished)
+        b = xp.flatnonzero(~within & ~outside & ~finished)
         to_edge = exit_distance(
             media.mesh, previous[b], direction[b], placement.take(which[b])
         )
@@ -327,16 +340,15 @@ def track(
 
         # In the surrounding: scatter and slow, depositing nothing, until it
         # leaves the surrounding.
-        c = np.flatnonzero(wandering)
+        c = xp.flatnonzero(wandering)
         if len(c):
-            still_in = np.zeros(len(c), dtype=bool)
-            for index in np.unique(box[c]):
-                group = np.flatnonzero(box[c] == index)
-                still_in[group] = inside(
-                    media.boxes[index],
-                    reached[c[group]],
-                    placement.take(which[c[group]]),
-                )
+            still_in = xp.zeros(len(c), dtype=bool)
+            for index, mesh in enumerate(media.boxes):
+                group = xp.flatnonzero(box[c] == index)
+                if len(group):
+                    still_in[group] = inside(
+                        mesh, reached[c[group]], placement.take(which[c[group]])
+                    )
             finished[c[~still_in]] = True
             c = c[still_in]
             lost = step[c] * power[c]
@@ -347,7 +359,7 @@ def track(
             step[c] = physics.step(energy[c], outside[c])
 
         # Stopped: what is left, where it stopped, if that is in the crystal.
-        stopped = np.flatnonzero((energy < STOPPED_KEV) & ~finished)
+        stopped = xp.flatnonzero((energy < STOPPED_KEV) & ~finished)
         if len(stopped):
             there = stopped[crystal_has(previous[stopped], which[stopped])]
             deposit(previous[there], which[there], energy[there], False)
@@ -366,6 +378,7 @@ def _first_above(cdf: np.ndarray, uniform: np.ndarray) -> np.ndarray:
 
     The last, should rounding leave none; the Java would fail.
     """
+    xp = namespace(uniform)
     above = cdf > uniform[None, :]
-    found = above.any(axis=0)
-    return np.where(found, above.argmax(axis=0), cdf.shape[0] - 1)
+    found = xp.any(above, axis=0)
+    return xp.where(found, xp.argmax(above, axis=0), cdf.shape[0] - 1)

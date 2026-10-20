@@ -100,10 +100,7 @@ def test_an_xfel_cascade_conserves_a_vacancys_energy(selenium) -> None:  # type:
     def counting(table, z, shell):  # type: ignore[no-untyped-def]
         index = transition(table, z, shell)
         if table is cascade.fluorescence:
-            photons.extend(
-                table[(int(a), int(b))].energy_kev[i]
-                for a, b, i in zip(z, shell, index, strict=True)
-            )
+            photons.extend(table.energy_kev[z, shell, index].tolist())
         return index
 
     cascade._transition = counting  # type: ignore[method-assign]
@@ -164,14 +161,16 @@ def test_an_xfel_pulses_pink_photons_come_in_no_order_of_energy() -> None:
     run, in_run = index // photons, index % photons
     orders: dict[int, np.ndarray] = {}
     rng = np.random.default_rng(5)
-    drawn = np.concatenate(
-        [
-            in_random_order(
-                energies, run[i : i + 30_000], in_run[i : i + 30_000], orders, rng
-            )
-            for i in range(0, len(index), 30_000)
-        ]
-    ).reshape(3, photons)
+    drawn = energies[
+        np.concatenate(
+            [
+                in_random_order(
+                    photons, run[i : i + 30_000], in_run[i : i + 30_000], orders, rng
+                )
+                for i in range(0, len(index), 30_000)
+            ]
+        )
+    ].reshape(3, photons)
     for r in range(3):
         assert np.array_equal(np.sort(drawn[r]), energies)
         ranks = np.argsort(np.argsort(drawn[r]))

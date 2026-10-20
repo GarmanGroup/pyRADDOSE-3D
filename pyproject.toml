@@ -176,6 +176,8 @@ runtime-evaluated-base-classes = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["D", "S"]
 "docs/*.py" = ["D", "A"]
+# NumPy's functions, of NumPy's names, on a torch device: documented by NumPy.
+"src/pyraddose_3d/backend/montecarlo/ops.py" = ["D102", "D105"]
 
 # https://docs.astral.sh/ruff/formatter/
 [tool.ruff.format]

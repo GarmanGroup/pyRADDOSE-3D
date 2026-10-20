@@ -15,6 +15,7 @@ from __future__ import annotations
 import functools
 import json
 import math
+import os
 import statistics
 import tempfile
 from pathlib import Path
@@ -142,10 +143,15 @@ def test_a_bias_of_the_claimed_size_is_caught() -> None:
     assert sum(caught) >= 0.6 * len(caught), f"caught {sum(caught)} of {len(caught)}"
 
 
+#: The device the port's runs are made on: NumPy's CPU by default, or a torch
+#: device named by ``PYRADDOSE_MC_DEVICE``, such as ``cuda``.
+DEVICE = os.environ.get("PYRADDOSE_MC_DEVICE") or None
+
+
 def _runs_of(experiment: Experiment, directory: Path) -> dict[str, list[float]]:
     """The port's runs, through its own files and printout and the parser
     ``generate.py`` reads the Java's with."""
-    runs = monte_carlo(experiment)
+    runs = monte_carlo(experiment, device=DEVICE)
     write_monte_carlo_outputs(runs, directory)
     printed = "".join(monte_carlo_report(run) for run in runs)
     return simulated_runs(directory, printed, len(runs))

@@ -87,6 +87,39 @@ def test_a_draw_takes_the_first_angle_reaching_it() -> None:
         assert math.degrees(got[0]) == pytest.approx(column)
 
 
+def test_a_materials_block_holds_each_elements_table() -> None:
+    """Gathered for a material: each element's own running chances, and
+    none for mercury above 20 keV, which ELSEPA does not tabulate."""
+    block = angles.angular_block((1, 6, 80), True)
+    assert block.slot[80] == -1
+    for z in (1, 6):
+        np.testing.assert_array_equal(
+            block.cumulative[block.slot[z]], angles._sampler(z, True).cumulative
+        )
+    with pytest.raises(ValueError, match="Z = 80"):
+        angles.deflection_angles(
+            np.array([6, 80]), np.array([30.0, 30.0]), np.array([0.5, 0.5]), (1, 6, 80)
+        )
+
+
+@pytest.mark.parametrize("high_energy", [False, True])
+def test_the_search_takes_the_first_column_reaching_the_draw(high_energy: bool) -> None:
+    """A fixed number of passes finds what a search to the end would."""
+    block = angles.angular_block((1, 6, 7, 8, 16), high_energy)
+    rng = np.random.default_rng(4)
+    n = 2000
+    slot = rng.integers(0, 5, n)
+    rows = rng.integers(0, len(block.energies_kev), n)
+    uniform = rng.random(n)
+    expected = [
+        np.searchsorted(block.cumulative[s, r], u, side="left")
+        for s, r, u in zip(slot, rows, uniform, strict=True)
+    ]
+    np.testing.assert_array_equal(
+        angles._first_reaching(block.cumulative, slot, rows, uniform), expected
+    )
+
+
 def test_the_cuboids_geometry() -> None:
     from pyraddose_3d.backend.geometry import Mesh
 
@@ -286,6 +319,43 @@ def test_most_elements_have_a_shell_for_every_draw() -> None:
     """Where the last shell modelled has an edge ratio of 0, it takes the rest."""
     for z in (1, 6, 7, 8, 15, 16, 30):
         assert photons.shell_cdf(z, np.array([12.1])).max() == pytest.approx(1.0)
+
+
+def test_mixed_elements_shells_are_each_ones_own() -> None:
+    """``shell_cdfs`` over photons of many elements is ``shell_cdf``'s for
+    each, to the last bit."""
+    elements = (1, 6, 16, 30, 53, 78)
+    rng = np.random.default_rng(6)
+    element = rng.integers(0, len(elements), 3000)
+    energy = rng.uniform(0.5, 100.0, 3000)
+    table = photons.stacked_shells(elements)
+    z = np.array(elements)[element]
+    mixed = photons.shell_cdfs(
+        z, table.edges[element], table.ionisation[element], energy
+    )
+    for i, one in enumerate(elements):
+        mine = element == i
+        np.testing.assert_array_equal(mixed[mine], photons.shell_cdf(one, energy[mine]))
+
+
+def test_a_spectrums_coefficients_are_each_batchs(setup) -> None:  # type: ignore[no-untyped-def]
+    """Computed once for a pink beam's every energy, they are what each
+    batch's photons would have had computed for them alone."""
+    rng = np.random.default_rng(7)
+    spectrum = np.sort(rng.uniform(11.0, 13.0, 20_000))
+    whole = photons.photon_coefficients(setup.composition, spectrum)
+    batch = rng.integers(0, len(spectrum), 5000)
+    alone = photons.photon_coefficients(setup.composition, spectrum[batch])
+    for name in (
+        "absorption",
+        "compton",
+        "elastic",
+        "photoelectric_cdf",
+        "compton_cdf",
+    ):
+        np.testing.assert_array_equal(
+            getattr(whole.take(batch), name), getattr(alone, name)
+        )
 
 
 def test_an_outer_shell_leaves_nothing_at_the_atom() -> None:
